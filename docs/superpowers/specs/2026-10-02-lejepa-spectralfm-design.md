@@ -276,7 +276,8 @@ Copied from clean-eval `6237feb`, simplified, behaviour preserved:
   10-statistic banks (selects the mean stat).
 - Evaluation input normalization stays the parent's eps-1e-8 z-score even
   though training uses `layer_norm` (eps 1e-5): the baseline was evaluated
-  that way. (~1% scale difference on low-variance spectra; documented.)
+  that way. (measured gap <=0.1% on the labeled evaluation sets, up to ~0.6% on
+  single_channel_one training spectra; documented.)
 - Default label sets: `labeled_data`, `labeled_regression_all`, each small
   set with n ≥ 20. Components: 1 (component 0).
 - `scripts/evaluate.py <checkpoint|artifact>`: builds banks, runs nested CV +

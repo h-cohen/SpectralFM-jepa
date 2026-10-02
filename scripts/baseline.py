@@ -32,6 +32,7 @@ def main():
 
     out_root = Path("outputs") / "baseline" / bcfg["tag"]
     ladder_block, worst = None, 0.0
+    problems = []
     for name, rel in bcfg["run_dirs"].items():
         src = os.path.join(bcfg["parent_repo"], rel)
         bank, raw, y, meta = load_bank(os.path.join(src, "bank.npz"))
@@ -53,11 +54,19 @@ def main():
             summary["ladder_reproduction"] = compare_ladders(ladder, json.load(open(os.path.join(src, "nested_ladder.json"))))
         write_json(out_dir / "summary.json", summary)
         worst = max(worst, check["max_abs_diff"])
+        if check["max_abs_diff"] > 1e-10 or check["choice_mismatches"] > 0:
+            problems.append(f"{name}: max|diff| {check['max_abs_diff']:.2e}, choice mismatches {check['choice_mismatches']}")
+        lr = summary.get("ladder_reproduction")
+        if lr and (lr["max_abs_diff"] > 1e-10 or lr["recipe_mismatches"] > 0):
+            problems.append(f"{name}: ladder max|diff| {lr['max_abs_diff']:.2e}, recipe mismatches {lr['recipe_mismatches']}")
         wb.log(run, flat_metrics(name, summary))
         print(f"[baseline] {name}: embedding R2 {summary['embedding_r2']:.4f}, raw {summary['raw_r2']:.4f}, "
               f"max |diff| vs parent {check['max_abs_diff']:.2e}, choice mismatches {check['choice_mismatches']}")
     wb.log(run, {"reproduction/max_abs_diff": worst})
     wb.finish(run)
+    if problems:
+        print("[baseline] REPRODUCTION MISMATCH:\n  " + "\n  ".join(problems))
+        raise SystemExit("baseline does not reproduce the parent's numbers: " + "; ".join(problems))
 
 
 if __name__ == "__main__":

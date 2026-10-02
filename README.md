@@ -54,7 +54,10 @@ clean-eval nested-CV methodology?
   it). The parent's 10-statistic banks still load.
 - **Evaluation input uses the parent's eps-1e-8 z-score**, not training's eps-1e-5
   `layer_norm`. This keeps the evaluation identical to how the baseline was scored, at
-  about a 1% scale difference on low-variance spectra.
+  a measured scale gap of at most 0.1% on the labeled evaluation sets (up to about 0.6% on
+  single_channel_one training spectra).
+- **Evaluation stages:** layer0 = token embeddings, layer1..layer5 = raw block outputs,
+  layer6 = the final LayerNorm output (exactly the training target).
 - **Inherited caveat: the CV is not grouped by label.** labeled_data has 4,716 spectra but
   only 168 distinct labels. This is left unchanged so the comparison stays like-for-like.
 - **Scale differs from the baseline.** The encoder is about 5M parameters versus

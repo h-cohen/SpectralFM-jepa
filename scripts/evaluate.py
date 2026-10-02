@@ -70,12 +70,12 @@ def summarize(nested, block):
             "embedding_minus_raw": nested["embedding_minus_raw"]}
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--checkpoint", required=True, help="local .pt path or wandb:<artifact ref>")
     ap.add_argument("--config", default="configs/eval.yaml")
     ap.add_argument("overrides", nargs="*")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     cfg = load_config(a.config, a.overrides)
     ecfg, vcfg, bcfg = cfg["experiment"], cfg["evaluation"], cfg["baseline"]
     seed = ecfg["seed"]
@@ -85,12 +85,14 @@ def main():
     model, ckpt = load_model(ckpt_path)
     if artifact is None and run is not None and ckpt.get("wandb_run_id"):
         artifact = run.use_artifact(f"lejepa-{ckpt['wandb_run_id']}:step-{ckpt['step']}")   # W&B lineage edge
+    git = wb.git_info()
     lineage = {"pretraining_run_id": ckpt.get("wandb_run_id"), "pretraining_checkpoint": a.checkpoint,
                "pretraining_checkpoint_sha256": sha256_file(ckpt_path),
                "pretraining_artifact": artifact_name(artifact),
                "pretraining_artifact_digest": getattr(artifact, "digest", None),
                "pretraining_checkpoint_step": ckpt["step"], "pretraining_git_commit": ckpt.get("git_commit"),
-               "pretraining_git_dirty": ckpt.get("git_dirty"), "evaluation_git_commit": wb.git_info()["git_commit"],
+               "pretraining_git_dirty": ckpt.get("git_dirty"), "evaluation_git_commit": git["git_commit"],
+               "evaluation_git_dirty": git["git_dirty"],
                "evaluation_config": cfg}
     if run is not None:
         run.config.update({"lineage": lineage})
@@ -117,7 +119,8 @@ def main():
         summary = summarize(nested, block)
         summary["canary"] = run_canary(bank[block], raw, y, seed)
         if name in bcfg["run_dirs"]:
-            summary["vs_baseline"] = pair_with_baseline(y, oof, os.path.join(bcfg["parent_repo"], bcfg["run_dirs"][name]))
+            summary["vs_baseline"] = pair_with_baseline(
+                y, oof, os.path.join(bcfg["parent_repo"], bcfg["run_dirs"][name]), nested["protocol"])
         if name == vcfg["ladder_block_from"]:
             ladder_block = block
         if name in vcfg["ladder_sets"]:

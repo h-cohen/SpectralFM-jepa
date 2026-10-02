@@ -295,14 +295,28 @@ def compare_ladders(ours, ref):
     return {"max_abs_diff": float(max(diffs)), "recipe_mismatches": int(mismatches)}
 
 
-def pair_with_baseline(y, oof, baseline_dir):
+def pair_with_baseline(y, oof, baseline_dir, protocol):
     """Paired R² gaps (ours - baseline) on identical spectra and folds, read from the
-    baseline's nested_oof.npz. Refuses if the rows differ: a gap on different rows is meaningless."""
+    baseline's nested_oof.npz. Refuses if the rows or folds differ: a gap on different rows is
+    meaningless. The parent's results carry no test_folds, so fold identity is asserted via the
+    protocol (n, repeats, folds, inner, seed) plus an identical raw-input arm (same rows + folds
+    + recipes give the same raw out-of-fold predictions)."""
     path = os.path.join(baseline_dir, "nested_oof.npz")
     base = np.load(path)
+    with open(os.path.join(baseline_dir, "nested_results.json")) as f:
+        bproto = json.load(f)["protocol"]
+    differ = {k: (protocol[k], bproto.get(k)) for k in ("n", "n_repeats", "n_folds", "n_inner", "seed")
+              if protocol[k] != bproto.get(k)}
+    if differ:
+        raise ValueError(f"baseline protocol in {baseline_dir} differs from ours (ours, baseline): {differ}; "
+                         "refusing to pair")
     if base["y"].shape != np.shape(y) or not np.array_equal(base["y"], y):
         raise ValueError(f"baseline rows in {path} differ from ours (n={len(base['y'])} vs {len(y)}); "
                          "refusing to pair")
+    if (np.shape(oof["raw"]) != base["raw"].shape
+            or not np.allclose(oof["raw"], base["raw"], rtol=0, atol=1e-8)):
+        raise ValueError(f"raw-input out-of-fold predictions in {path} differ from ours "
+                         "(different folds or rows); refusing to pair")
     families = ("embedding", f"embedding_top{ENSEMBLE_K}", "raw")
     return {fam: paired_delta(np.asarray(y, dtype=np.float64), oof[fam], base[fam])
             for fam in families if fam in base.files and fam in oof}
