@@ -89,10 +89,11 @@ def test_unknown_projector_rejected():
 def test_eval_backbone_hidden_states():
     model, x, _, _ = setup()
     backbone = EvalBackbone(model)
-    out = backbone(input_values=x, output_hidden_states=True)
-    hs = out.hidden_states
-    assert len(hs) == SMALL["depth"] + 1
-    assert all(h.shape == (4, 24, 32) for h in hs)
+    # Both calls under no_grad to ensure eval-mode TransformerEncoderLayer uses fused fast path
     with torch.no_grad():
+        out = backbone(input_values=x, output_hidden_states=True)
+        hs = out.hidden_states
+        assert len(hs) == SMALL["depth"] + 1
+        assert all(h.shape == (4, 24, 32) for h in hs)
         assert torch.allclose(hs[-1], model.encoder(model.tokenizer(x)))
     assert not hasattr(backbone, "feature_extractor") and not hasattr(backbone, "feature_projection")

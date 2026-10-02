@@ -129,9 +129,8 @@ class EvalBackbone(nn.Module):
         self.encoder = model.encoder
 
     def forward(self, input_values, output_hidden_states=True):
-        with torch.no_grad():
-            tokens = self.tokenizer(input_values)
-            out, hidden = self.encoder(tokens, return_all=True)
+        tokens = self.tokenizer(input_values)
+        out, hidden = self.encoder(tokens, return_all=True)
         return SimpleNamespace(hidden_states=(tokens, *hidden[:-1], out), last_hidden_state=out)
 
 
