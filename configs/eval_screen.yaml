@@ -1,0 +1,33 @@
+# Downstream evaluation: clean-eval nested-CV label probe (seed 42, component 0).
+experiment:
+  name: screen_eval
+  seed: 42
+  output_dir: outputs/screen-1/eval
+
+evaluation:
+  device: cuda
+  batch_size: 64
+  max_samples: 5000
+  n_jobs: 8
+  min_n: 20
+  ladder_sets: []
+  ladder_block_from: labeled_data      # must be listed first in label_sets
+
+# name -> list of label-set directories (several = merged, as clean-eval's merge_label_sets)
+label_sets:
+  labeled_data: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_data]
+
+baseline:
+  tag: ref_feb25
+  checkpoint: /mnt5/noy/SpectralFM/checkpoints/runai/runai_long_train_2026-02-25_13-46-46.pt
+  parent_repo: /mnt5/home/hadar/nova/SpectralFM-label-regression-eval-merged
+  run_dirs:          # relative to parent_repo; each holds bank.npz + nested_results.json + nested_oof.npz
+    labeled_data: code/eval_outputs/label_probe_regression_labeled_data_ref_feb25/label_probe/labeled_data
+
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: screen-1
+  job_type: eval
+  tags: [lejepa, spectralfm, 1d, screen, eval]

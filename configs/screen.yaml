@@ -1,0 +1,26 @@
+# Screen 1: one-factor arms vs a matched 5-epoch control, scored on labeled_data.
+name: screen-1
+output_dir: outputs/screen-1
+eval_config: configs/eval_screen.yaml
+shared_overrides:
+  - training.epochs=5
+  - experiment.output_dir=outputs/screen-1
+  - wandb.group=screen-1
+  - "wandb.tags=[lejepa,spectralfm,1d,screen]"
+arms:
+  control_s0: [experiment.seed=0]
+  control_s1: [experiment.seed=1]
+  block50: [masking.strategy=block]
+  random75: [masking.mask_ratio=0.75]
+  block75: [masking.strategy=block, masking.mask_ratio=0.75]
+  patch49: [model.num_patches=49]
+  lambda02: [training.lambda_sigreg=0.02]
+  projector: [model.projector=mlp]
+  wide: [model.dim=384, model.depth=8, model.mlp_dim=1536, model.predictor_dim=256,
+         model.predictor_heads=8, model.predictor_mlp_dim=1024]
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: screen-1
+  tags: [lejepa, spectralfm, 1d, screen]

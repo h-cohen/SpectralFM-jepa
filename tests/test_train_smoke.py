@@ -30,18 +30,22 @@ def data_dir(tmp_path):
     return tmp_path / "data"
 
 
+TINY_OVERRIDES = [
+    "data.num_workers=0",
+    "model.dim=32", "model.depth=2", "model.heads=4", "model.mlp_dim=64",
+    "model.predictor_dim=24", "model.predictor_depth=2", "model.predictor_heads=4",
+    "model.predictor_mlp_dim=48",
+    "training.batch_size=8", "training.max_steps=60", "training.learning_rate=1.0e-3",
+    "training.log_every=5", "training.val_every=20", "training.diag_every=20",
+    "training.ckpt_every=30", "training.device=cpu", "training.amp=false",
+    "training.sigreg_num_slices=64", "wandb.enabled=false",
+]
+
+
 def tiny_cfg(data_dir, out_dir, name="smoke"):
     return load_config(REPO / "configs" / "pretrain.yaml", [
         f"experiment.name={name}", f"experiment.output_dir={out_dir}",
-        f"data.manifest_dir={data_dir}", "data.num_workers=0",
-        "model.dim=32", "model.depth=2", "model.heads=4", "model.mlp_dim=64",
-        "model.predictor_dim=24", "model.predictor_depth=2", "model.predictor_heads=4",
-        "model.predictor_mlp_dim=48",
-        "training.batch_size=8", "training.max_steps=60", "training.learning_rate=1.0e-3",
-        "training.log_every=5", "training.val_every=20", "training.diag_every=20",
-        "training.ckpt_every=30", "training.device=cpu", "training.amp=false",
-        "training.sigreg_num_slices=64", "wandb.enabled=false",
-    ])
+        f"data.manifest_dir={data_dir}", *TINY_OVERRIDES])
 
 
 def test_schedule():
