@@ -28,8 +28,9 @@ model:
   projector_dim: 128
 
 masking:
-  strategy: random
+  strategy: random   # random | block
   mask_ratio: 0.5
+  num_blocks: 3      # used only by strategy: block
 
 training:
   batch_size: 256

@@ -91,3 +91,20 @@ def test_cuda_requested_without_gpu_fails(data_dir, tmp_path, monkeypatch):
     cfg["training"]["device"] = "cuda"
     with pytest.raises(RuntimeError, match="no GPU"):
         train(cfg)
+
+
+def test_impossible_block_mask_fails_before_any_work(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "out")
+    cfg["masking"].update(strategy="block", num_blocks=13)
+    with pytest.raises(ValueError, match="num_blocks"):
+        train(cfg)
+    assert not (tmp_path / "out").exists()
+
+
+def test_block_masking_trains(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "out", name="block")
+    cfg["masking"]["strategy"] = "block"
+    cfg["training"]["max_steps"] = 10
+    with pytest.warns(UserWarning):
+        result = train(cfg)
+    assert all(math.isfinite(h["train/loss"]) for h in result["history"])

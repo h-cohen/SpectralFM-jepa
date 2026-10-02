@@ -18,7 +18,7 @@ import yaml
 from torch.optim.lr_scheduler import LambdaLR
 
 from ..data.loader import SpectraDataset, make_loader, manifest_fingerprint, read_manifest, subsample
-from ..models.masking import random_mask
+from ..models.masking import make_mask
 from ..models.vit_1d import build_model
 from ..utils import wandb as wb
 from . import diagnostics as diag
@@ -68,7 +68,7 @@ def lr_factor(step, warmup_steps, total_steps, final_ratio):
 
 
 @torch.no_grad()
-def validation_losses(model, objective, signals, num_patches, mask_ratio, batch_size, seed, device, amp):
+def validation_losses(model, objective, signals, num_patches, masking_cfg, batch_size, seed, device, amp):
     """Mean losses over full batches of the fixed valid set; the mask seed is fixed so values
     are comparable across steps."""
     model.eval()
@@ -78,7 +78,7 @@ def validation_losses(model, objective, signals, num_patches, mask_ratio, batch_
     n_batches = 0
     for i in range(0, len(signals) - batch_size + 1, batch_size):
         x = signals[i:i + batch_size].to(device)
-        masked_idx, visible_idx = random_mask(len(x), num_patches, mask_ratio, generator, device)
+        masked_idx, visible_idx = make_mask(masking_cfg, len(x), num_patches, generator, device)
         with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
             out = model(x, masked_idx, visible_idx)
         losses = objective(out["predicted"], out["target_masked"], out["target"])
@@ -89,7 +89,7 @@ def validation_losses(model, objective, signals, num_patches, mask_ratio, batch_
     return {f"valid/{k}": v / n_batches for k, v in totals.items()}
 
 
-def run_diagnostics(run, model, valid_signals, mask_ratio, step, seed, device, reference_rank):
+def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, reference_rank):
     """Representation statistics on the whole valid set (+ figures when W&B is on).
     Returns (metrics, reference_rank); the reference is the step-0 effective rank."""
     model.eval()
@@ -111,7 +111,7 @@ def run_diagnostics(run, model, valid_signals, mask_ratio, step, seed, device, r
     wb.log(run, metrics, step=step)
     if run is not None:
         wb.log_figure(run, "representation/singular_values", diag.singular_value_figure(sv), step)
-        masked_idx, _ = random_mask(4, len(model.tokenizer.bounds), mask_ratio,
+        masked_idx, _ = make_mask(masking_cfg, 4, len(model.tokenizer.bounds),
                                     torch.Generator().manual_seed(seed + 3 + step))
         wb.log_figure(run, "masking/examples", diag.masking_figure(
             valid_signals[:4].numpy(), model.tokenizer.bounds, masked_idx.numpy()), step)
@@ -120,8 +120,7 @@ def run_diagnostics(run, model, valid_signals, mask_ratio, step, seed, device, r
 
 def train(cfg: dict) -> dict:
     ecfg, dcfg, mcfg, kcfg, tcfg = (cfg[k] for k in ("experiment", "data", "model", "masking", "training"))
-    if kcfg["strategy"] != "random":
-        raise ValueError(f"masking.strategy={kcfg['strategy']!r}: only 'random' is implemented")
+    make_mask(kcfg, 1, mcfg["num_patches"])   # validates the masking config before any work
     if tcfg["optimizer"] != "adamw":
         raise ValueError(f"training.optimizer={tcfg['optimizer']!r}: only 'adamw' is implemented")
     seed = ecfg["seed"]
@@ -170,11 +169,11 @@ def train(cfg: dict) -> dict:
     scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
     scaler = torch.amp.GradScaler(device.type, enabled=amp)
     mask_generator = torch.Generator().manual_seed(seed + 1)
-    num_patches, mask_ratio = mcfg["num_patches"], kcfg["mask_ratio"]
+    num_patches = mcfg["num_patches"]
     max_norm = tcfg["grad_clip"] or float("inf")
 
     latest, reference_rank = {}, None
-    metrics, reference_rank = run_diagnostics(run, model, valid_signals, mask_ratio, 0, seed, device, reference_rank)
+    metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, 0, seed, device, reference_rank)
     latest.update(metrics)
 
     def checkpoint(step, epoch):
@@ -191,7 +190,7 @@ def train(cfg: dict) -> dict:
     while step < total_steps:
         for x in loader:
             x = x.to(device, non_blocking=True)
-            masked_idx, visible_idx = random_mask(len(x), num_patches, mask_ratio, mask_generator, device)
+            masked_idx, visible_idx = make_mask(kcfg, len(x), num_patches, mask_generator, device)
             with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
                 out = model(x, masked_idx, visible_idx)
             losses = objective(out["predicted"], out["target_masked"], out["target"])
@@ -217,12 +216,12 @@ def train(cfg: dict) -> dict:
                 history.append(record)
                 wb.log(run, record, step=step)
             if step % tcfg["val_every"] == 0 or last:
-                valid = validation_losses(model, objective, valid_signals, num_patches, mask_ratio,
+                valid = validation_losses(model, objective, valid_signals, num_patches, kcfg,
                                           batch_size, seed + 2, device, amp)
                 latest.update(valid)
                 wb.log(run, valid, step=step)
             if step % tcfg["diag_every"] == 0 or last:
-                metrics, reference_rank = run_diagnostics(run, model, valid_signals, mask_ratio, step,
+                metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, step,
                                                           seed, device, reference_rank)
                 latest.update(metrics)
             if step % tcfg["ckpt_every"] == 0 or last:
