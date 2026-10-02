@@ -14,7 +14,7 @@ spectra, in a small new repository, and answer one question:
 > unchanged clean-eval nested-CV methodology?
 
 Success for this spec = infrastructure done (brief §24) + one reproducible
-λ=1.0 baseline pretraining run + its clean-eval comparison against `ref_feb25`.
+λ=0.05 baseline pretraining run + its clean-eval comparison against `ref_feb25`.
 No sweeps.
 
 ## 2. Reconnaissance findings (what the design rests on)
@@ -60,19 +60,48 @@ Parent repo: `../SpectralFM-label-regression-eval-merged`, branch
   (data2vec, ~93M params, 47 tokens, 13.5k updates × 2048 on
   `single_channel_all`; labeled_data R² 0.44 embedding vs 0.38 raw).
 
-### LeJEPA package
-- Not on PyPI. Source: `github.com/galilai-group/lejepa` (moved from
-  rbalestr-lab), v0.0.1, deps torch/numpy/loguru/pytest. Pin commit `c293d29`.
-- Real API: `lejepa.multivariate.SlicingUnivariateTest(univariate_test,
-  num_slices, reduction="mean")` over `(*, N, D)`; `lejepa.univariate.EppsPulley(
-  t_max=3, n_points=17)`. README's `num_points=` is wrong. Statistic is
-  multiplied by N. Slicing directions are seeded from an internal
-  `global_step` buffer (deterministic, advances each call).
+### LeJEPA implementation: `lightly` (PyPI)
+- The reference package `lejepa` is **not on PyPI** (GitHub
+  `galilai-group/lejepa`, v0.0.1). Instead we use **`lightly` 1.5.26** from
+  PyPI, which ships `lightly.loss.SIGReg`, `lightly.loss.LeJEPALoss` and
+  `lightly.models.modules.LeJEPAProjectionHead`.
+- `SIGReg(knots=17, t_max=3.0, num_vectors=1024)`, input `(..., N, D)`
+  (leading dims are batch dims → per-position `[24, B, D]` works directly).
+  Same Epps–Pulley/trapezoid math as the reference minimal example;
+  statistic multiplied by N, averaged over slices and leading dims.
+- Only `SIGReg` (and optionally `LeJEPAProjectionHead`) is used.
+  `LeJEPALoss` is the multi-view invariance objective and does not apply to
+  masked prediction.
+- Caveats: heavy transitive deps (torchvision, pytorch_lightning, hydra-core,
+  pydantic, requests, lightly_utils); `import lightly` starts a background
+  PyPI version check unless `LIGHTLY_DID_VERSION_CHECK=True`, which our package
+  `__init__` sets before importing it; slice directions are drawn from the
+  **global** torch RNG (reproducible under our seeding, but changing
+  `num_vectors` shifts subsequent random draws — documented); computes in
+  input dtype, so we pass fp32.
 - Paper differences to record in README: the paper applies SIGReg to a
   projector-MLP output, uses multi-crop views with an invariance loss, and
-  weights `(1-λ)·inv + λ·sigreg` with λ≈0.05. This project is a
-  masked-latent-prediction (I-JEPA-style) variant with
-  `MSE + λ·SIGReg`, λ=1.0, no projector — a deliberate choice of the brief.
+  weights `(1-λ)·inv + λ·sigreg` with λ≈0.05 (explored 0.01–0.1). This
+  project is a masked-latent-prediction (I-JEPA-style) variant with
+  `MSE + λ·SIGReg`, λ=0.05, no projector by default.
+
+### Choice of λ (measured)
+SIGReg value on synthetic embeddings (D=256, per-position `[24,B,D]`,
+1024 slices):
+
+| embedding | B=256 | B=1024 |
+|---|---:|---:|
+| ideal N(0, I) | 1.05 | 1.04 |
+| variance 0.25 | 39 | 155 |
+| rank 8 | 8.1 | 31 |
+| near-collapsed | 103 | 412 |
+
+SIGReg has a floor ≈1 at a perfect Gaussian and deviations scale with N,
+while MSE on unit-variance targets lives in ~0.1–1 (predicting 0 ≈ 1.0).
+At λ=1 small non-Gaussianity outweighs prediction by 10–100×. The paper's
+`0.95·inv + 0.05·sigreg` on the same statistic corresponds to λ≈0.05 in
+our `mse + λ·sigreg` form (paper range 0.01–0.1 ↔ ≈0.01–0.11). **Baseline
+λ = 0.05.** The brief's λ=1.0 is kept as a planned comparison point.
 
 ### Environment
 - Host: 7 usable RTX 2080 Ti (11 GB); GPU 3 (bus 61:00.0) is broken.
@@ -88,6 +117,9 @@ Parent repo: `../SpectralFM-label-regression-eval-merged`, branch
 | Tokenizer | Non-overlapping contiguous split, widths `[11]*5 + [10]*19` |
 | SIGReg input | Per position: `Z.transpose(0,1)` `[24,B,D]`, N=B, averaged over positions & slices |
 | Target encoder | Same module and parameters as context encoder; no EMA, no detach |
+| SIGReg implementation | `lightly.loss.SIGReg` (PyPI), not the GitHub `lejepa` package |
+| λ_sigreg | 0.05 (see measured table in §2) |
+| Projector | `projector: none` (default) \| `mlp` (lightly `LeJEPAProjectionHead`) |
 | Precision | fp16 autocast + GradScaler; SIGReg computed in fp32 |
 | Scale vs baseline | ~5M-param encoder vs 93M data2vec; documented, not hidden |
 
@@ -149,15 +181,27 @@ loss = mse(predicted, target_masked) + λ · SIGReg(target.transpose(0,1))
   `feature_extractor` or `feature_projection`.
 - All sizes configurable in `pretrain.yaml`.
 
+### 4.4b Optional projector — `projector: none | mlp`
+- `none` (baseline): MSE and SIGReg act on encoder-space tokens.
+- `mlp`: lightly `LeJEPAProjectionHead(256, hidden_dim=1024, output_dim=128)`
+  applied token-wise. Predicted and target tokens are passed through the
+  projector **in one call** (concatenated `[B·12 + B·24, 256]`) so BatchNorm
+  sees one set of batch statistics; then MSE(proj(pred), proj(target)[masked])
+  and SIGReg(proj(target) as `[24,B,128]`). The eval wrapper ignores the
+  projector (encoder blocks only), as in the paper.
+- Rationale for `none` as baseline: nested CV picks the best of all encoder
+  blocks, so the constrained last block is not the only readout; the
+  projector is the second controlled experiment (after λ).
+
 ### 4.5 Loss — `training/loss.py`
 ```python
-sigreg = SlicingUnivariateTest(EppsPulley(t_max=3, n_points=17), num_slices=1024)
+sigreg = lightly.loss.SIGReg(knots=17, t_max=3.0, num_vectors=1024)
 mse = F.mse_loss(predicted, target_masked)
 sig = sigreg(target.float().transpose(0, 1))     # [24, B, D]
 loss = mse + lambda_sigreg * sig
 return loss, mse, sig
 ```
-λ=1.0 initially; no automatic tuning.
+λ=0.05 (`lambda_sigreg`); no automatic tuning.
 
 ## 5. Training — `training/trainer.py`, `scripts/pretrain.py`
 
@@ -185,7 +229,7 @@ resolved dict saved with every run and checkpoint. No Hydra/OmegaConf.
 - `init_run(cfg, job_type)`; key only from environment. `wandb.enabled=false`
   or `WANDB_MODE=disabled` ⇒ no-op (tests).
 - Config logged: resolved config + `git_commit`, `git_branch`, `git_dirty`,
-  python/torch/numpy/lejepa(commit)/wandb versions, data manifest path +
+  python/torch/numpy/lightly/wandb versions, data manifest path +
   sha256 + row count, GPU name.
 - Default project `spectralfm-lejepa`, entity null; tags `lejepa, spectralfm, 1d`
   (+ `baseline` on the first run).
@@ -201,6 +245,10 @@ resolved dict saved with every run and checkpoint. No Hydra/OmegaConf.
   covariance_condition, mean_pairwise_cosine}` + singular-value spectrum plot.
   Effective rank = exp(entropy of normalized singular values).
   Condition = λ_max / smallest eigenvalue above 1e-12·λ_max.
+- Early-collapse alert (no stop-gradient ⇒ the encoder can also lower MSE by
+  making targets trivial): if `representation/std < 0.1` or effective rank
+  falls below 25% of its step-0 value, print a warning, log
+  `representation/collapse_alert=1` and a W&B alert. Training is not stopped.
 - Masking diagnostic: figure of 4 fixed valid signals, patch boundaries,
   visible vs masked patches shaded; at step 0 and every diagnostic step.
 
@@ -272,7 +320,7 @@ data dirs. No credentials anywhere in the tree.
 ## 9. Dependencies
 
 uv-managed, Python 3.10. torch (cu128 index), numpy, scikit-learn, scipy,
-soundfile, matplotlib, wandb, pyyaml, `lejepa @ git+https://github.com/galilai-group/lejepa@c293d29`;
+soundfile, matplotlib, wandb, pyyaml, lightly (1.5.26);
 dev: pytest. Not included: torchaudio, pandas, transformers, fairseq, hydra.
 `uv` itself installed to `~/.local/bin` (official installer).
 
@@ -301,18 +349,19 @@ All tests run with `WANDB_MODE=disabled`.
 7. Loss + test.
 8. Trainer, diagnostics, checkpoints; tiny overfit/smoke run.
 9. Evaluation copy + equivalence test; baseline W&B run.
-10. First real pretraining (λ=1.0, batch 256, 20 epochs). **Stop and report.**
+10. First real pretraining (λ=0.05, batch 256, 20 epochs, no projector). **Stop and report.**
 11. Evaluate vs `ref_feb25`. **Stop and report.**
 
 Each step = one small commit.
 
 ## 12. Known risks / caveats
 
-- λ=1.0 with the ×N Epps–Pulley scaling (N=256) may let SIGReg dominate MSE;
-  diagnostics (separate loss terms, effective rank, condition) decide whether
-  to change λ later — not before the baseline exists.
-- No projector head (unlike the paper); SIGReg constrains encoder outputs
-  directly. Recorded as an option for phase 11.
+- λ=0.05 is derived from the paper's weighting, not tuned on this data.
+  Small λ + no stop-gradient risks early target collapse; the collapse alert
+  and separate loss terms make this visible. First controlled experiment:
+  λ ∈ {0.02, 0.05, 0.2, 1.0}.
+- No projector by default (unlike the paper); SIGReg constrains encoder
+  outputs directly. `projector: mlp` is the second controlled experiment.
 - Encoder ~18× smaller than the data2vec baseline and sees ~25% fewer samples;
   a negative result must be read with that in mind.
 - clean-eval CV is not grouped by label (4,716 spectra, 168 label values);
