@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- spectral-lejepa ---
+outputs/
+wandb/
+artifacts/
+*.pt
+*.npz
+.env
+.env.*
+.superpowers/

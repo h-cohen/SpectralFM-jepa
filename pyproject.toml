@@ -1,0 +1,43 @@
+[project]
+name = "spectral-lejepa"
+version = "0.1.0"
+description = "LeJEPA pretraining for SpectralFM 245-point spectra, evaluated with the clean-eval label probe"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "numpy==2.2.6",
+    "scikit-learn==1.6.1",
+    "scipy==1.15.3",
+    "threadpoolctl==3.6.0",
+    "joblib",
+    "soundfile",
+    "matplotlib",
+    "pyyaml",
+    "wandb",
+    "lightly==1.5.26",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spectral_lejepa"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: needs the parent repo's outputs or real data; run with -m slow"]
+addopts = "-m 'not slow'"
