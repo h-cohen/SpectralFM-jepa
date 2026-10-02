@@ -5,6 +5,7 @@ data2vec baseline (ref_feb25) on identical rows and folds.
   uv run python -m scripts.evaluate --checkpoint wandb:<entity>/spectralfm-lejepa/lejepa-<run_id>:latest
 """
 import argparse
+import hashlib
 import os
 from pathlib import Path
 
@@ -31,15 +32,31 @@ def flat_metrics(prefix, d):
     return out
 
 
+def sha256_file(path, chunk=1 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while block := f.read(chunk):
+            h.update(block)
+    return h.hexdigest()
+
+
+def artifact_name(artifact):
+    if artifact is None:
+        return None
+    return getattr(artifact, "qualified_name", None) or f"{artifact.entity}/{artifact.project}/{artifact.name}"
+
+
 def resolve_checkpoint(ref, run):
+    """Return (local .pt path, used W&B artifact or None)."""
     if not ref.startswith("wandb:"):
-        return ref
+        return ref, None
     if run is None:
         raise RuntimeError("a wandb: checkpoint reference needs W&B enabled")
-    files = list(Path(run.use_artifact(ref[len("wandb:"):], type="model").download()).glob("*.pt"))
+    artifact = run.use_artifact(ref[len("wandb:"):], type="model")
+    files = list(Path(artifact.download()).glob("*.pt"))
     if len(files) != 1:
         raise RuntimeError(f"expected one .pt file in artifact {ref}, found {files}")
-    return str(files[0])
+    return str(files[0]), artifact
 
 
 def summarize(nested, block):
@@ -64,16 +81,19 @@ def main():
     seed = ecfg["seed"]
 
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"])
-    ckpt_path = resolve_checkpoint(a.checkpoint, run)
+    ckpt_path, artifact = resolve_checkpoint(a.checkpoint, run)
     model, ckpt = load_model(ckpt_path)
+    if artifact is None and run is not None and ckpt.get("wandb_run_id"):
+        artifact = run.use_artifact(f"lejepa-{ckpt['wandb_run_id']}:step-{ckpt['step']}")   # W&B lineage edge
     lineage = {"pretraining_run_id": ckpt.get("wandb_run_id"), "pretraining_checkpoint": a.checkpoint,
+               "pretraining_checkpoint_sha256": sha256_file(ckpt_path),
+               "pretraining_artifact": artifact_name(artifact),
+               "pretraining_artifact_digest": getattr(artifact, "digest", None),
                "pretraining_checkpoint_step": ckpt["step"], "pretraining_git_commit": ckpt.get("git_commit"),
                "pretraining_git_dirty": ckpt.get("git_dirty"), "evaluation_git_commit": wb.git_info()["git_commit"],
                "evaluation_config": cfg}
     if run is not None:
         run.config.update({"lineage": lineage})
-        if not a.checkpoint.startswith("wandb:") and ckpt.get("wandb_run_id"):
-            run.use_artifact(f"lejepa-{ckpt['wandb_run_id']}:step-{ckpt['step']}")   # W&B lineage edge
 
     backbone = EvalBackbone(model)
     out_root = Path(ecfg["output_dir"]) / f"{Path(ckpt_path).parent.name}_step{ckpt['step']}"
