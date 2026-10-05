@@ -5,7 +5,7 @@ import pytest
 import soundfile as sf
 import torch
 
-from spectral_lejepa.evaluation.bank import extract_mean_bank, load_bank, save_bank
+from spectral_lejepa.evaluation.bank import READOUTS, extract_bank, load_bank, readout_arms, save_bank
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
 from spectral_lejepa.models.vit_1d import EvalBackbone, build_model
 from tests.test_model import SMALL
@@ -64,7 +64,7 @@ def test_bank_roundtrip_and_extraction(tmp_path):
     torch.manual_seed(0)
     backbone = EvalBackbone(build_model(SMALL, 245))
     z = normalize_like_fairseq(np.random.default_rng(0).normal(size=(10, 245)))
-    bank = extract_mean_bank(backbone, z, device="cpu", batch_size=4)
+    bank = extract_bank(backbone, z, device="cpu", batch_size=4, readouts=("mean",))
     assert list(bank) == ["layer0", "layer1", "layer2"]
     assert all(v.shape == (10, 32) and v.dtype == np.float32 for v in bank.values())
     with torch.no_grad():
@@ -88,6 +88,44 @@ def test_load_parent_format_bank(tmp_path):
     bank, raw, y, _ = load_bank(tmp_path / "bank.npz")
     assert list(bank) == ["fe", "layer0"]
     assert np.array_equal(bank["fe"], arr[:, 0, 0, :]) and raw.shape == (6, 245)
+
+
+def test_readout_arms_shapes_and_values():
+    h = torch.arange(2 * 6 * 3, dtype=torch.float32).reshape(2, 6, 3)   # B=2, T=6, D=3
+    arms = readout_arms([h, h + 1], ("mean", "seg4", "flat"))
+    assert list(arms) == ["layer0", "layer0/seg4", "layer0/flat", "layer1", "layer1/seg4", "layer1/flat"]
+    np.testing.assert_allclose(arms["layer0"], h.mean(1).numpy())
+    e = np.linspace(0, 6, 5).astype(int)          # [0, 1, 3, 4, 6]
+    seg = np.concatenate([h[:, e[s]:max(e[s] + 1, e[s + 1])].mean(1).numpy() for s in range(4)], 1)
+    np.testing.assert_allclose(arms["layer0/seg4"], seg)
+    assert arms["layer0/seg4"].shape == (2, 12) and arms["layer0/flat"].shape == (2, 18)
+    np.testing.assert_allclose(arms["layer1/flat"], (h + 1).reshape(2, -1).numpy())
+
+
+def test_bank_roundtrip_with_readouts(tmp_path):
+    torch.manual_seed(0)
+    backbone = EvalBackbone(build_model(SMALL, 245))
+    z = normalize_like_fairseq(np.random.default_rng(0).normal(size=(10, 245)))
+    bank = extract_bank(backbone, z, device="cpu", batch_size=4, readouts=READOUTS)
+    assert len(bank) == 3 * (SMALL["depth"] + 1) and bank["layer2/flat"].shape == (10, 24 * 32)
+    raw, y = np.zeros((10, 245), np.float32), np.arange(10.0)
+    save_bank(tmp_path / "bank.npz", bank, raw, y, {"readouts": READOUTS})
+    assert "bank__layer1__seg4" in np.load(tmp_path / "bank.npz").files
+    back, *_ = load_bank(tmp_path / "bank.npz", readouts=READOUTS)
+    assert list(back) == list(bank) and all(np.array_equal(back[k], bank[k]) for k in bank)
+    only_mean, *_ = load_bank(tmp_path / "bank.npz")
+    assert list(only_mean) == ["layer0", "layer1", "layer2"]
+
+
+def test_parent_bank_gives_mean_and_seg4_never_flat(tmp_path):
+    stats = ("mean", "std", "max", "min", "first", "last", "seg0", "seg1", "seg2", "seg3")
+    arr = np.random.default_rng(0).normal(size=(6, 1, 10, 4)).astype(np.float32)
+    np.savez(tmp_path / "bank.npz", bank__layer0=arr, input_raw=np.ones((6, 1, 245), np.float32),
+             input_z=np.ones((6, 1, 245), np.float32), y=np.arange(6.0),
+             _meta=np.array([repr({"comps": (0,), "pool_stats": stats})]))
+    bank, *_ = load_bank(tmp_path / "bank.npz", readouts=READOUTS)
+    assert list(bank) == ["layer0", "layer0/seg4"]
+    np.testing.assert_array_equal(bank["layer0/seg4"], arr[:, 0, 6:10, :].reshape(6, -1))
 
 
 def _parent_bank(rel):

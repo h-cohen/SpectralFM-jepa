@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from spectral_lejepa.config import load_config
-from spectral_lejepa.evaluation.bank import extract_mean_bank, save_bank
+from spectral_lejepa.evaluation.bank import extract_bank, save_bank
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
 from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_for_set, pair_with_baseline,
                                                run_canary, run_nested, write_json)
@@ -107,8 +107,8 @@ def main(argv=None):
             continue
         out_dir = out_root / name
         out_dir.mkdir(parents=True, exist_ok=True)
-        bank = extract_mean_bank(backbone, normalize_like_fairseq(raw), device=vcfg["device"],
-                                 batch_size=vcfg["batch_size"])
+        bank = extract_bank(backbone, normalize_like_fairseq(raw), device=vcfg["device"],
+                            batch_size=vcfg["batch_size"], readouts=("mean",))
         save_bank(out_dir / "bank.npz", bank, raw, y, {"checkpoint": a.checkpoint, "backbone": "EvalBackbone",
                                                        "set": name, "n": int(len(y)), "seed": seed,
                                                        "stages": tuple(bank)})
