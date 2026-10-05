@@ -33,11 +33,20 @@ def test_decide_rule(tmp_path):
     out = {r["arm"]: r for r in screen.decide(rows)}
     assert out["control_s0"]["verdict"] == "control" and out["control_s1"]["verdict"] == "control"
     assert out["good"]["verdict"] == "win" and out["good"]["delta_vs_control"] > 0
+    assert out["control_s1"]["delta_vs_control"] is not None and "delta_sd" in out["control_s1"]
+    assert "floor" not in out["control_s1"]
     assert out["bad"]["verdict"] == "loss"
     assert out["same"]["verdict"] == "neutral"
     assert out["broken"]["verdict"] == "failed"
     assert out["good"]["floor"] >= abs(0.50 - 0.49)
     assert "| good |" in screen.to_markdown(list(out.values()))
+
+
+def test_arm_row_failure_becomes_summary_failure(tmp_path):
+    row = screen.safe_row("a", {"status": "ok", "checkpoint": str(tmp_path / "nope.pt"), "log": "x"}, tmp_path)
+    assert row["status"] == "failed" and row["stage"] == "summary" and row["error"] and row["arm"] == "a"
+    md = screen.to_markdown([row])
+    assert "summary" in md and screen.FOOTNOTE in md
 
 
 def test_decide_without_control(tmp_path):
@@ -96,3 +105,12 @@ def test_screen_end_to_end_tiny(data_dir, tmp_path):  # noqa: F811
         assert rows[arm]["status"] == "ok" and rows[arm]["verdict"] == "control"
         assert rows[arm]["n"] == 30 and "valid_mse_loss" in rows[arm]
     assert (out / "results.md").read_text().count("\n") >= 4
+
+    first = (out / "results.json").read_text()
+    screen.main(["--config", str(tmp_path / "screen.yaml"), "--summarize_only"])
+    again = {r["arm"]: r for r in json.loads((out / "results.json").read_text())}
+    assert {k: (v["status"], v["verdict"]) for k, v in again.items()} == {k: (v["status"], v["verdict"]) for k, v in rows.items()}
+    assert again["broken"]["stage"] == "missing"
+    assert again["control_s1"]["delta_vs_control"] is not None
+    assert screen.FOOTNOTE in (out / "results.md").read_text()
+    assert {r["arm"]: r for r in json.loads(first)}["control_s0"]["embedding_r2"] == again["control_s0"]["embedding_r2"]

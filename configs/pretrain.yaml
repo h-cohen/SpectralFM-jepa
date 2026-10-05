@@ -55,6 +55,7 @@ training:
 
 wandb:
   enabled: true
+  log_checkpoints: false   # checkpoints stay local; W&B gets metrics and figures only
   entity: null
   project: spectralfm-lejepa
   group: null

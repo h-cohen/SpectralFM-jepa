@@ -182,7 +182,7 @@ def train(cfg: dict) -> dict:
         for target in (path, out_dir / "checkpoint_last.pt"):
             save_checkpoint(target, model=model, optimizer=optimizer, scaler=scaler, step=step,
                             epoch=epoch, config=resolved, metadata=metadata, metrics=dict(latest))
-        if run is not None:
+        if run is not None and cfg["wandb"].get("log_checkpoints", False):
             wb.log_checkpoint(run, path, f"lejepa-{run.id}", ["latest", f"step-{step}"], meta)
 
     step, samples_seen, history = 0, 0, []

@@ -112,3 +112,34 @@ def test_block_masking_trains(data_dir, tmp_path):
     with pytest.warns(UserWarning):
         result = train(cfg)
     assert all(math.isfinite(h["train/loss"]) for h in result["history"])
+
+
+class FakeRun:
+    id = "fake"
+
+    def log(self, *a, **k):
+        pass
+
+    def alert(self, *a, **k):
+        pass
+
+    def finish(self):
+        pass
+
+
+@pytest.mark.parametrize("flag,expected", [(None, 0), (False, 0), (True, 2)])
+def test_checkpoint_upload_is_opt_in(data_dir, tmp_path, monkeypatch, flag, expected):
+    from spectral_lejepa.utils import wandb as wb
+    calls = []
+    monkeypatch.setattr(wb, "init_run", lambda *a, **k: FakeRun())
+    monkeypatch.setattr(wb, "log_figure", lambda *a, **k: None)
+    monkeypatch.setattr(wb, "log_checkpoint", lambda *a, **k: calls.append(a))
+    cfg = tiny_cfg(data_dir, tmp_path / "out", name=f"ckpt_{flag}")
+    cfg["training"].update(max_steps=4, ckpt_every=2, val_every=4, diag_every=4, log_every=2)
+    if flag is None:
+        cfg["wandb"].pop("log_checkpoints", None)       # an old config without the key
+    else:
+        cfg["wandb"]["log_checkpoints"] = flag
+    with pytest.warns(UserWarning):
+        train(cfg)
+    assert len(calls) == expected
