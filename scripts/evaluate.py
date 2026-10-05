@@ -16,7 +16,8 @@ import torch
 from spectral_lejepa.config import load_config
 from spectral_lejepa.evaluation.bank import READOUTS, extract_bank, save_bank
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
-from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_for_set, pair_with_baseline,
+from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_for_set, paired_delta,
+                                               pair_with_baseline,
                                                run_canary, run_nested, write_json)
 from spectral_lejepa.models.vit_1d import EvalBackbone, build_model
 from spectral_lejepa.training.checkpoint import load_model
@@ -145,7 +146,7 @@ def main(argv=None):
         summary["delta_vs_raw"], summary["verdict"] = verdict(summary["raw_r2"], summary["embedding_r2"])
         summary["canary"] = run_canary(bank[block], raw, y, seed)
         if name in bcfg["run_dirs"]:
-            summary["vs_baseline"] = pair_with_baseline(
+            summary["vs_ref_mean_only"] = pair_with_baseline(
                 y, oof, os.path.join(bcfg["parent_repo"], bcfg["run_dirs"][name]), nested["protocol"])
         if name == vcfg["ladder_block_from"]:
             ladder_block = block
@@ -163,6 +164,10 @@ def main(argv=None):
             rc_bank = extract_bank(random_backbone, normalize_like_fairseq(raw), device=vcfg["device"],
                                    batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]))
             rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])
+            if not np.allclose(rc_oof["raw"], oof["raw"], rtol=0, atol=1e-8):
+                raise RuntimeError("random-control raw OOFs differ from the model's: folds/rows are not paired")
+            summary["vs_random_control"] = paired_delta(np.asarray(y, dtype=np.float64), oof["embedding"],
+                                                        rc_oof["embedding"])
             write_json(rc_dir / "nested_results.json", {**rc_nested, "meta": {**lineage, "model": "random_init_seed0"}})
             np.savez_compressed(rc_dir / "nested_oof.npz", y=y, **rc_oof)
             rc_r2 = rc_nested["families"]["embedding"]["r2_mean"]
@@ -173,9 +178,9 @@ def main(argv=None):
         sets[name] = summary
         wb.log(run, flat_metrics(name, summary))
         print(f"[evaluate] {name}: embedding R2 {summary['embedding_r2']:.4f} vs raw {summary['raw_r2']:.4f}"
-              + f", Δraw {summary['delta_vs_raw']:+.4f} [{summary['verdict']}]"
-              + (f", vs {bcfg['tag']} {summary['vs_baseline']['embedding']['delta']:+.4f}"
-                 if "vs_baseline" in summary else ""))
+              + f", Δraw {summary['delta_vs_raw']:+.4f}±{summary['embedding_minus_raw']['sd']:.3f} [{summary['verdict']}]"
+              + (f", vs {bcfg['tag']} (mean-only ref) {summary['vs_ref_mean_only']['embedding']['delta']:+.4f}"
+                 if "vs_ref_mean_only" in summary else ""))
 
     card = {"model": scorecard(sets, None)}
     if random_backbone is not None:
@@ -184,11 +189,13 @@ def main(argv=None):
     print("[evaluate] scorecard:", card)
     if run is not None:
         import wandb
-        cols = ["set", "n", "raw_r2", "model_r2", "model_delta", "model_verdict", "random_r2", "random_delta",
-                "random_verdict"]
-        data = [[n, s["n"], s["raw_r2"], s["embedding_r2"], s["delta_vs_raw"], s["verdict"],
+        cols = ["set", "n", "raw_r2", "model_r2", "model_delta", "model_delta_sd", "model_p_better", "model_verdict",
+                "random_r2", "random_delta", "random_verdict", "model_vs_random_delta", "model_vs_random_sd"]
+        data = [[n, s["n"], s["raw_r2"], s["embedding_r2"], s["delta_vs_raw"],
+                 s["embedding_minus_raw"]["sd"], s["embedding_minus_raw"]["p_a_better"], s["verdict"],
                  s.get("random_control", {}).get("embedding_r2"), s.get("random_control", {}).get("delta_vs_raw"),
-                 s.get("random_control", {}).get("verdict")] for n, s in sets.items()]
+                 s.get("random_control", {}).get("verdict"),
+                 s.get("vs_random_control", {}).get("delta"), s.get("vs_random_control", {}).get("sd")] for n, s in sets.items()]
         run.log({"scorecard/table": wandb.Table(columns=cols, data=data)})
         wb.log(run, flat_metrics("scorecard", card))
         wb.log_figure(run, "scorecard/delta_vs_raw", scorecard_figure(sets))

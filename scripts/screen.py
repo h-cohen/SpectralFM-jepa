@@ -27,7 +27,7 @@ from spectral_lejepa.utils import wandb as wb
 REPO = Path(__file__).resolve().parents[1]
 EVAL_SET = "labeled_data"
 COLUMNS = ["arm", "status", "verdict", "embedding_r2", "embedding_sd", "delta_vs_control", "delta_sd",
-           "floor", "delta_vs_ref", "best_block", "valid_mse_loss", "valid_sigreg_loss",
+           "floor", "delta_vs_ref_mean_only", "best_block", "valid_mse_loss", "valid_sigreg_loss",
            "effective_rank", "stage", "pretrain_run_id"]
 FOOTNOTE = ("Wins are candidates: the floor uses one control-seed spread and a row bootstrap, not "
             "pretraining-seed variance. valid_* losses depend on each arm's own masking/token count and "
@@ -74,7 +74,7 @@ def arm_row(name, status, eval_root):
     m = ckpt["metrics"]
     row.update(n=s["n"], embedding_r2=s["embedding_r2"], embedding_sd=s["embedding_sd"],
                best_block=s["best_block"], oof=str(set_dir / "nested_oof.npz"),
-               delta_vs_ref=s.get("vs_baseline", {}).get("embedding", {}).get("delta"),
+               delta_vs_ref_mean_only=s.get("vs_ref_mean_only", {}).get("embedding", {}).get("delta"),
                valid_mse_loss=m.get("valid/mse_loss"), valid_sigreg_loss=m.get("valid/sigreg_loss"),
                effective_rank=m.get("representation/effective_rank"), pretrain_run_id=ckpt.get("wandb_run_id"))
     return row
@@ -129,7 +129,7 @@ def decide(rows, control="control_s0", repeat="control_s1"):
 def to_markdown(rows):
     def cell(v, c):
         if isinstance(v, float):
-            return f"{v:+.3f}" if c in ("delta_vs_control", "delta_vs_ref") else f"{v:.3f}"
+            return f"{v:+.3f}" if c in ("delta_vs_control", "delta_vs_ref_mean_only") else f"{v:.3f}"
         return "" if v is None else str(v)
     lines = ["| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
     lines += ["| " + " | ".join(cell(r.get(c), c) for c in COLUMNS) + " |" for r in rows]

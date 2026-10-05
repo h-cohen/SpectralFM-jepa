@@ -76,9 +76,11 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
         assert key in lin
     s = json.loads((out_root / SET / "summary.json").read_text())
     assert top["sets"][SET]["n"] == 30
-    for key in ("embedding_r2", "raw_r2", "canary", "vs_baseline"):
+    for key in ("embedding_r2", "raw_r2", "canary", "vs_ref_mean_only", "vs_random_control"):
         assert key in s
-    assert s["vs_baseline"]["raw"]["delta"] == 0.0
+    assert s["vs_ref_mean_only"]["raw"]["delta"] == 0.0
+    assert "vs_baseline" not in s
+    assert set(s["vs_random_control"]) >= {"delta", "sd", "p_a_better"}
     assert "pretraining_artifact" not in lin and "pretraining_artifact_digest" not in lin
     assert lin["pretraining_checkpoint"] == str(ckpt)
     assert any(k.endswith("/flat") for k in s["blocks"]) and any(k.endswith("/seg4") for k in s["blocks"])
