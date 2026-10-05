@@ -55,7 +55,8 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
 
     ecfg = {"experiment": {"name": "toy_eval", "seed": 42, "output_dir": str(tmp_path / "eval_out")},
             "evaluation": {"device": "cpu", "batch_size": 16, "max_samples": 5000, "n_jobs": 1, "min_n": 20,
-                           "ladder_sets": [], "ladder_block_from": SET},
+                           "ladder_sets": [], "ladder_block_from": SET,
+                           "readouts": ["mean", "seg4", "flat"], "random_control": True},
             "label_sets": {SET: [str(set_dir)]},
             "baseline": {"tag": "fake", "checkpoint": "none", "parent_repo": str(parent),
                          "run_dirs": {SET: "base"}},
@@ -78,3 +79,27 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
     for key in ("embedding_r2", "raw_r2", "canary", "vs_baseline"):
         assert key in s
     assert s["vs_baseline"]["raw"]["delta"] == 0.0
+    assert "pretraining_artifact" not in lin and "pretraining_artifact_digest" not in lin
+    assert lin["pretraining_checkpoint"] == str(ckpt)
+    assert any(k.endswith("/flat") for k in s["blocks"]) and any(k.endswith("/seg4") for k in s["blocks"])
+    assert s["verdict"] in ("win", "no-win", "ceiling") and s["delta_vs_raw"] == s["embedding_r2"] - s["raw_r2"]
+    rc = s["random_control"]
+    assert set(rc) >= {"embedding_r2", "best_block", "delta_vs_raw", "verdict"}
+    assert (out_root / SET / "random_control" / "nested_results.json").exists()
+    card = top["scorecard"]
+    for row in ("model", "random_control"):
+        assert set(card[row]) == {"wins", "eligible", "ceiling", "mean_delta"}
+        assert card[row]["eligible"] + card[row]["ceiling"] == 1
+
+    cfg_path.write_text(yaml.safe_dump(ecfg))
+    with pytest.raises(ValueError, match="bogus"):
+        evaluate.main(["--checkpoint", str(ckpt), "--config", str(cfg_path), "evaluation.readouts=[mean,bogus]"])
+
+
+def test_verdict_and_scorecard():
+    assert evaluate.verdict(0.80, 0.86) == (pytest.approx(0.06), "win")
+    assert evaluate.verdict(0.80, 0.84)[1] == "no-win"
+    assert evaluate.verdict(0.983, 0.99)[1] == "ceiling"          # 1 - raw < 0.05: a +0.05 win is impossible
+    sets = {"a": {"delta_vs_raw": 0.06, "verdict": "win"}, "b": {"delta_vs_raw": -0.1, "verdict": "no-win"},
+            "c": {"delta_vs_raw": 0.0, "verdict": "ceiling"}}
+    assert evaluate.scorecard(sets, None) == {"wins": 1, "eligible": 2, "ceiling": 1, "mean_delta": pytest.approx(-0.04 / 3)}

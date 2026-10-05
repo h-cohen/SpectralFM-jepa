@@ -71,7 +71,8 @@ def test_screen_end_to_end_tiny(data_dir, tmp_path):  # noqa: F811
     out = tmp_path / "screen"
     eval_cfg = {"experiment": {"name": "e", "seed": 42, "output_dir": str(out / "eval")},
                 "evaluation": {"device": "cpu", "batch_size": 16, "max_samples": 5000, "n_jobs": 1,
-                               "min_n": 20, "ladder_sets": [], "ladder_block_from": "labeled_data"},
+                               "min_n": 20, "ladder_sets": [], "ladder_block_from": "labeled_data",
+                               "readouts": ["mean"], "random_control": False},
                 "label_sets": {"labeled_data": [str(set_dir)]},
                 "baseline": {"tag": "none", "checkpoint": "none", "parent_repo": str(tmp_path), "run_dirs": {}},
                 "wandb": {"enabled": False, "entity": None, "project": "x", "group": None,

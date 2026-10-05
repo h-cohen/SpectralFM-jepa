@@ -2,7 +2,8 @@
 data2vec baseline (ref_feb25) on identical rows and folds.
 
   uv run python -m scripts.evaluate --checkpoint outputs/<run>/checkpoint_last.pt
-  uv run python -m scripts.evaluate --checkpoint wandb:<entity>/spectralfm-lejepa/lejepa-<run_id>:latest
+
+Readouts and the random-init control come from `evaluation.readouts` and `evaluation.random_control`; W&B gets metrics, a scorecard table and a Δ plot, and never artifacts.
 """
 import argparse
 import hashlib
@@ -10,13 +11,14 @@ import os
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from spectral_lejepa.config import load_config
-from spectral_lejepa.evaluation.bank import extract_bank, save_bank
+from spectral_lejepa.evaluation.bank import READOUTS, extract_bank, save_bank
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
 from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_for_set, pair_with_baseline,
                                                run_canary, run_nested, write_json)
-from spectral_lejepa.models.vit_1d import EvalBackbone
+from spectral_lejepa.models.vit_1d import EvalBackbone, build_model
 from spectral_lejepa.training.checkpoint import load_model
 from spectral_lejepa.utils import wandb as wb
 
@@ -40,25 +42,6 @@ def sha256_file(path, chunk=1 << 20):
     return h.hexdigest()
 
 
-def artifact_name(artifact):
-    if artifact is None:
-        return None
-    return getattr(artifact, "qualified_name", None) or f"{artifact.entity}/{artifact.project}/{artifact.name}"
-
-
-def resolve_checkpoint(ref, run):
-    """Return (local .pt path, used W&B artifact or None)."""
-    if not ref.startswith("wandb:"):
-        return ref, None
-    if run is None:
-        raise RuntimeError("a wandb: checkpoint reference needs W&B enabled")
-    artifact = run.use_artifact(ref[len("wandb:"):], type="model")
-    files = list(Path(artifact.download()).glob("*.pt"))
-    if len(files) != 1:
-        raise RuntimeError(f"expected one .pt file in artifact {ref}, found {files}")
-    return str(files[0]), artifact
-
-
 def summarize(nested, block):
     fam = nested["families"]
     return {"n": nested["protocol"]["n"],
@@ -70,26 +53,63 @@ def summarize(nested, block):
             "embedding_minus_raw": nested["embedding_minus_raw"]}
 
 
+WIN_MARGIN = 0.05
+
+
+def verdict(raw_r2, emb_r2, margin=WIN_MARGIN):
+    """(delta, verdict): 'ceiling' when raw leaves less than `margin` of R² to gain."""
+    delta = emb_r2 - raw_r2
+    if 1 - raw_r2 < margin:
+        return delta, "ceiling"
+    return delta, "win" if delta >= margin else "no-win"
+
+
+def scorecard(sets, key):
+    """Counts over per-set summaries; key=None scores the model, key='random_control' the control."""
+    rows = [s if key is None else s[key] for s in sets.values()]
+    eligible = [r for r in rows if r["verdict"] != "ceiling"]
+    return {"wins": sum(r["verdict"] == "win" for r in eligible), "eligible": len(eligible),
+            "ceiling": len(rows) - len(eligible),
+            "mean_delta": float(np.mean([r["delta_vs_raw"] for r in rows])) if rows else float("nan")}
+
+
+def scorecard_figure(sets):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    names = list(sets)
+    x = np.arange(len(names))
+    fig, ax = plt.subplots(figsize=(1.0 + 0.9 * len(names), 3.5))
+    ax.bar(x - 0.2, [sets[n]["delta_vs_raw"] for n in names], 0.4, label="model")
+    if all("random_control" in sets[n] for n in names):
+        ax.bar(x + 0.2, [sets[n]["random_control"]["delta_vs_raw"] for n in names], 0.4, label="random init")
+    ax.axhline(WIN_MARGIN, color="k", ls="--", lw=1, label=f"win margin +{WIN_MARGIN}")
+    ax.axhline(0, color="0.5", lw=0.8)
+    ax.set_xticks(x, names, rotation=45, ha="right")
+    ax.set_ylabel("R² − raw R² (nested CV)")
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--checkpoint", required=True, help="local .pt path or wandb:<artifact ref>")
+    ap.add_argument("--checkpoint", required=True, help="local .pt checkpoint path")
     ap.add_argument("--config", default="configs/eval.yaml")
     ap.add_argument("overrides", nargs="*")
     a = ap.parse_args(argv)
     cfg = load_config(a.config, a.overrides)
     ecfg, vcfg, bcfg = cfg["experiment"], cfg["evaluation"], cfg["baseline"]
     seed = ecfg["seed"]
+    if bad := [r for r in vcfg["readouts"] if r not in READOUTS]:
+        raise ValueError(f"unknown evaluation.readouts entry {bad[0]!r}; choose from {READOUTS}")
 
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"])
-    ckpt_path, artifact = resolve_checkpoint(a.checkpoint, run)
+    ckpt_path = a.checkpoint
     model, ckpt = load_model(ckpt_path)
-    if artifact is None and run is not None and ckpt.get("wandb_run_id"):
-        artifact = run.use_artifact(f"lejepa-{ckpt['wandb_run_id']}:step-{ckpt['step']}")   # W&B lineage edge
     git = wb.git_info()
     lineage = {"pretraining_run_id": ckpt.get("wandb_run_id"), "pretraining_checkpoint": a.checkpoint,
                "pretraining_checkpoint_sha256": sha256_file(ckpt_path),
-               "pretraining_artifact": artifact_name(artifact),
-               "pretraining_artifact_digest": getattr(artifact, "digest", None),
                "pretraining_checkpoint_step": ckpt["step"], "pretraining_git_commit": ckpt.get("git_commit"),
                "pretraining_git_dirty": ckpt.get("git_dirty"), "evaluation_git_commit": git["git_commit"],
                "evaluation_git_dirty": git["git_dirty"],
@@ -99,6 +119,10 @@ def main(argv=None):
 
     backbone = EvalBackbone(model)
     out_root = Path(ecfg["output_dir"]) / f"{Path(ckpt_path).parent.name}_step{ckpt['step']}"
+    random_backbone = None
+    if vcfg["random_control"]:
+        torch.manual_seed(0)
+        random_backbone = EvalBackbone(build_model(ckpt["config"]["model"], ckpt["config"]["data"]["sequence_length"]))
     sets, ladder_block = {}, None
     for name, dirs in cfg["label_sets"].items():
         raw, y = load_labeled_data(dirs, max_samples=vcfg["max_samples"], seed=seed)
@@ -108,15 +132,17 @@ def main(argv=None):
         out_dir = out_root / name
         out_dir.mkdir(parents=True, exist_ok=True)
         bank = extract_bank(backbone, normalize_like_fairseq(raw), device=vcfg["device"],
-                            batch_size=vcfg["batch_size"], readouts=("mean",))
+                            batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]))
         save_bank(out_dir / "bank.npz", bank, raw, y, {"checkpoint": a.checkpoint, "backbone": "EvalBackbone",
                                                        "set": name, "n": int(len(y)), "seed": seed,
-                                                       "stages": tuple(bank)})
+                                                       "stages": tuple(bank),
+                                                       "readouts": tuple(vcfg["readouts"])})
         nested, oof = run_nested(bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])
         write_json(out_dir / "nested_results.json", {**nested, "meta": lineage})
         np.savez_compressed(out_dir / "nested_oof.npz", y=y, **oof)
         block = best_block(nested)
         summary = summarize(nested, block)
+        summary["delta_vs_raw"], summary["verdict"] = verdict(summary["raw_r2"], summary["embedding_r2"])
         summary["canary"] = run_canary(bank[block], raw, y, seed)
         if name in bcfg["run_dirs"]:
             summary["vs_baseline"] = pair_with_baseline(
@@ -131,20 +157,41 @@ def main(argv=None):
             summary["ladder"] = {"block": ladder_block,
                                  **{f"{arm}_n{n}": v["median"] for arm, rungs in ladder["arms"].items()
                                     for n, v in rungs.items()}}
+        if random_backbone is not None:
+            rc_dir = out_dir / "random_control"
+            rc_dir.mkdir(exist_ok=True)
+            rc_bank = extract_bank(random_backbone, normalize_like_fairseq(raw), device=vcfg["device"],
+                                   batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]))
+            rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])
+            write_json(rc_dir / "nested_results.json", {**rc_nested, "meta": {**lineage, "model": "random_init_seed0"}})
+            np.savez_compressed(rc_dir / "nested_oof.npz", y=y, **rc_oof)
+            rc_r2 = rc_nested["families"]["embedding"]["r2_mean"]
+            rc_delta, rc_verdict = verdict(rc_nested["families"]["raw"]["r2_mean"], rc_r2)
+            summary["random_control"] = {"embedding_r2": rc_r2, "best_block": best_block(rc_nested),
+                                         "delta_vs_raw": rc_delta, "verdict": rc_verdict}
         write_json(out_dir / "summary.json", summary)
         sets[name] = summary
         wb.log(run, flat_metrics(name, summary))
         print(f"[evaluate] {name}: embedding R2 {summary['embedding_r2']:.4f} vs raw {summary['raw_r2']:.4f}"
+              + f", Δraw {summary['delta_vs_raw']:+.4f} [{summary['verdict']}]"
               + (f", vs {bcfg['tag']} {summary['vs_baseline']['embedding']['delta']:+.4f}"
                  if "vs_baseline" in summary else ""))
 
-    write_json(out_root / "summary.json", {"lineage": lineage, "sets": sets})
+    card = {"model": scorecard(sets, None)}
+    if random_backbone is not None:
+        card["random_control"] = scorecard(sets, "random_control")
+    write_json(out_root / "summary.json", {"lineage": lineage, "scorecard": card, "sets": sets})
+    print("[evaluate] scorecard:", card)
     if run is not None:
         import wandb
-        artifact = wandb.Artifact(f"eval-{run.id}", type="evaluation", metadata={"lineage": lineage})
-        for path in out_root.rglob("*.json"):
-            artifact.add_file(str(path), name=str(path.relative_to(out_root)))
-        run.log_artifact(artifact)
+        cols = ["set", "n", "raw_r2", "model_r2", "model_delta", "model_verdict", "random_r2", "random_delta",
+                "random_verdict"]
+        data = [[n, s["n"], s["raw_r2"], s["embedding_r2"], s["delta_vs_raw"], s["verdict"],
+                 s.get("random_control", {}).get("embedding_r2"), s.get("random_control", {}).get("delta_vs_raw"),
+                 s.get("random_control", {}).get("verdict")] for n, s in sets.items()]
+        run.log({"scorecard/table": wandb.Table(columns=cols, data=data)})
+        wb.log(run, flat_metrics("scorecard", card))
+        wb.log_figure(run, "scorecard/delta_vs_raw", scorecard_figure(sets))
     wb.finish(run)
     print("outputs:", out_root)
 

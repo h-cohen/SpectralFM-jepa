@@ -10,6 +10,8 @@ evaluation:
   max_samples: 5000
   n_jobs: 8
   min_n: 20
+  readouts: [mean, seg4, flat]
+  random_control: false
   ladder_sets: []
   ladder_block_from: labeled_data      # must be listed first in label_sets
 
