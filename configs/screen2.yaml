@@ -1,0 +1,26 @@
+# Screen 2: all-data foundation model with normalization and capacity arms
+name: screen-2
+output_dir: outputs/screen-2
+eval_config: configs/eval.yaml
+shared_overrides:
+  - data.source=packed
+  - data.packed_dir=/mnt5/home/hadar/nova/data/spectra_all
+  - data.num_workers=12
+  - training.epochs=1
+  - training.val_every=5000
+  - training.diag_every=5000
+  - training.ckpt_every=20000
+  - experiment.output_dir=outputs/screen-2
+  - wandb.group=screen-2
+  - "wandb.tags=[lejepa,spectralfm,1d,screen2,alldata]"
+arms:
+  zscore: [data.normalization=sample_zscore]
+  global: [data.normalization=global]
+  global_wide: [data.normalization=global, model.dim=384, model.depth=8, model.mlp_dim=1536, model.predictor_dim=256, model.predictor_heads=8, model.predictor_mlp_dim=1024]
+  global_mask75: [data.normalization=global, masking.mask_ratio=0.75]
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: screen-2
+  tags: [lejepa, spectralfm, 1d, screen2, alldata]

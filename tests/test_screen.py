@@ -114,3 +114,19 @@ def test_screen_end_to_end_tiny(data_dir, tmp_path):  # noqa: F811
     assert again["control_s1"]["delta_vs_control"] is not None
     assert screen.FOOTNOTE in (out / "results.md").read_text()
     assert {r["arm"]: r for r in json.loads(first)}["control_s0"]["embedding_r2"] == again["control_s0"]["embedding_r2"]
+
+
+def test_screen2_config_keys_valid():
+    """Verify every override key in screen2.yaml exists in pretrain.yaml."""
+    from spectral_lejepa.config import load_config
+
+    with open(REPO / "configs" / "screen2.yaml") as f:
+        screen2_cfg = yaml.safe_load(f)
+
+    shared_overrides = screen2_cfg["shared_overrides"]
+    arms = screen2_cfg["arms"]
+
+    for arm_name, arm_overrides in arms.items():
+        all_overrides = shared_overrides + arm_overrides
+        cfg = load_config(str(REPO / "configs" / "pretrain.yaml"), all_overrides)
+        assert cfg is not None, f"Failed to load config for arm {arm_name}"
