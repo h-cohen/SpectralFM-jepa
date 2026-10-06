@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -35,7 +36,8 @@ FOOTNOTE = ("Wins are candidates: the floor uses one control-seed spread and a r
 
 
 def find_checkpoint(root: Path, name: str) -> Path:
-    found = sorted(root.glob(f"{name}_*/checkpoint_last.pt"))
+    run_dir = re.compile(rf"^{re.escape(name)}_\d{{8}}-\d{{6}}$")
+    found = sorted(p for p in root.glob(f"{name}_*/checkpoint_last.pt") if run_dir.match(p.parent.name))
     if len(found) != 1:
         raise RuntimeError(f"expected one {name}_* run dir under {root}, found {len(found)} checkpoint dirs")
     return found[0]

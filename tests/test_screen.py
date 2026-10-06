@@ -75,6 +75,13 @@ def test_two_checkpoint_dirs_is_a_failure(tmp_path):
         screen.find_checkpoint(tmp_path, "arm")
 
 
+def test_find_checkpoint_matches_run_dir_exactly(tmp_path):
+    for d in ("global_20261006-060637", "global_wide_20261006-060634", "global_mask75_20261006-060636"):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "checkpoint_last.pt").write_bytes(b"")
+    assert screen.find_checkpoint(tmp_path, "global").parent.name == "global_20261006-060637"
+
+
 def test_screen_end_to_end_tiny(data_dir, tmp_path):  # noqa: F811
     set_dir = make_label_set(tmp_path)
     out = tmp_path / "screen"
