@@ -9,13 +9,15 @@ Data definition (inherited from the parent project, unchanged):
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 SEQUENCE_LENGTH = 245
 STORAGE_PREFIX = "/storage/noy/"  # how RunAI jobs see the volume
@@ -109,6 +111,71 @@ def valid_subset(valid_rows, k=2048, seed=0) -> np.ndarray:
     return np.sort(np.random.default_rng(seed).choice(valid_rows, min(k, len(valid_rows)), replace=False))
 
 
+def _source_groups(packed_dir, train_rows, source_weights):
+    """(group key per training row, normalized mass per group that has training rows)."""
+    stats = json.loads((Path(packed_dir) / "stats.json").read_text())
+    counts = stats["counts"]
+    if sum(counts.values()) != stats["n_rows"]:
+        raise ValueError(f"stats.json counts sum to {sum(counts.values())} but n_rows={stats['n_rows']}")
+    bad = {k: v for k, v in source_weights.items() if not v > 0}
+    if bad:
+        raise ValueError(f"data.source_weights masses must be positive, got {bad}")
+    keys = [k for k in source_weights if k != "default"]
+    group_of = {}
+    for source in counts:
+        matches = [k for k in keys if source.startswith(k)]
+        if matches:
+            group_of[source] = max(matches, key=len)
+        elif "default" in source_weights:
+            group_of[source] = "default"
+        else:
+            raise ValueError(f"source {source!r} matches no data.source_weights key and there is no 'default'")
+    unused = [k for k in keys if k not in group_of.values()]
+    if unused:
+        raise ValueError(f"data.source_weights keys {unused} matches no source in stats.json counts")
+    ends = np.cumsum(list(counts.values()))
+    source_idx = np.searchsorted(ends, np.asarray(train_rows), side="right")
+    names = np.array([group_of[s] for s in counts])
+    groups = names[source_idx]
+    present = [g for g in dict.fromkeys(group_of.values()) if (groups == g).any()]
+    total = sum(source_weights[g] for g in present)
+    return groups, {g: source_weights[g] / total for g in present}
+
+
+def source_row_probs(packed_dir, train_rows, source_weights) -> np.ndarray:
+    """Per-training-row sampling probability: each source group gets its mass, uniform within the group."""
+    groups, mass = _source_groups(packed_dir, train_rows, source_weights)
+    p = np.zeros(len(groups))
+    for g, m in mass.items():
+        sel = groups == g
+        p[sel] = m / sel.sum()
+    return p
+
+
+def source_mass(packed_dir, train_rows, source_weights) -> dict:
+    """Realized probability mass per source group (masses are renormalized over groups with rows)."""
+    return _source_groups(packed_dir, train_rows, source_weights)[1]
+
+
+class SourceWeightedSampler(Sampler):
+    """Each epoch draws len(probs) dataset positions with replacement from `probs`."""
+
+    def __init__(self, probs, seed=0):
+        self.probs = np.asarray(probs, dtype=np.float64)
+        self.probs = self.probs / self.probs.sum()
+        self.seed, self.epoch = seed, 0
+
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
+
+    def __len__(self):
+        return len(self.probs)
+
+    def __iter__(self):
+        n = len(self.probs)
+        return iter(np.random.default_rng(self.seed + self.epoch).choice(n, size=n, p=self.probs).tolist())
+
+
 def subsample(paths, max_samples, seed):
     """A seeded subset (kept in manifest order) for dev runs; all paths when max_samples is None."""
     if max_samples is None or max_samples >= len(paths):
@@ -117,8 +184,8 @@ def subsample(paths, max_samples, seed):
     return [paths[i] for i in idx]
 
 
-def make_loader(dataset, batch_size, shuffle, seed, num_workers, drop_last) -> DataLoader:
+def make_loader(dataset, batch_size, shuffle, seed, num_workers, drop_last, sampler=None) -> DataLoader:
     generator = torch.Generator().manual_seed(seed)  # makes the shuffle order reproducible
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle and sampler is None, sampler=sampler,
                       drop_last=drop_last, num_workers=num_workers, generator=generator,
                       pin_memory=torch.cuda.is_available(), persistent_workers=num_workers > 0)

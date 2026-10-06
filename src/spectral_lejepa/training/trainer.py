@@ -18,8 +18,9 @@ import torch
 import yaml
 from torch.optim.lr_scheduler import LambdaLR
 
-from ..data.loader import (PackedSpectra, SpectraDataset, make_loader, manifest_fingerprint, packed_train_rows,
-                           read_manifest, subsample, valid_subset)
+from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset, make_loader,
+                           manifest_fingerprint, packed_train_rows, read_manifest, source_mass,
+                           source_row_probs, subsample, valid_subset)
 from ..models.masking import make_mask
 from ..models.vit_1d import build_model
 from ..utils import wandb as wb
@@ -132,6 +133,9 @@ def train(cfg: dict) -> dict:
 
     # --- data ---
     norm = dcfg["normalization"]
+    weights, sampler = dcfg.get("source_weights"), None
+    if weights and dcfg["source"] != "packed":
+        raise ValueError("data.source_weights needs data.source=packed")
     if dcfg["source"] == "packed":
         packed_dir = dcfg["packed_dir"]
         stats = json.loads((Path(packed_dir) / "stats.json").read_text())
@@ -142,6 +146,9 @@ def train(cfg: dict) -> dict:
         valid_ds = PackedSpectra(packed_dir, valid_subset(valid_rows), norm, global_stats)
         data_derived = {"packed_dir": str(packed_dir), "global_stats": global_stats,
                         "n_rows": stats["n_rows"], "n_dropped": stats["n_dropped"]}
+        if weights:
+            sampler = SourceWeightedSampler(source_row_probs(packed_dir, train_rows, weights), seed)
+            data_derived["source_mass"] = source_mass(packed_dir, train_rows, weights)
     elif dcfg["source"] == "manifests":
         if norm == "global":
             raise ValueError("global normalization needs data.source=packed")
@@ -156,7 +163,7 @@ def train(cfg: dict) -> dict:
     valid_signals = torch.stack([valid_ds[i] for i in range(len(valid_ds))])   # small, fixed
     batch_size = tcfg["batch_size"]
     loader = make_loader(train_ds, batch_size, shuffle=True, seed=seed,
-                         num_workers=dcfg["num_workers"], drop_last=True)
+                         num_workers=dcfg["num_workers"], drop_last=True, sampler=sampler)
     steps_per_epoch = len(loader)
     if steps_per_epoch == 0:
         raise ValueError(f"{len(train_ds)} training samples is fewer than one batch ({batch_size})")
@@ -203,9 +210,12 @@ def train(cfg: dict) -> dict:
         if run is not None and cfg["wandb"].get("log_checkpoints", False):
             wb.log_checkpoint(run, path, f"lejepa-{run.id}", ["latest", f"step-{step}"], meta)
 
-    step, samples_seen, history = 0, 0, []
+    step, samples_seen, history, epoch_pass = 0, 0, [], 0
     model.train()
     while step < total_steps:
+        if sampler is not None:
+            sampler.set_epoch(epoch_pass)
+        epoch_pass += 1
         for x in loader:
             x = x.to(device, non_blocking=True)
             masked_idx, visible_idx = make_mask(kcfg, len(x), num_patches, mask_generator, device)

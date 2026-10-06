@@ -172,3 +172,37 @@ def test_global_requires_packed(data_dir, tmp_path):
     cfg["data"]["normalization"] = "global"
     with pytest.raises(ValueError, match="needs data.source=packed"):
         train(cfg)
+
+
+def make_packed_sources(tmp_path):
+    rng = np.random.default_rng(0)
+    packed = tmp_path / "packed"
+    packed.mkdir()
+    np.save(packed / "spectra.npy", rng.normal(5.0, 2.0, size=(100, 245)).astype(np.float32))
+    stats = {"mean": 5.0, "std": 2.0, "n_rows": 100, "n_dropped": 0,
+             "counts": {"big": 70, "labeled_regression/a": 20, "labeled_regression/b": 10}}
+    (packed / "stats.json").write_text(json.dumps(stats))
+    np.save(packed / "drop_rows.npy", np.zeros(100, dtype=bool))
+    np.save(packed / "valid_rows.npy", np.array([0, 1, 2, 3, 70, 71, 90, 91]))
+    return packed
+
+
+def test_source_weights_run_records_mass(tmp_path):
+    packed = make_packed_sources(tmp_path)
+    cfg = load_config(REPO / "configs" / "pretrain.yaml", [
+        "experiment.name=weighted", f"experiment.output_dir={tmp_path / 'out'}",
+        "data.source=packed", f"data.packed_dir={packed}", "data.normalization=global",
+        "data.source_weights={labeled_regression: 0.5, default: 0.5}",
+        *TINY_OVERRIDES, "training.max_steps=20", "training.log_every=1"])
+    with pytest.warns(UserWarning, match="batch_size=8"):
+        result = train(cfg)
+    derived = load_checkpoint(Path(result["output_dir"]) / "checkpoint_last.pt")["config"]["derived"]
+    assert derived["source_mass"] == pytest.approx({"labeled_regression": 0.5, "default": 0.5})
+    assert derived["steps_per_epoch"] == 92 // 8 and derived["total_steps"] == 20
+
+
+def test_source_weights_need_packed(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "out")
+    cfg["data"]["source_weights"] = {"default": 1.0}
+    with pytest.raises(ValueError, match="source_weights needs data.source=packed"):
+        train(cfg)
