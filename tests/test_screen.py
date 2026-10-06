@@ -195,7 +195,14 @@ def test_screen5_configs_are_consistent():
     assert scfg["eval_config"] == "configs/eval_small5.yaml" and ecfg["wandb"]["group"] == "screen-5"
     assert ecfg["experiment"]["output_dir"] == "outputs/screen-5/eval"
     assert "screen5" in ecfg["wandb"]["tags"]
-    assert set(scfg["arms"]) == {"sigreg_ref", "visreg"}
-    for arm, expected in (("sigreg_ref", "sigreg"), ("visreg", "visreg")):
+    assert set(scfg["arms"]) == {"visreg_scratch", "visreg_scratch_l09", "visreg_cont"}
+    for arm, init, lam in (("visreg_scratch", None, 0.6), ("visreg_scratch_l09", None, 0.9), ("visreg_cont", "x", 0.6)):
         cfg = load_config(repo / "configs/pretrain.yaml", [*scfg["shared_overrides"], *scfg["arms"][arm]])
-        assert cfg["training"]["regularizer"] == expected
+        t = cfg["training"]
+        assert t["regularizer"] == "visreg" and t["visreg_lambda"] == lam and cfg["masking"]["mask_ratio"] == 0.75
+        if init is None:   # exactly screen-2 global_mask75 apart from the regularizer
+            assert t["init_checkpoint"] is None and t["max_steps"] is None and t["epochs"] == 1
+            assert t["learning_rate"] == 5.0e-4 and t["warmup_epochs"] == 1.0
+        else:              # exactly screen-3 cont_natural apart from the regularizer
+            assert t["init_checkpoint"].endswith("global_mask75_20261006-060636/checkpoint_last.pt")
+            assert t["max_steps"] == 15000

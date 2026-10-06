@@ -1,4 +1,5 @@
-# Screen 5: SIGReg vs VISReg regularizer (continued pretraining of screen-2 global_mask75; controller edits arms)
+# Screen 5: SIGReg -> VISReg. Scratch arms repeat screen-2 global_mask75 exactly (pair: that run);
+# visreg_cont repeats screen-3 cont_natural (pair: that run).
 name: screen-5
 output_dir: outputs/screen-5
 eval_config: configs/eval_small5.yaml
@@ -20,8 +21,9 @@ shared_overrides:
   - wandb.group=screen-5
   - "wandb.tags=[lejepa,spectralfm,1d,screen5,alldata]"
 arms:
-  sigreg_ref: []
-  visreg: [training.regularizer=visreg]
+  visreg_scratch: [training.init_checkpoint=null, training.max_steps=null, training.epochs=1, training.learning_rate=5.0e-4, training.warmup_epochs=1.0, training.val_every=5000, training.diag_every=5000, training.ckpt_every=20000, training.regularizer=visreg]
+  visreg_scratch_l09: [training.init_checkpoint=null, training.max_steps=null, training.epochs=1, training.learning_rate=5.0e-4, training.warmup_epochs=1.0, training.val_every=5000, training.diag_every=5000, training.ckpt_every=20000, training.regularizer=visreg, training.visreg_lambda=0.9]
+  visreg_cont: [training.regularizer=visreg]
 wandb:
   enabled: true
   entity: null
