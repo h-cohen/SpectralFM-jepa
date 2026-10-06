@@ -104,6 +104,11 @@ def packed_train_rows(packed_dir) -> np.ndarray:
     return np.setdiff1d(np.arange(n), excluded)
 
 
+def valid_subset(valid_rows, k=2048, seed=0) -> np.ndarray:
+    """A seeded random subset (sorted) of the validation rows, so every source is represented."""
+    return np.sort(np.random.default_rng(seed).choice(valid_rows, min(k, len(valid_rows)), replace=False))
+
+
 def subsample(paths, max_samples, seed):
     """A seeded subset (kept in manifest order) for dev runs; all paths when max_samples is None."""
     if max_samples is None or max_samples >= len(paths):

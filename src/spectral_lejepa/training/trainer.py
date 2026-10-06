@@ -19,7 +19,7 @@ import yaml
 from torch.optim.lr_scheduler import LambdaLR
 
 from ..data.loader import (PackedSpectra, SpectraDataset, make_loader, manifest_fingerprint, packed_train_rows,
-                           read_manifest, subsample)
+                           read_manifest, subsample, valid_subset)
 from ..models.masking import make_mask
 from ..models.vit_1d import build_model
 from ..utils import wandb as wb
@@ -139,7 +139,7 @@ def train(cfg: dict) -> dict:
         valid_rows = np.load(Path(packed_dir) / "valid_rows.npy")
         train_rows = subsample(packed_train_rows(packed_dir), dcfg["max_train_samples"], seed)
         train_ds = PackedSpectra(packed_dir, train_rows, norm, global_stats)
-        valid_ds = PackedSpectra(packed_dir, valid_rows[:2048], norm, global_stats)
+        valid_ds = PackedSpectra(packed_dir, valid_subset(valid_rows), norm, global_stats)
         data_derived = {"packed_dir": str(packed_dir), "global_stats": global_stats,
                         "n_rows": stats["n_rows"], "n_dropped": stats["n_dropped"]}
     elif dcfg["source"] == "manifests":

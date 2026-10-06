@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from spectral_lejepa.data.loader import (
     SEQUENCE_LENGTH, PackedSpectra, SpectraDataset, make_loader, manifest_fingerprint, normalize,
-    normalize_signal, packed_train_rows, read_manifest, remap_root, subsample,
+    normalize_signal, packed_train_rows, read_manifest, remap_root, subsample, valid_subset,
 )
 
 REAL_VALID = "/mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one/valid.tsv"
@@ -138,3 +138,10 @@ def test_packed_train_rows_bool_drop_mask(tmp_path):
     np.save(tmp_path / "valid_rows.npy", np.array([1]))
     assert packed_train_rows(tmp_path).tolist() == [0, 2, 4, 5, 6, 7]
 
+
+def test_valid_subset_is_seeded_sorted_and_spread():
+    valid = np.arange(0, 10000, 5)
+    a, b = valid_subset(valid, k=100, seed=0), valid_subset(valid, k=100, seed=0)
+    assert np.array_equal(a, b) and len(a) == 100 and np.all(np.diff(a) > 0)
+    assert set(a.tolist()) <= set(valid.tolist()) and a.max() > valid[200]   # not a prefix
+    assert np.array_equal(valid_subset(valid[:10], k=100), valid[:10])
