@@ -65,13 +65,13 @@ def run_arm(name, overrides, scfg, gpu, eval_slot):
     return {"status": "ok", "checkpoint": str(ckpt), "log": str(log)}
 
 
-def arm_row(name, status, eval_root):
+def arm_row(name, status, eval_root, eval_set=EVAL_SET):
     row = {"arm": name, **status}
     if status["status"] != "ok":
         return row
     ckpt_path = Path(status["checkpoint"])
     ckpt = load_checkpoint(ckpt_path)
-    set_dir = eval_root / f"{ckpt_path.parent.name}_step{ckpt['step']}" / EVAL_SET
+    set_dir = eval_root / f"{ckpt_path.parent.name}_step{ckpt['step']}" / eval_set
     s = json.loads((set_dir / "summary.json").read_text())
     m = ckpt["metrics"]
     row.update(n=s["n"], embedding_r2=s["embedding_r2"], embedding_sd=s["embedding_sd"],
@@ -82,9 +82,9 @@ def arm_row(name, status, eval_root):
     return row
 
 
-def safe_row(name, status, eval_root):
+def safe_row(name, status, eval_root, eval_set=EVAL_SET):
     try:
-        return arm_row(name, status, eval_root)
+        return arm_row(name, status, eval_root, eval_set)
     except Exception as e:
         return {"arm": name, **status, "status": "failed", "stage": "summary", "error": str(e)}
 
@@ -95,8 +95,9 @@ def status_from_disk(name, scfg, eval_root):
         ckpt = find_checkpoint(root, name)
     except RuntimeError as e:
         return {"status": "failed", "stage": "missing", "error": str(e)}
-    if not list(eval_root.glob(f"{ckpt.parent.name}_step*/{EVAL_SET}/summary.json")):
-        return {"status": "failed", "stage": "missing", "error": f"no {EVAL_SET} eval summary for {ckpt.parent.name}"}
+    eval_set = scfg.get("eval_set", EVAL_SET)
+    if not list(eval_root.glob(f"{ckpt.parent.name}_step*/{eval_set}/summary.json")):
+        return {"status": "failed", "stage": "missing", "error": f"no {eval_set} eval summary for {ckpt.parent.name}"}
     return {"status": "ok", "checkpoint": str(ckpt), "log": str(root / f"{name}.log")}
 
 
@@ -181,7 +182,7 @@ def main(argv=None):
             t.join()
 
     missing = {"status": "failed", "stage": "worker", "error": "no status recorded"}
-    rows = decide([safe_row(name, status.get(name, missing), eval_root) for name in scfg["arms"]])
+    rows = decide([safe_row(name, status.get(name, missing), eval_root, scfg.get("eval_set", EVAL_SET)) for name in scfg["arms"]])
     (root / "results.json").write_text(json.dumps(rows, indent=2, default=str))
     (root / "results.md").write_text(to_markdown(rows))
     print(to_markdown(rows))

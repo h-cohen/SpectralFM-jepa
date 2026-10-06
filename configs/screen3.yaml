@@ -1,0 +1,31 @@
+# Screen 3: continued pretraining of screen-2 global_mask75 with source-balanced sampling
+name: screen-3
+output_dir: outputs/screen-3
+eval_config: configs/eval_small.yaml
+eval_set: labeled_regression_all    # the set the screen table scores (eval_small has no labeled_data)
+shared_overrides:
+  - data.source=packed
+  - data.packed_dir=/mnt5/home/hadar/nova/data/spectra_all
+  - data.normalization=global
+  - data.num_workers=12
+  - masking.mask_ratio=0.75
+  - training.init_checkpoint=outputs/screen-2/global_mask75_20261006-060636/checkpoint_last.pt
+  - training.max_steps=15000
+  - training.learning_rate=2.5e-4
+  - training.warmup_epochs=0.02
+  - training.val_every=2500
+  - training.diag_every=2500
+  - training.ckpt_every=15000
+  - experiment.output_dir=outputs/screen-3
+  - wandb.group=screen-3
+  - "wandb.tags=[lejepa,spectralfm,1d,screen3,alldata]"
+arms:
+  cont_natural: []
+  cont_lr50: ["data.source_weights={labeled_regression: 0.5, default: 0.5}"]
+  cont_lr80: ["data.source_weights={labeled_regression: 0.8, default: 0.2}"]
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: screen-3
+  tags: [lejepa, spectralfm, 1d, screen3, alldata]

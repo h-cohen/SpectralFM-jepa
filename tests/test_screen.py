@@ -49,6 +49,37 @@ def test_arm_row_failure_becomes_summary_failure(tmp_path):
     assert "summary" in md and screen.FOOTNOTE in md
 
 
+def test_status_from_disk_uses_configured_eval_set(tmp_path):
+    ckpt = tmp_path / "out" / "arm_20260101-000000"
+    ckpt.mkdir(parents=True)
+    (ckpt / "checkpoint_last.pt").write_bytes(b"")
+    summary = tmp_path / "eval" / "arm_20260101-000000_step5" / "labeled_regression_all"
+    summary.mkdir(parents=True)
+    (summary / "summary.json").write_text("{}")
+    scfg = {"output_dir": str(tmp_path / "out"), "arms": {}}
+    assert screen.status_from_disk("arm", scfg, tmp_path / "eval")["status"] == "failed"
+    scfg["eval_set"] = "labeled_regression_all"
+    assert screen.status_from_disk("arm", scfg, tmp_path / "eval")["status"] == "ok"
+
+
+def test_screen3_configs_are_consistent():
+    from spectral_lejepa.config import load_config
+    repo = Path(screen.__file__).resolve().parents[1]
+    scfg = yaml.safe_load((repo / "configs/screen3.yaml").read_text())
+    ecfg = yaml.safe_load((repo / scfg["eval_config"]).read_text())
+    assert scfg["eval_set"] in ecfg["label_sets"] and "labeled_data" not in ecfg["label_sets"]
+    assert ecfg["evaluation"]["ladder_sets"] == [] and ecfg["evaluation"]["random_control"] is False
+    assert set(ecfg["baseline"]["run_dirs"]) <= set(ecfg["label_sets"])
+    assert ecfg["experiment"]["output_dir"].startswith(scfg["output_dir"])
+    expected = {"cont_natural": None, "cont_lr50": {"labeled_regression": 0.5, "default": 0.5},
+                "cont_lr80": {"labeled_regression": 0.8, "default": 0.2}}
+    for arm, weights in expected.items():
+        cfg = load_config(repo / "configs/pretrain.yaml", [*scfg["shared_overrides"], *scfg["arms"][arm]])
+        assert cfg["data"]["source_weights"] == weights
+        assert cfg["training"]["init_checkpoint"].endswith("global_mask75_20261006-060636/checkpoint_last.pt")
+        assert cfg["masking"]["mask_ratio"] == 0.75 and cfg["training"]["max_steps"] == 15000
+
+
 def test_decide_without_control(tmp_path):
     y = np.arange(50.0)
     rows = [{"arm": "control_s0", "status": "failed", "log": "x"},
