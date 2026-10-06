@@ -35,6 +35,14 @@ def flat_metrics(prefix, d):
     return out
 
 
+def model_input(raw, ckpt_cfg):
+    """The model's input spectra, normalized the way the checkpoint was trained."""
+    if ckpt_cfg.get("data", {}).get("normalization", "sample_zscore") == "global":
+        g = ckpt_cfg["derived"]["global_stats"]
+        return ((raw - g["mean"]) / g["std"]).astype(np.float32)
+    return normalize_like_fairseq(raw)
+
+
 def sha256_file(path, chunk=1 << 20):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -112,10 +120,11 @@ def main(argv=None):
     ckpt_path = a.checkpoint
     model, ckpt = load_model(ckpt_path)
     git = wb.git_info()
+    method = ckpt["config"].get("data", {}).get("normalization", "sample_zscore")
     lineage = {"pretraining_run_id": ckpt.get("wandb_run_id"), "pretraining_checkpoint": a.checkpoint,
                "pretraining_checkpoint_sha256": sha256_file(ckpt_path),
                "pretraining_checkpoint_step": ckpt["step"], "pretraining_git_commit": ckpt.get("git_commit"),
-               "pretraining_git_dirty": ckpt.get("git_dirty"), "evaluation_git_commit": git["git_commit"],
+               "pretraining_git_dirty": ckpt.get("git_dirty"), "model_input": method, "evaluation_git_commit": git["git_commit"],
                "evaluation_git_dirty": git["git_dirty"],
                "evaluation_config": cfg}
     if run is not None:
@@ -135,11 +144,11 @@ def main(argv=None):
             continue
         out_dir = out_root / name
         out_dir.mkdir(parents=True, exist_ok=True)
-        bank = extract_bank(backbone, normalize_like_fairseq(raw), device=vcfg["device"],
+        bank = extract_bank(backbone, model_input(raw, ckpt["config"]), device=vcfg["device"],
                             batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
                             flat_blocks=vcfg.get("flat_blocks"))
         save_bank(out_dir / "bank.npz", bank, raw, y, {"checkpoint": a.checkpoint, "backbone": "EvalBackbone",
-                                                       "set": name, "n": int(len(y)), "seed": seed,
+                                                       "set": name, "model_input": method, "n": int(len(y)), "seed": seed,
                                                        "stages": tuple(bank),
                                                        "readouts": tuple(vcfg["readouts"]),
                                                        "flat_blocks": vcfg.get("flat_blocks")})
@@ -166,7 +175,7 @@ def main(argv=None):
         if random_backbone is not None:
             rc_dir = out_dir / "random_control"
             rc_dir.mkdir(exist_ok=True)
-            rc_bank = extract_bank(random_backbone, normalize_like_fairseq(raw), device=vcfg["device"],
+            rc_bank = extract_bank(random_backbone, model_input(raw, ckpt["config"]), device=vcfg["device"],
                                    batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
                                    flat_blocks=vcfg.get("flat_blocks"))
             rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])

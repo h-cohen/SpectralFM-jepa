@@ -7,10 +7,12 @@ import soundfile as sf
 import yaml
 
 from scripts import evaluate
+from spectral_lejepa.config import load_config
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
 from spectral_lejepa.evaluation.nested import run_nested, write_json
+from spectral_lejepa.evaluation.bank import load_bank
 from spectral_lejepa.training.trainer import train
-from tests.test_train_smoke import data_dir, tiny_cfg  # noqa: F401  (fixture reuse)
+from tests.test_train_smoke import TINY_OVERRIDES, REPO, data_dir, tiny_cfg  # noqa: F401  (fixture reuse)
 
 SET = "toyset"
 
@@ -107,3 +109,47 @@ def test_verdict_and_scorecard():
     sets = {"a": {"delta_vs_raw": 0.06, "verdict": "win"}, "b": {"delta_vs_raw": -0.1, "verdict": "no-win"},
             "c": {"delta_vs_raw": 0.0, "verdict": "ceiling"}}
     assert evaluate.scorecard(sets, None) == {"wins": 1, "eligible": 2, "ceiling": 1, "mean_delta": pytest.approx(-0.04 / 3)}
+
+
+def test_model_input_methods():
+    raw = np.random.default_rng(0).normal(5.0, 2.0, size=(4, 245)).astype(np.float32)
+    z = normalize_like_fairseq(raw)
+    np.testing.assert_array_equal(evaluate.model_input(raw, {"data": {"normalization": "sample_zscore"}}), z)
+    np.testing.assert_array_equal(evaluate.model_input(raw, {"data": {}}), z)      # an old checkpoint
+    g = {"data": {"normalization": "global"}, "derived": {"global_stats": {"mean": 5.0, "std": 2.0}}}
+    out = evaluate.model_input(raw, g)
+    assert out.dtype == np.float32
+    np.testing.assert_allclose(out, (raw - 5.0) / 2.0, rtol=1e-6)
+
+
+def test_evaluate_global_checkpoint(tmp_path):
+    rng = np.random.default_rng(0)
+    packed = tmp_path / "packed"
+    packed.mkdir()
+    np.save(packed / "spectra.npy", rng.normal(5.0, 2.0, size=(100, 245)).astype(np.float32))
+    (packed / "stats.json").write_text(json.dumps({"mean": 5.0, "std": 2.0, "n_rows": 100, "n_dropped": 0}))
+    np.save(packed / "drop_rows.npy", np.array([], dtype=np.int64))
+    np.save(packed / "valid_rows.npy", np.arange(10, 30))
+    cfg = load_config(REPO / "configs" / "pretrain.yaml", [
+        "experiment.name=packed", f"experiment.output_dir={tmp_path / 'pre'}",
+        "data.source=packed", f"data.packed_dir={packed}", "data.normalization=global",
+        *TINY_OVERRIDES, "training.max_steps=2", "training.ckpt_every=2", "training.val_every=2",
+        "training.diag_every=2", "training.log_every=1"])
+    with pytest.warns(UserWarning, match="batch_size=8"):
+        result = train(cfg)
+    ckpt = Path(result["output_dir"]) / "checkpoint_last.pt"
+    set_dir = make_label_set(tmp_path)
+    ecfg = {"experiment": {"name": "toy_eval", "seed": 42, "output_dir": str(tmp_path / "eval_out")},
+            "evaluation": {"device": "cpu", "batch_size": 16, "max_samples": 5000, "n_jobs": 1, "min_n": 20,
+                           "ladder_sets": [], "ladder_block_from": SET,
+                           "readouts": ["mean"], "flat_blocks": None, "random_control": True},
+            "label_sets": {SET: [str(set_dir)]},
+            "baseline": {"tag": "fake", "checkpoint": "none", "parent_repo": str(tmp_path), "run_dirs": {}},
+            "wandb": {"enabled": False, "entity": None, "project": "x", "group": None, "job_type": "eval",
+                      "tags": []}}
+    cfg_path = tmp_path / "eval.yaml"
+    cfg_path.write_text(yaml.safe_dump(ecfg))
+    evaluate.main(["--checkpoint", str(ckpt), "--config", str(cfg_path)])
+    out_root = Path(ecfg["experiment"]["output_dir"]) / f"{ckpt.parent.name}_step2"
+    assert load_bank(out_root / SET / "bank.npz")[3]["model_input"] == "global"
+    assert json.loads((out_root / "summary.json").read_text())["lineage"]["model_input"] == "global"
