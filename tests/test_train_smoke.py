@@ -239,3 +239,18 @@ def test_init_checkpoint_rejects_mismatch(data_dir, tmp_path):
     cfg["data"]["source"] = "packed"
     with pytest.raises(ValueError, match="normalization"):
         train(cfg)
+
+
+def test_global_term_training(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "out")
+    for k, v in (("global_weight", 1.0), ("global_views", 2), ("global_keep", 0.5), ("max_steps", 10),
+                 ("val_every", 5)):
+        cfg["training"][k] = v
+    with pytest.warns(UserWarning, match="batch_size=8"):
+        result = train(cfg)
+    h = result["history"][-1]
+    assert all(math.isfinite(h[k]) and h[k] > 0 for k in
+               ("train/global_inv_loss", "train/global_sigreg_loss", "train/global_loss"))
+    cfg["training"]["global_keep"] = 0.0
+    with pytest.raises(ValueError, match="global_keep"):
+        train(cfg)

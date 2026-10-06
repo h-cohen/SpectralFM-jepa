@@ -45,3 +45,23 @@ def test_sigreg_runs_in_fp32_under_autocast():
     with torch.autocast("cpu", dtype=torch.bfloat16):
         out = obj(t[:, :12], t[:, :12], t)
     assert out["sigreg_loss"].dtype == torch.float32 and out["loss"].dtype == torch.float32
+
+
+def test_global_term_off_is_identical_and_on_adds_terms():
+    torch.manual_seed(0)
+    p, tm, t = torch.randn(8, 12, 16), torch.randn(8, 12, 16), torch.randn(8, 24, 16)
+    views = torch.randn(3, 8, 16)
+    torch.manual_seed(1)
+    base = LeJEPAObjective(0.05, num_slices=64)(p, tm, t)
+    torch.manual_seed(1)
+    off = LeJEPAObjective(0.05, num_slices=64, global_weight=0.0)(p, tm, t, views=views)
+    assert set(off) == set(base) and all(torch.equal(off[k], base[k]) for k in base)
+
+    obj = LeJEPAObjective(0.05, num_slices=64, global_weight=0.5)
+    on = obj(p, tm, t, views=views)
+    assert {"global_inv_loss", "global_sigreg_loss", "global_loss"} <= set(on)
+    inv = ((views - views.mean(0, keepdim=True)) ** 2).mean()
+    assert torch.allclose(on["global_inv_loss"], inv)
+    assert torch.allclose(on["global_loss"], 0.95 * on["global_inv_loss"] + 0.05 * on["global_sigreg_loss"])
+    assert torch.allclose(on["loss"], on["mse_loss"] + 0.05 * on["sigreg_loss"] + 0.5 * on["global_loss"])
+    assert set(obj(p, tm, t)) == set(base)   # enabled but no views: unchanged

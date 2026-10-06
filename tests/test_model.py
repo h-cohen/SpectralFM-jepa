@@ -97,3 +97,14 @@ def test_eval_backbone_hidden_states():
         assert all(h.shape == (4, 24, 32) for h in hs)
         assert torch.allclose(hs[-1], model.encoder(model.tokenizer(x)))
     assert not hasattr(backbone, "feature_extractor") and not hasattr(backbone, "feature_projection")
+
+
+def test_views_output():
+    model, x, m, v = setup()
+    assert "views" not in model(x, m, v)
+    idxs = [random_mask(4, 24, 0.5, torch.Generator().manual_seed(s))[1] for s in (1, 2)]
+    out = model(x, m, v, view_idxs=idxs)
+    assert out["views"].shape == (3, 4, 32)
+    assert torch.allclose(out["views"][0], out["target"].mean(1))
+    tokens = model.tokenizer(x)
+    assert torch.allclose(out["views"][1], model.encoder(gather_tokens(tokens, idxs[0])).mean(1))

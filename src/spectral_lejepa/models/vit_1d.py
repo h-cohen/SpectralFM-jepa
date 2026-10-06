@@ -96,15 +96,21 @@ class LeJEPA(nn.Module):
         else:
             raise ValueError(f"unknown projector {projector!r}; use 'none' or 'mlp'")
 
-    def forward(self, x, masked_idx, visible_idx):
+    def forward(self, x, masked_idx, visible_idx, view_idxs=None):
         tokens = self.tokenizer(x)                                            # [B, 24, D]
         context = self.encoder(gather_tokens(tokens, visible_idx))            # [B, n_vis, D]
         predicted = self.predictor(context, visible_idx, masked_idx)          # [B, n_mask, D]
         target = self.encoder(tokens)                                         # [B, 24, D]
+        views = None
+        if view_idxs is not None:   # pooled encoder outputs (before any projector): full view, then subsets
+            views = torch.stack([target.mean(1)] + [self.encoder(gather_tokens(tokens, idx)).mean(1)
+                                                    for idx in view_idxs])   # [V+1, B, D]
         if self.projector is not None:
             predicted, target = self._project(predicted, target)
-        return {"predicted": predicted, "target": target,
-                "target_masked": gather_tokens(target, masked_idx)}
+        out = {"predicted": predicted, "target": target, "target_masked": gather_tokens(target, masked_idx)}
+        if views is not None:
+            out["views"] = views
+        return out
 
     def _project(self, predicted, target):
         """Project predictions and targets in ONE call so BatchNorm sees one set of batch statistics."""

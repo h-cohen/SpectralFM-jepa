@@ -81,6 +81,21 @@ def test_screen3_configs_are_consistent():
         assert cfg["masking"]["mask_ratio"] == 0.75 and cfg["training"]["max_steps"] == 15000
 
 
+def test_screen4_configs_are_consistent():
+    from spectral_lejepa.config import load_config
+    repo = Path(screen.__file__).resolve().parents[1]
+    scfg = yaml.safe_load((repo / "configs/screen4.yaml").read_text())
+    ecfg = yaml.safe_load((repo / scfg["eval_config"]).read_text())
+    assert scfg["eval_config"] == "configs/eval_small4.yaml" and ecfg["wandb"]["group"] == "screen-4"
+    assert ecfg["experiment"]["output_dir"].startswith(scfg["output_dir"])
+    expected = {"cont_g1": (1.0, 2, 0.5), "cont_g025": (0.25, 2, 0.5), "cont_g1_v4": (1.0, 4, 0.25)}
+    for arm, (w, v, k) in expected.items():
+        cfg = load_config(repo / "configs/pretrain.yaml", [*scfg["shared_overrides"], *scfg["arms"][arm]])
+        t = cfg["training"]
+        assert (t["global_weight"], t["global_views"], t["global_keep"]) == (w, v, k)
+        assert cfg["masking"]["mask_ratio"] == 0.75 and t["max_steps"] == 15000
+
+
 def test_decide_without_control(tmp_path):
     y = np.arange(50.0)
     rows = [{"arm": "control_s0", "status": "failed", "log": "x"},

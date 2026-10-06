@@ -49,6 +49,9 @@ training:
   sigreg_num_slices: 1024
   sigreg_knots: 17
   sigreg_t_max: 3.0
+  global_weight: 0.0           # beta of the sample-level (pooled multi-view) term; 0 disables it (no extra compute)
+  global_views: 2             # extra random-subset views per sample
+  global_keep: 0.5            # fraction of the 24 patches each extra view keeps (random, per sample)
   amp: true                    # fp16 autocast (RTX 2080 Ti has no bf16)
   grad_clip: null
   log_every: 50

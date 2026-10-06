@@ -21,7 +21,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset, make_loader,
                            manifest_fingerprint, packed_train_rows, read_manifest, source_mass,
                            source_row_probs, subsample, valid_subset)
-from ..models.masking import make_mask
+from ..models.masking import make_mask, random_mask
 from ..models.vit_1d import build_model
 from ..utils import wandb as wb
 from . import diagnostics as diag
@@ -70,21 +70,32 @@ def lr_factor(step, warmup_steps, total_steps, final_ratio):
     return final_ratio + (1 - final_ratio) * 0.5 * (1 + math.cos(math.pi * progress))
 
 
+def draw_views(global_cfg, batch_size, num_patches, generator, device):
+    """Random patch subsets (one [B, k] index set per extra view) for the sample-level term; None when off."""
+    if not global_cfg:
+        return None
+    keep, n = global_cfg["keep"], global_cfg["views"]
+    return [random_mask(batch_size, num_patches, 1 - keep, generator, device)[1] for _ in range(n)]
+
+
 @torch.no_grad()
-def validation_losses(model, objective, signals, num_patches, masking_cfg, batch_size, seed, device, amp):
+def validation_losses(model, objective, signals, num_patches, masking_cfg, batch_size, seed, device, amp, global_cfg=None):
     """Mean losses over full batches of the fixed valid set; the mask seed is fixed so values
     are comparable across steps."""
     model.eval()
     generator = torch.Generator().manual_seed(seed)
     batch_size = min(batch_size, len(signals))
     totals = {"loss": 0.0, "mse_loss": 0.0, "sigreg_loss": 0.0}
+    if global_cfg:
+        totals.update(global_inv_loss=0.0, global_sigreg_loss=0.0, global_loss=0.0)
     n_batches = 0
     for i in range(0, len(signals) - batch_size + 1, batch_size):
         x = signals[i:i + batch_size].to(device)
         masked_idx, visible_idx = make_mask(masking_cfg, len(x), num_patches, generator, device)
+        view_idxs = draw_views(global_cfg, len(x), num_patches, generator, device)
         with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-            out = model(x, masked_idx, visible_idx)
-        losses = objective(out["predicted"], out["target_masked"], out["target"])
+            out = model(x, masked_idx, visible_idx, view_idxs)
+        losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"))
         for k in totals:
             totals[k] += losses[k].item()
         n_batches += 1
@@ -141,6 +152,16 @@ def train(cfg: dict) -> dict:
     make_mask(kcfg, 1, mcfg["num_patches"])   # validates the masking config before any work
     if tcfg["optimizer"] != "adamw":
         raise ValueError(f"training.optimizer={tcfg['optimizer']!r}: only 'adamw' is implemented")
+    global_cfg = None
+    if tcfg["global_weight"] < 0:
+        raise ValueError(f"training.global_weight={tcfg['global_weight']} must be >= 0")
+    if tcfg["global_weight"] > 0:
+        if tcfg["global_views"] < 1:
+            raise ValueError(f"training.global_views={tcfg['global_views']} must be >= 1")
+        if not 0 < tcfg["global_keep"] <= 1 or round(tcfg["global_keep"] * mcfg["num_patches"]) < 1:
+            raise ValueError(f"training.global_keep={tcfg['global_keep']} must be in (0, 1] and keep at "
+                             f"least one of {mcfg['num_patches']} patches")
+        global_cfg = {"views": tcfg["global_views"], "keep": tcfg["global_keep"]}
     seed = ecfg["seed"]
     set_seed(seed)
     device = resolve_device(tcfg["device"])
@@ -211,7 +232,7 @@ def train(cfg: dict) -> dict:
         model.load_state_dict(init["ckpt"]["model"])
     model = model.to(device)
     objective = LeJEPAObjective(tcfg["lambda_sigreg"], tcfg["sigreg_num_slices"],
-                                tcfg["sigreg_knots"], tcfg["sigreg_t_max"]).to(device)
+                                tcfg["sigreg_knots"], tcfg["sigreg_t_max"], tcfg["global_weight"]).to(device)
     optimizer = torch.optim.AdamW(param_groups(model, tcfg["weight_decay"]), lr=tcfg["learning_rate"])
     scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
     scaler = torch.amp.GradScaler(device.type, enabled=amp)
@@ -241,9 +262,10 @@ def train(cfg: dict) -> dict:
         for x in loader:
             x = x.to(device, non_blocking=True)
             masked_idx, visible_idx = make_mask(kcfg, len(x), num_patches, mask_generator, device)
+            view_idxs = draw_views(global_cfg, len(x), num_patches, mask_generator, device)
             with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                out = model(x, masked_idx, visible_idx)
-            losses = objective(out["predicted"], out["target_masked"], out["target"])
+                out = model(x, masked_idx, visible_idx, view_idxs)
+            losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"))
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(losses["loss"]).backward()
             scaler.unscale_(optimizer)
@@ -267,7 +289,7 @@ def train(cfg: dict) -> dict:
                 wb.log(run, record, step=step)
             if step % tcfg["val_every"] == 0 or last:
                 valid = validation_losses(model, objective, valid_signals, num_patches, kcfg,
-                                          batch_size, seed + 2, device, amp)
+                                          batch_size, seed + 2, device, amp, global_cfg)
                 latest.update(valid)
                 wb.log(run, valid, step=step)
             if step % tcfg["diag_every"] == 0 or last:
