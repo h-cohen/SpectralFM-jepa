@@ -9,7 +9,7 @@ shared_overrides:
   - data.normalization=global
   - data.num_workers=12
   - masking.mask_ratio=0.75
-  - training.init_checkpoint=outputs/screen-2/global_mask75_20261006-060636/checkpoint_last.pt
+  - training.init_checkpoint=/mnt5/home/hadar/nova/SpectralFM-jepa/outputs/screen-2/global_mask75_20261006-060636/checkpoint_last.pt
   - training.max_steps=15000
   - training.learning_rate=2.5e-4
   - training.warmup_epochs=0.02
