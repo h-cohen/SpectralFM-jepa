@@ -128,3 +128,13 @@ def test_packed_train_rows_exclude_dropped_and_valid(tmp_path):
     rows = packed_train_rows(tmp_path)
     assert len(rows) == 20 - 2 - 3
     assert not {0, 5, 3, 7, 9} & set(rows.tolist())
+
+
+def test_packed_train_rows_bool_drop_mask(tmp_path):
+    np.save(tmp_path / "spectra.npy", np.zeros((8, SEQUENCE_LENGTH), dtype=np.float32))
+    mask = np.zeros(8, dtype=bool)
+    mask[3] = True
+    np.save(tmp_path / "drop_rows.npy", mask)
+    np.save(tmp_path / "valid_rows.npy", np.array([1]))
+    assert packed_train_rows(tmp_path).tolist() == [0, 2, 4, 5, 6, 7]
+

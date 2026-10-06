@@ -91,10 +91,15 @@ class PackedSpectra(Dataset):
         return normalize(x, self.normalization, self.stats)
 
 
+def _row_indices(a: np.ndarray) -> np.ndarray:
+    """Row indices from either an index array or a boolean mask over all rows."""
+    return np.flatnonzero(a) if a.dtype == bool else a.astype(np.int64)
+
+
 def packed_train_rows(packed_dir) -> np.ndarray:
     """All rows of the packed array except dropped (constant/non-finite) and validation rows."""
     n = len(np.load(os.path.join(packed_dir, "spectra.npy"), mmap_mode="r"))
-    excluded = np.concatenate([np.load(os.path.join(packed_dir, f"{name}_rows.npy"))
+    excluded = np.concatenate([_row_indices(np.load(os.path.join(packed_dir, f"{name}_rows.npy")))
                                for name in ("drop", "valid")])
     return np.setdiff1d(np.arange(n), excluded)
 
