@@ -11,6 +11,7 @@ evaluation:
   n_jobs: 8
   min_n: 20
   readouts: [mean, seg4, flat]
+  flat_blocks: [0, 1, 2]   # flat readout only for early blocks (cost); null = all blocks
   random_control: true
   ladder_sets: [labeled_data, labeled_regression_all]
   ladder_block_from: labeled_data      # must be listed first in label_sets

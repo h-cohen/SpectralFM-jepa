@@ -104,6 +104,9 @@ def main(argv=None):
     seed = ecfg["seed"]
     if bad := [r for r in vcfg["readouts"] if r not in READOUTS]:
         raise ValueError(f"unknown evaluation.readouts entry {bad[0]!r}; choose from {READOUTS}")
+    fb = vcfg.get("flat_blocks")
+    if fb is not None and not (isinstance(fb, list) and all(isinstance(b, int) and not isinstance(b, bool) and b >= 0 for b in fb)):
+        raise ValueError(f"evaluation.flat_blocks must be null or a list of non-negative ints, got {fb!r}")
 
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"])
     ckpt_path = a.checkpoint
@@ -133,11 +136,13 @@ def main(argv=None):
         out_dir = out_root / name
         out_dir.mkdir(parents=True, exist_ok=True)
         bank = extract_bank(backbone, normalize_like_fairseq(raw), device=vcfg["device"],
-                            batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]))
+                            batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
+                            flat_blocks=vcfg.get("flat_blocks"))
         save_bank(out_dir / "bank.npz", bank, raw, y, {"checkpoint": a.checkpoint, "backbone": "EvalBackbone",
                                                        "set": name, "n": int(len(y)), "seed": seed,
                                                        "stages": tuple(bank),
-                                                       "readouts": tuple(vcfg["readouts"])})
+                                                       "readouts": tuple(vcfg["readouts"]),
+                                                       "flat_blocks": vcfg.get("flat_blocks")})
         nested, oof = run_nested(bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])
         write_json(out_dir / "nested_results.json", {**nested, "meta": lineage})
         np.savez_compressed(out_dir / "nested_oof.npz", y=y, **oof)
@@ -162,7 +167,8 @@ def main(argv=None):
             rc_dir = out_dir / "random_control"
             rc_dir.mkdir(exist_ok=True)
             rc_bank = extract_bank(random_backbone, normalize_like_fairseq(raw), device=vcfg["device"],
-                                   batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]))
+                                   batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
+                                   flat_blocks=vcfg.get("flat_blocks"))
             rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])
             if not np.allclose(rc_oof["raw"], oof["raw"], rtol=0, atol=1e-8):
                 raise RuntimeError("random-control raw OOFs differ from the model's: folds/rows are not paired")

@@ -102,6 +102,12 @@ def test_readout_arms_shapes_and_values():
     np.testing.assert_allclose(arms["layer1/flat"], (h + 1).reshape(2, -1).numpy())
 
 
+def test_readout_arms_flat_blocks():
+    h = torch.zeros(2, 6, 3)
+    arms = readout_arms([h, h, h], ("mean", "seg4", "flat"), flat_blocks=[0])
+    assert list(arms) == ["layer0", "layer0/seg4", "layer0/flat", "layer1", "layer1/seg4", "layer2", "layer2/seg4"]
+
+
 def test_bank_roundtrip_with_readouts(tmp_path):
     torch.manual_seed(0)
     backbone = EvalBackbone(build_model(SMALL, 245))

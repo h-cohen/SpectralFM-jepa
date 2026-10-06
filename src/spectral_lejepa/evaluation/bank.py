@@ -32,25 +32,29 @@ def _seg4(h):
     return torch.cat([h[:, e[s]:max(e[s] + 1, e[s + 1])].mean(dim=1) for s in range(4)], dim=1)
 
 
-def readout_arms(hidden_states, readouts) -> dict:
-    """{arm: [B, d]}: `layer{i}` = mean over tokens, `layer{i}/seg4`, `layer{i}/flat` = all tokens."""
+def readout_arms(hidden_states, readouts, flat_blocks=None) -> dict:
+    """{arm: [B, d]}: `layer{i}` = mean over tokens, `layer{i}/seg4`, `layer{i}/flat` = all tokens.
+
+    `flat_blocks` (None = all) restricts the flat readout to those block indices."""
     fns = {"mean": lambda h: h.mean(dim=1), "seg4": _seg4, "flat": lambda h: h.reshape(len(h), -1)}
     out = {}
     for i, h in enumerate(hidden_states):
         for r in readouts:
+            if r == "flat" and flat_blocks is not None and i not in flat_blocks:
+                continue
             out[f"layer{i}" if r == "mean" else f"layer{i}/{r}"] = fns[r](h).float().cpu().numpy()
     return out
 
 
 @torch.no_grad()
-def extract_bank(model, signals_z, device="cuda", batch_size=64, readouts=("mean",)) -> dict:
+def extract_bank(model, signals_z, device="cuda", batch_size=64, readouts=("mean",), flat_blocks=None) -> dict:
     model.eval()
     model.to(device)
     t = torch.from_numpy(np.asarray(signals_z, dtype=np.float32))
     out = None
     for i in range(0, len(t), batch_size):
         hidden = model(input_values=t[i:i + batch_size].to(device), output_hidden_states=True).hidden_states
-        arms = readout_arms(hidden, readouts)
+        arms = readout_arms(hidden, readouts, flat_blocks)
         if out is None:
             out = {k: [] for k in arms}
         if list(arms) != list(out):

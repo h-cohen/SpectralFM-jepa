@@ -56,7 +56,7 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
     ecfg = {"experiment": {"name": "toy_eval", "seed": 42, "output_dir": str(tmp_path / "eval_out")},
             "evaluation": {"device": "cpu", "batch_size": 16, "max_samples": 5000, "n_jobs": 1, "min_n": 20,
                            "ladder_sets": [], "ladder_block_from": SET,
-                           "readouts": ["mean", "seg4", "flat"], "random_control": True},
+                           "readouts": ["mean", "seg4", "flat"], "flat_blocks": [0], "random_control": True},
             "label_sets": {SET: [str(set_dir)]},
             "baseline": {"tag": "fake", "checkpoint": "none", "parent_repo": str(parent),
                          "run_dirs": {SET: "base"}},
@@ -83,7 +83,7 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
     assert set(s["vs_random_control"]) >= {"delta", "sd", "p_a_better"}
     assert "pretraining_artifact" not in lin and "pretraining_artifact_digest" not in lin
     assert lin["pretraining_checkpoint"] == str(ckpt)
-    assert any(k.endswith("/flat") for k in s["blocks"]) and any(k.endswith("/seg4") for k in s["blocks"])
+    assert [k for k in s["blocks"] if k.endswith("/flat")] == ["layer0/flat"] and any(k.endswith("/seg4") for k in s["blocks"])
     assert s["verdict"] in ("win", "no-win", "ceiling") and s["delta_vs_raw"] == s["embedding_r2"] - s["raw_r2"]
     rc = s["random_control"]
     assert set(rc) >= {"embedding_r2", "best_block", "delta_vs_raw", "verdict"}
@@ -96,6 +96,8 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
     cfg_path.write_text(yaml.safe_dump(ecfg))
     with pytest.raises(ValueError, match="bogus"):
         evaluate.main(["--checkpoint", str(ckpt), "--config", str(cfg_path), "evaluation.readouts=[mean,bogus]"])
+    with pytest.raises(ValueError, match="flat_blocks"):
+        evaluate.main(["--checkpoint", str(ckpt), "--config", str(cfg_path), "evaluation.flat_blocks=[-1]"])
 
 
 def test_verdict_and_scorecard():
