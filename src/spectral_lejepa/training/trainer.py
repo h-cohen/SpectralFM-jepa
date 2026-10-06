@@ -25,7 +25,7 @@ from ..models.masking import make_mask
 from ..models.vit_1d import build_model
 from ..utils import wandb as wb
 from . import diagnostics as diag
-from .checkpoint import save_checkpoint
+from .checkpoint import load_checkpoint, save_checkpoint, sha256_file
 from .loss import LeJEPAObjective
 
 RECOMMENDED_MIN_BATCH = 256   # SIGReg's Epps-Pulley statistic is estimated from the batch
@@ -121,6 +121,21 @@ def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, 
     return metrics, reference_rank
 
 
+def load_init_checkpoint(path, cfg) -> dict | None:
+    """The checkpoint to continue from (None when unset); it must share this run's model and normalization."""
+    if not path:
+        return None
+    ckpt = load_checkpoint(path)
+    old = ckpt["config"]
+    if old["model"] != cfg["model"]:
+        raise ValueError(f"training.init_checkpoint model config differs from this run: "
+                         f"{old['model']} vs {cfg['model']}")
+    if old["data"]["normalization"] != cfg["data"]["normalization"]:
+        raise ValueError(f"training.init_checkpoint data.normalization is {old['data']['normalization']!r}, "
+                         f"this run uses {cfg['data']['normalization']!r}")
+    return {"ckpt": ckpt, "info": {"path": str(path), "sha256": sha256_file(path), "step": ckpt["step"]}}
+
+
 def train(cfg: dict) -> dict:
     ecfg, dcfg, mcfg, kcfg, tcfg = (cfg[k] for k in ("experiment", "data", "model", "masking", "training"))
     make_mask(kcfg, 1, mcfg["num_patches"])   # validates the masking config before any work
@@ -130,6 +145,8 @@ def train(cfg: dict) -> dict:
     set_seed(seed)
     device = resolve_device(tcfg["device"])
     amp = bool(tcfg["amp"]) and device.type == "cuda"
+
+    init = load_init_checkpoint(tcfg.get("init_checkpoint"), cfg)
 
     # --- data ---
     norm = dcfg["normalization"]
@@ -181,13 +198,18 @@ def train(cfg: dict) -> dict:
         "steps_per_epoch": steps_per_epoch, "total_steps": total_steps, "warmup_steps": warmup_steps,
         "train_samples": len(train_ds), "valid_samples": len(valid_ds),
         "batch_size_below_256": below, "output_dir": str(out_dir), **data_derived}}
+    if init:
+        derived["derived"]["init_checkpoint"] = init["info"]
     resolved = {**cfg, **derived}
     (out_dir / "config.yaml").write_text(yaml.safe_dump(resolved, sort_keys=False))
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"], extra_config=derived, name=run_name)
     metadata = {**wb.git_info(), "wandb_run_id": run.id if run is not None else None}
 
     # --- model and optimization ---
-    model = build_model(mcfg, dcfg["sequence_length"]).to(device)
+    model = build_model(mcfg, dcfg["sequence_length"])
+    if init:
+        model.load_state_dict(init["ckpt"]["model"])
+    model = model.to(device)
     objective = LeJEPAObjective(tcfg["lambda_sigreg"], tcfg["sigreg_num_slices"],
                                 tcfg["sigreg_knots"], tcfg["sigreg_t_max"]).to(device)
     optimizer = torch.optim.AdamW(param_groups(model, tcfg["weight_decay"]), lr=tcfg["learning_rate"])

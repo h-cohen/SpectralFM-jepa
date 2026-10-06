@@ -6,7 +6,6 @@ data2vec baseline (ref_feb25) on identical rows and folds.
 Readouts and the random-init control come from `evaluation.readouts` and `evaluation.random_control`; W&B gets metrics, a scorecard table and a Δ plot, and never artifacts.
 """
 import argparse
-import hashlib
 import os
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_fo
                                                pair_with_baseline,
                                                run_canary, run_nested, write_json)
 from spectral_lejepa.models.vit_1d import EvalBackbone, build_model
-from spectral_lejepa.training.checkpoint import load_model
+from spectral_lejepa.training.checkpoint import load_model, sha256_file
 from spectral_lejepa.utils import wandb as wb
 
 
@@ -41,14 +40,6 @@ def model_input(raw, ckpt_cfg):
         g = ckpt_cfg["derived"]["global_stats"]
         return ((raw - g["mean"]) / g["std"]).astype(np.float32)
     return normalize_like_fairseq(raw)
-
-
-def sha256_file(path, chunk=1 << 20):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        while block := f.read(chunk):
-            h.update(block)
-    return h.hexdigest()
 
 
 def summarize(nested, block):

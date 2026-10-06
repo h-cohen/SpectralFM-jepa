@@ -8,7 +8,7 @@ import soundfile as sf
 import torch
 
 from spectral_lejepa.config import load_config
-from spectral_lejepa.training.checkpoint import load_checkpoint, load_model
+from spectral_lejepa.training.checkpoint import load_checkpoint, load_model, sha256_file
 from spectral_lejepa.training.trainer import lr_factor, schedule_lengths, train
 
 REPO = Path(__file__).resolve().parents[1]
@@ -205,4 +205,37 @@ def test_source_weights_need_packed(data_dir, tmp_path):
     cfg = tiny_cfg(data_dir, tmp_path / "out")
     cfg["data"]["source_weights"] = {"default": 1.0}
     with pytest.raises(ValueError, match="source_weights needs data.source=packed"):
+        train(cfg)
+
+
+def test_init_checkpoint_continues_from_weights(data_dir, tmp_path):
+    with pytest.warns(UserWarning):
+        base = train(tiny_cfg(data_dir, tmp_path / "base", "base"))
+    base_path = base["final_checkpoint"]
+    cfg = tiny_cfg(data_dir, tmp_path / "cont", "cont")
+    cfg["training"].update(init_checkpoint=base_path, max_steps=2, learning_rate=0.0)
+    with pytest.warns(UserWarning):
+        result = train(cfg)
+    ckpt = load_checkpoint(result["final_checkpoint"])
+    base_ckpt = load_checkpoint(base_path)
+    for k, v in base_ckpt["model"].items():
+        assert torch.equal(ckpt["model"][k], v), k           # lr 0: weights stay the initialization
+    init = ckpt["config"]["derived"]["init_checkpoint"]
+    assert init["path"] == base_path and init["step"] == 60 and len(init["sha256"]) == 64
+    assert init["sha256"] == sha256_file(base_path)
+
+
+def test_init_checkpoint_rejects_mismatch(data_dir, tmp_path):
+    with pytest.warns(UserWarning):
+        base = train(tiny_cfg(data_dir, tmp_path / "base", "base"))
+    cfg = tiny_cfg(data_dir, tmp_path / "bad", "bad")
+    cfg["training"]["init_checkpoint"] = base["final_checkpoint"]
+    cfg["model"]["dim"] = 16
+    with pytest.raises(ValueError, match="model"):
+        train(cfg)
+    cfg = tiny_cfg(data_dir, tmp_path / "bad2", "bad2")
+    cfg["training"]["init_checkpoint"] = base["final_checkpoint"]
+    cfg["data"]["normalization"] = "global"
+    cfg["data"]["source"] = "packed"
+    with pytest.raises(ValueError, match="normalization"):
         train(cfg)

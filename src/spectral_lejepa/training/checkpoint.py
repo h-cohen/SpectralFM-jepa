@@ -2,11 +2,20 @@
 state, step/epoch, the resolved config, git commit and the W&B run id."""
 from __future__ import annotations
 
+import hashlib
 import os
 
 import torch
 
 from ..models.vit_1d import build_model
+
+
+def sha256_file(path, chunk=1 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while block := f.read(chunk):
+            h.update(block)
+    return h.hexdigest()
 
 
 def save_checkpoint(path, *, model, optimizer, scaler, step, epoch, config, metadata, metrics):
