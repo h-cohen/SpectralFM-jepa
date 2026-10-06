@@ -19,6 +19,6 @@ Sample: one mono float32 WAV, exactly 245 points (the 16 kHz rate is nominal). M
 
 **Policy (client-approved):** pretraining uses all spectra above, including the evaluation spectra; labels are never used. Every component is an independent sample.
 
-**Evaluation sets** (`parameter_0`, component 0): labeled_data (4,716 spectra), labeled_regression 0055 (25), 0106 (64), 0109 (96), 0112 (68), 0113 (70), 0114 (230), 0120 (125), and their merge labeled_regression_all (695).
+**Evaluation sets** (`parameter_0`, component 0): labeled_data (4,716 spectra), labeled_regression 0055 (25), 0106 (64), 0109 (96), 0112 (68), 0113 (70), 0114 (230) and 0120 (125). Scored per set; the merge of the small sets is not scored.
 
 Excluded: the `single_channel_{one,5m,10k,1k,100,100_var}` and `single_sample` directories, which are subsets of single_channel_all, and `base_libri_100`, which is speech, not spectra.

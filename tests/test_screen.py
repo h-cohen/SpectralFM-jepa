@@ -67,7 +67,8 @@ def test_screen3_configs_are_consistent():
     repo = Path(screen.__file__).resolve().parents[1]
     scfg = yaml.safe_load((repo / "configs/screen3.yaml").read_text())
     ecfg = yaml.safe_load((repo / scfg["eval_config"]).read_text())
-    assert scfg["eval_set"] in ecfg["label_sets"] and "labeled_data" not in ecfg["label_sets"]
+    assert scfg["eval_set"] == "labeled_data" and "labeled_regression_all" not in ecfg["label_sets"]
+    assert list(ecfg["label_sets"])[-1] == "labeled_data"   # slowest set last, small sets report first
     assert ecfg["evaluation"]["ladder_sets"] == [] and ecfg["evaluation"]["random_control"] is False
     assert set(ecfg["baseline"]["run_dirs"]) <= set(ecfg["label_sets"])
     assert ecfg["experiment"]["output_dir"].startswith(scfg["output_dir"])

@@ -2,7 +2,7 @@
 name: screen-3
 output_dir: outputs/screen-3
 eval_config: configs/eval_small.yaml
-eval_set: labeled_regression_all    # the set the screen table scores (eval_small has no labeled_data)
+eval_set: labeled_data         # the set the screen table scores
 shared_overrides:
   - data.source=packed
   - data.packed_dir=/mnt5/home/hadar/nova/data/spectra_all

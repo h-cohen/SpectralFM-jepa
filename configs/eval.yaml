@@ -13,23 +13,12 @@ evaluation:
   readouts: [mean, seg4, flat]
   flat_blocks: [0, 1, 2]   # flat readout only for early blocks (cost); null = all blocks
   random_control: true
-  ladder_sets: [labeled_data, labeled_regression_all]
+  ladder_sets: [labeled_data]
   ladder_block_from: labeled_data      # must be listed first in label_sets
 
 # name -> list of label-set directories (several = merged, as clean-eval's merge_label_sets)
 label_sets:
   labeled_data: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_data]
-  labeled_regression_all:
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0055
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0106
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0109
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0112
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0113
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0114
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0115
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0117
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0118
-    - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0120
   dataset0055: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0055]
   dataset0106: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0106]
   dataset0109: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0109]
@@ -44,7 +33,6 @@ baseline:
   parent_repo: /mnt5/home/hadar/nova/SpectralFM-label-regression-eval-merged
   run_dirs:          # relative to parent_repo; each holds bank.npz + nested_results.json + nested_oof.npz
     labeled_data: code/eval_outputs/label_probe_regression_labeled_data_ref_feb25/label_probe/labeled_data
-    labeled_regression_all: code/eval_outputs/label_probe_regression_merged_ref_feb25/label_probe/labeled_regression_all
     dataset0055: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0055
     dataset0106: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0106
     dataset0109: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0109
