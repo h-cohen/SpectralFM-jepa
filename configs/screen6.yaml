@@ -1,0 +1,31 @@
+# Screen 6: 3-epoch from-scratch runs combining the levers that helped in screens 3-5
+# (sample-level global term, VISReg lambda 0.9, labeled-regression-balanced mix), with the random-init control.
+name: screen-6
+output_dir: outputs/screen-6
+eval_config: configs/eval_small6.yaml
+eval_set: labeled_data         # the set the screen table scores
+shared_overrides:
+  - data.source=packed
+  - data.packed_dir=/mnt5/home/hadar/nova/data/spectra_all
+  - data.normalization=global
+  - data.num_workers=12
+  - masking.mask_ratio=0.75
+  - training.epochs=3
+  - training.global_weight=1.0
+  - training.val_every=10000
+  - training.diag_every=10000
+  - training.ckpt_every=25000
+  - experiment.output_dir=outputs/screen-6
+  - wandb.group=screen-6
+  - "wandb.tags=[lejepa,spectralfm,1d,screen6,alldata]"
+arms:
+  long_g1: []
+  long_g1_visreg09: [training.regularizer=visreg, training.visreg_lambda=0.9]
+  long_g1_lr50: ["data.source_weights={labeled_regression: 0.5, default: 0.5}"]
+  long_g025: [training.global_weight=0.25]
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: screen-6
+  tags: [lejepa, spectralfm, 1d, screen6, alldata]
