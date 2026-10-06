@@ -106,6 +106,10 @@ def main(argv=None):
     fb = vcfg.get("flat_blocks")
     if fb is not None and not (isinstance(fb, list) and all(isinstance(b, int) and not isinstance(b, bool) and b >= 0 for b in fb)):
         raise ValueError(f"evaluation.flat_blocks must be null or a list of non-negative ints, got {fb!r}")
+    backend = vcfg.get("backend", "sklearn")
+    if backend not in ("sklearn", "torch"):
+        raise ValueError(f"evaluation.backend must be 'sklearn' or 'torch', got {backend!r}")
+    probe = {"n_jobs": vcfg["n_jobs"], "backend": backend, "device": vcfg.get("probe_device", "cuda")}
 
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"])
     ckpt_path = a.checkpoint
@@ -116,7 +120,7 @@ def main(argv=None):
                "pretraining_checkpoint_sha256": sha256_file(ckpt_path),
                "pretraining_checkpoint_step": ckpt["step"], "pretraining_git_commit": ckpt.get("git_commit"),
                "pretraining_git_dirty": ckpt.get("git_dirty"), "model_input": method, "evaluation_git_commit": git["git_commit"],
-               "evaluation_git_dirty": git["git_dirty"],
+               "evaluation_git_dirty": git["git_dirty"], "evaluation_backend": backend,
                "evaluation_config": cfg}
     if run is not None:
         run.config.update({"lineage": lineage})
@@ -143,13 +147,13 @@ def main(argv=None):
                                                        "stages": tuple(bank),
                                                        "readouts": tuple(vcfg["readouts"]),
                                                        "flat_blocks": vcfg.get("flat_blocks")})
-        nested, oof = run_nested(bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])
+        nested, oof = run_nested(bank, raw, y, seed=seed, **probe)
         write_json(out_dir / "nested_results.json", {**nested, "meta": lineage})
         np.savez_compressed(out_dir / "nested_oof.npz", y=y, **oof)
         block = best_block(nested)
         summary = summarize(nested, block)
         summary["delta_vs_raw"], summary["verdict"] = verdict(summary["raw_r2"], summary["embedding_r2"])
-        summary["canary"] = run_canary(bank[block], raw, y, seed)
+        summary["canary"] = run_canary(bank[block], raw, y, seed, backend=backend, device=probe["device"])
         if name in bcfg["run_dirs"]:
             summary["vs_ref_mean_only"] = pair_with_baseline(
                 y, oof, os.path.join(bcfg["parent_repo"], bcfg["run_dirs"][name]), nested["protocol"])
@@ -158,7 +162,7 @@ def main(argv=None):
         if name in vcfg["ladder_sets"]:
             if ladder_block is None:
                 raise ValueError("evaluation.ladder_block_from must come before the ladder sets in label_sets")
-            ladder = ladder_for_set(bank, raw, y, ladder_block, seed=seed, n_jobs=vcfg["n_jobs"])
+            ladder = ladder_for_set(bank, raw, y, ladder_block, seed=seed, **probe)
             write_json(out_dir / "nested_ladder.json", ladder)
             summary["ladder"] = {"block": ladder_block,
                                  **{f"{arm}_n{n}": v["median"] for arm, rungs in ladder["arms"].items()
@@ -169,7 +173,7 @@ def main(argv=None):
             rc_bank = extract_bank(random_backbone, model_input(raw, ckpt["config"]), device=vcfg["device"],
                                    batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
                                    flat_blocks=vcfg.get("flat_blocks"))
-            rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, n_jobs=vcfg["n_jobs"])
+            rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, **probe)
             if not np.allclose(rc_oof["raw"], oof["raw"], rtol=0, atol=1e-8):
                 raise RuntimeError("random-control raw OOFs differ from the model's: folds/rows are not paired")
             summary["vs_random_control"] = paired_delta(np.asarray(y, dtype=np.float64), oof["embedding"],

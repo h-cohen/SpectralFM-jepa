@@ -73,3 +73,54 @@ def test_compare_with_reference_detects_differences():
     assert nc.compare_with_reference(res, res) == {"max_abs_diff": 0.0, "choice_mismatches": 0}
     other = {**res, "embedding_minus_raw": {**res["embedding_minus_raw"], "delta": res["embedding_minus_raw"]["delta"] + 1}}
     assert nc.compare_with_reference(res, other)["max_abs_diff"] == pytest.approx(1.0)
+
+
+def torch_device():
+    torch = pytest.importorskip("torch")
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def test_run_nested_torch_backend_matches_sklearn():
+    X, y = synthetic()
+    bank = {"layer0": X, "layer1": np.random.default_rng(1).normal(size=X.shape).astype(np.float32)}
+    raw = np.random.default_rng(2).normal(size=(60, 245)).astype(np.float32)
+    ref, ref_oof = nc.run_nested(bank, raw, y, seed=42)
+    got, got_oof = nc.run_nested(bank, raw, y, seed=42, backend="torch", device=torch_device())
+    # max_abs_diff covers every chosen recipe's inner R² too, so a flipped choice must be a near-tie
+    # (OLS is invariant to the normalizer when n > p; sklearn's float32 lstsq rounding breaks that tie)
+    cmp = nc.compare_with_reference(got, ref)
+    assert cmp["max_abs_diff"] < 1e-5, cmp
+    assert got["test_folds"] == ref["test_folds"] and set(got_oof) == set(ref_oof)
+
+
+def test_ladder_and_canary_torch_backend_match_sklearn():
+    X, y = synthetic()
+    arms = {"raw": X[:, 1:], "block": X}
+    ref = nc.nested_ladder(arms, y, max_draws=2)
+    got = nc.nested_ladder(arms, y, max_draws=2, backend="torch", device=torch_device())
+    assert ref["rungs"] == got["rungs"]
+    for arm in arms:
+        for n, o in got["arms"][arm].items():
+            # recipe counts may differ by OLS ties across normalizers (n > p), never the scores
+            assert sum(o["recipes"].values()) == sum(ref["arms"][arm][n]["recipes"].values())
+            for k in ("median", "p25", "p75"):
+                assert abs(o[k] - ref["arms"][arm][n][k]) < 1e-5
+    c_ref = nc.run_canary(X, X[:, ::-1].copy(), y)
+    c_got = nc.run_canary(X, X[:, ::-1].copy(), y, backend="torch", device=torch_device())
+    for k in ("block", "raw"):
+        assert abs(c_ref[k]["real_r2"] - c_got[k]["real_r2"]) < 1e-9
+        assert abs(c_ref[k]["shuffled_r2"] - c_got[k]["shuffled_r2"]) < 1e-9
+
+
+def test_torch_backend_threads_do_not_change_results():
+    X, y = synthetic()
+    bank = {"layer0": X, "layer1": X[:, ::-1] * 2}
+    one, oof1 = nc.run_nested(bank, X[:, :5], y, seed=3, backend="torch", device=torch_device())
+    many, oof3 = nc.run_nested(bank, X[:, :5], y, seed=3, backend="torch", device=torch_device(), n_jobs=3)
+    assert one == many and all(np.array_equal(oof1[k], oof3[k]) for k in oof1)
+
+
+def test_unknown_backend_rejected():
+    X, y = synthetic()
+    with pytest.raises(ValueError, match="backend"):
+        nc.run_nested({"layer0": X}, X, y, backend="jax")

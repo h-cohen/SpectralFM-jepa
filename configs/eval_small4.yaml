@@ -9,6 +9,8 @@ evaluation:
   batch_size: 64
   max_samples: 5000
   n_jobs: 8
+  backend: sklearn          # probe backend: sklearn (reference) | torch (float64 port, GPU)
+  probe_device: cuda        # device of the torch probe backend
   min_n: 20
   readouts: [mean, seg4, flat]
   flat_blocks: [0, 1, 2]   # flat readout only for early blocks (cost); null = all blocks
