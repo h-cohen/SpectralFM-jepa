@@ -57,19 +57,16 @@ WIN_MARGIN = 0.05
 
 
 def verdict(raw_r2, emb_r2, margin=WIN_MARGIN):
-    """(delta, verdict): 'ceiling' when raw leaves less than `margin` of R² to gain."""
+    """(delta, verdict): any gain over raw is a 'win'; reaching the +margin aspiration is a 'strong-win'."""
     delta = emb_r2 - raw_r2
-    if 1 - raw_r2 < margin:
-        return delta, "ceiling"
-    return delta, "win" if delta >= margin else "no-win"
+    return delta, "strong-win" if delta >= margin else "win" if delta > 0 else "no-win"
 
 
 def scorecard(sets, key):
     """Counts over per-set summaries; key=None scores the model, key='random_control' the control."""
     rows = [s if key is None else s[key] for s in sets.values()]
-    eligible = [r for r in rows if r["verdict"] != "ceiling"]
-    return {"wins": sum(r["verdict"] == "win" for r in eligible), "eligible": len(eligible),
-            "ceiling": len(rows) - len(eligible),
+    return {"wins": sum(r["verdict"] in ("win", "strong-win") for r in rows),
+            "strong_wins": sum(r["verdict"] == "strong-win" for r in rows), "sets": len(rows),
             "mean_delta": float(np.mean([r["delta_vs_raw"] for r in rows])) if rows else float("nan")}
 
 
@@ -83,7 +80,7 @@ def scorecard_figure(sets):
     ax.bar(x - 0.2, [sets[n]["delta_vs_raw"] for n in names], 0.4, label="model")
     if all("random_control" in sets[n] for n in names):
         ax.bar(x + 0.2, [sets[n]["random_control"]["delta_vs_raw"] for n in names], 0.4, label="random init")
-    ax.axhline(WIN_MARGIN, color="k", ls="--", lw=1, label=f"win margin +{WIN_MARGIN}")
+    ax.axhline(WIN_MARGIN, color="k", ls="--", lw=1, label=f"aspiration +{WIN_MARGIN} (any gain wins)")
     ax.axhline(0, color="0.5", lw=0.8)
     ax.set_xticks(x, names, rotation=45, ha="right")
     ax.set_ylabel("R² − raw R² (nested CV)")

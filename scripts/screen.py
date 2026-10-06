@@ -27,7 +27,7 @@ from spectral_lejepa.utils import wandb as wb
 
 REPO = Path(__file__).resolve().parents[1]
 EVAL_SET = "labeled_data"
-COLUMNS = ["arm", "status", "verdict", "embedding_r2", "embedding_sd", "delta_vs_control", "delta_sd",
+COLUMNS = ["arm", "status", "verdict", "raw_r2", "embedding_r2", "embedding_sd", "delta_vs_control", "delta_sd",
            "floor", "delta_vs_ref_mean_only", "best_block", "valid_mse_loss", "valid_sigreg_loss",
            "effective_rank", "stage", "pretrain_run_id"]
 FOOTNOTE = ("Wins are candidates: the floor uses one control-seed spread and a row bootstrap, not "
@@ -74,7 +74,7 @@ def arm_row(name, status, eval_root, eval_set=EVAL_SET):
     set_dir = eval_root / f"{ckpt_path.parent.name}_step{ckpt['step']}" / eval_set
     s = json.loads((set_dir / "summary.json").read_text())
     m = ckpt["metrics"]
-    row.update(n=s["n"], embedding_r2=s["embedding_r2"], embedding_sd=s["embedding_sd"],
+    row.update(n=s["n"], raw_r2=s["raw_r2"], embedding_r2=s["embedding_r2"], embedding_sd=s["embedding_sd"],
                best_block=s["best_block"], oof=str(set_dir / "nested_oof.npz"),
                delta_vs_ref_mean_only=s.get("vs_ref_mean_only", {}).get("embedding", {}).get("delta"),
                valid_mse_loss=m.get("valid/mse_loss"), valid_sigreg_loss=m.get("valid/sigreg_loss"),

@@ -86,14 +86,14 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
     assert "pretraining_artifact" not in lin and "pretraining_artifact_digest" not in lin
     assert lin["pretraining_checkpoint"] == str(ckpt)
     assert [k for k in s["blocks"] if k.endswith("/flat")] == ["layer0/flat"] and any(k.endswith("/seg4") for k in s["blocks"])
-    assert s["verdict"] in ("win", "no-win", "ceiling") and s["delta_vs_raw"] == s["embedding_r2"] - s["raw_r2"]
+    assert s["verdict"] in ("strong-win", "win", "no-win") and s["delta_vs_raw"] == s["embedding_r2"] - s["raw_r2"]
     rc = s["random_control"]
     assert set(rc) >= {"embedding_r2", "best_block", "delta_vs_raw", "verdict"}
     assert (out_root / SET / "random_control" / "nested_results.json").exists()
     card = top["scorecard"]
     for row in ("model", "random_control"):
-        assert set(card[row]) == {"wins", "eligible", "ceiling", "mean_delta"}
-        assert card[row]["eligible"] + card[row]["ceiling"] == 1
+        assert set(card[row]) == {"wins", "strong_wins", "sets", "mean_delta"}
+        assert card[row]["sets"] == 1
 
     cfg_path.write_text(yaml.safe_dump(ecfg))
     with pytest.raises(ValueError, match="bogus"):
@@ -103,12 +103,15 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
 
 
 def test_verdict_and_scorecard():
-    assert evaluate.verdict(0.80, 0.86) == (pytest.approx(0.06), "win")
-    assert evaluate.verdict(0.80, 0.84)[1] == "no-win"
-    assert evaluate.verdict(0.983, 0.99)[1] == "ceiling"          # 1 - raw < 0.05: a +0.05 win is impossible
-    sets = {"a": {"delta_vs_raw": 0.06, "verdict": "win"}, "b": {"delta_vs_raw": -0.1, "verdict": "no-win"},
-            "c": {"delta_vs_raw": 0.0, "verdict": "ceiling"}}
-    assert evaluate.scorecard(sets, None) == {"wins": 1, "eligible": 2, "ceiling": 1, "mean_delta": pytest.approx(-0.04 / 3)}
+    # user rule (2026-10-06): any gain over raw wins; +0.05 is the aspiration ("strong-win")
+    assert evaluate.verdict(0.80, 0.86) == (pytest.approx(0.06), "strong-win")
+    assert evaluate.verdict(0.80, 0.84)[1] == "win"
+    assert evaluate.verdict(0.983, 0.985)[1] == "win"
+    assert evaluate.verdict(0.80, 0.80)[1] == "no-win"
+    sets = {"a": {"delta_vs_raw": 0.06, "verdict": "strong-win"}, "b": {"delta_vs_raw": -0.1, "verdict": "no-win"},
+            "c": {"delta_vs_raw": 0.002, "verdict": "win"}}
+    assert evaluate.scorecard(sets, None) == {"wins": 2, "strong_wins": 1, "sets": 3,
+                                              "mean_delta": pytest.approx(-0.038 / 3)}
 
 
 def test_model_input_methods():
