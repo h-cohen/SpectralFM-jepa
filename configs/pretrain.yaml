@@ -49,6 +49,9 @@ training:
   sigreg_num_slices: 1024
   sigreg_knots: 17
   sigreg_t_max: 3.0
+  regularizer: sigreg          # sigreg | visreg (Wu et al. 2026); lambda_sigreg is used only by sigreg
+  visreg_slices: 4096          # random projection directions per call (visreg only)
+  visreg_lambda: 0.6           # visreg weighting: (1 - lam) * prediction + lam * regularizer
   global_weight: 0.0           # beta of the sample-level (pooled multi-view) term; 0 disables it (no extra compute)
   global_views: 2             # extra random-subset views per sample
   global_keep: 0.5            # fraction of the 24 patches each extra view keeps (random, per sample)

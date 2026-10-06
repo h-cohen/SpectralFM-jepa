@@ -88,6 +88,8 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
     totals = {"loss": 0.0, "mse_loss": 0.0, "sigreg_loss": 0.0}
     if global_cfg:
         totals.update(global_inv_loss=0.0, global_sigreg_loss=0.0, global_loss=0.0)
+    if objective.regularizer == "visreg":
+        totals.update(reg_center=0.0, reg_scale=0.0, reg_shape=0.0)
     n_batches = 0
     for i in range(0, len(signals) - batch_size + 1, batch_size):
         x = signals[i:i + batch_size].to(device)
@@ -232,7 +234,8 @@ def train(cfg: dict) -> dict:
         model.load_state_dict(init["ckpt"]["model"])
     model = model.to(device)
     objective = LeJEPAObjective(tcfg["lambda_sigreg"], tcfg["sigreg_num_slices"],
-                                tcfg["sigreg_knots"], tcfg["sigreg_t_max"], tcfg["global_weight"]).to(device)
+                                tcfg["sigreg_knots"], tcfg["sigreg_t_max"], tcfg["global_weight"],
+                                tcfg["regularizer"], tcfg["visreg_slices"], tcfg["visreg_lambda"]).to(device)
     optimizer = torch.optim.AdamW(param_groups(model, tcfg["weight_decay"]), lr=tcfg["learning_rate"])
     scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
     scaler = torch.amp.GradScaler(device.type, enabled=amp)
