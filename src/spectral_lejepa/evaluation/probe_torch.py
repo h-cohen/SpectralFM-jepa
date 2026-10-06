@@ -27,6 +27,7 @@ Exactness, per piece (dtype decisions follow what sklearn computes in):
 """
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -40,8 +41,17 @@ ALPHAS = np.logspace(-3, 3, 20)          # = probe.make_regressor("ridgecv").alp
 F64 = torch.float64
 
 
+def _devices(device):
+    """`device` as a list of torch devices: None -> [cuda], a name, or a list of names."""
+    names = ["cuda"] if device is None else [device] if isinstance(device, (str, torch.device)) else list(device)
+    if not names:
+        raise ValueError("empty probe device list")
+    return [torch.device(d) for d in names]
+
+
 def _device(device):
-    return torch.device(device if device is not None else "cuda")
+    """The single device a fit runs on (the first one of a list)."""
+    return _devices(device)[0]
 
 
 def _tall_svd(A):
@@ -214,18 +224,33 @@ def fit_predict(X_tr, y_tr, X_te, probe, seed=42, device=None):
     return _fit(Z_tr, y_tr, Z_te, [probe])[probe]
 
 
-def map_on_streams(fn, args_list, n_threads=1, device=None):
-    """[fn(*args) for args in args_list], up to n_threads at a time, each call on its own CUDA
-    stream: cuSOLVER's SVD/eigh are latency-bound, so concurrent folds overlap on one GPU. Every
-    call computes exactly what it would alone (only the scheduling changes)."""
-    device = _device(device)
-    if n_threads <= 1 or device.type != "cuda":
-        return [fn(*a) for a in args_list]
+def map_on_streams(fn, args_list, workers=1, device=None):
+    """[fn(*args, device=<its device>) for args in args_list]. Jobs are dealt round-robin over
+    the device(s); each device runs up to `workers` jobs at once, each worker thread on its own
+    CUDA stream (cuSOLVER's SVD/eigh are latency-bound, so concurrent folds overlap). Peak GPU
+    memory grows with `workers` (~2 GB per labeled_data-sized fold). Every job computes
+    exactly what it would alone: only the scheduling changes, results are bit-identical."""
+    devices = _devices(device)
+    assign = [devices[i % len(devices)] for i in range(len(args_list))]
+    if workers <= 1 and len(devices) == 1 or devices[0].type != "cuda":
+        return [fn(*a, device=d) for a, d in zip(args_list, assign)]
+    local = threading.local()
 
-    def run(args):
-        with torch.cuda.device(device), torch.cuda.stream(torch.cuda.Stream(device=device)):
-            out = fn(*args)
-            torch.cuda.current_stream().synchronize()
+    def run(job):
+        args, dev = job
+        if getattr(local, "device", None) != dev:
+            local.device, local.stream = dev, torch.cuda.Stream(device=dev)
+        with torch.cuda.device(dev), torch.cuda.stream(local.stream):
+            out = fn(*args, device=dev)
+            local.stream.synchronize()
         return out
-    with ThreadPoolExecutor(n_threads) as ex:
-        return list(ex.map(run, args_list))
+    pools = {d: ThreadPoolExecutor(max(1, workers)) for d in devices}
+    try:
+        futures = [pools[d].submit(run, (a, d)) for a, d in zip(args_list, assign)]
+        return [f.result() for f in futures]
+    finally:
+        for pool in pools.values():
+            pool.shutdown(cancel_futures=True)
+        for d in devices:
+            with torch.cuda.device(d):
+                torch.cuda.empty_cache()

@@ -25,7 +25,7 @@ MIN_N = 20          # below this, inner folds would fit on a handful of rows; su
 LADDER_N = (10, 20, 50, 100, 200, 500, 1000, 2000)
 
 
-def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device):
+def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device=None):
     """{(norm, probe): prediction on X_te}: every normalizer fit on X_tr, each recipe's probe
     fit on (X_tr', y_tr). backend "sklearn" is the reference (probe.py); "torch" runs the
     float64 port (probe_torch.py) on `device`."""
@@ -112,7 +112,8 @@ def paired_delta(y, PA, PB, n_boot=1000, seed=0):
 
 def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
               fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None):
-    """backend "torch" runs the folds on `device`, n_jobs threads at a time (one CUDA stream each)."""
+    """backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
+    n_jobs concurrent folds per device (threads, one CUDA stream each)."""
     y = np.asarray(y, dtype=np.float64)
     n = len(y)
     ensembles = ensembles or {}
@@ -120,7 +121,7 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
     for r in range(n_repeats):
         for f, (tr, te) in enumerate(KFold(n_folds, shuffle=True, random_state=seed + r).split(y)):
             jobs.append((r, f, tr, te))
-    args = [(arms, families, y, tr, te, n_inner, seed + 1000 + 10 * r + f, fixed_arms, ensembles, backend, device)
+    args = [(arms, families, y, tr, te, n_inner, seed + 1000 + 10 * r + f, fixed_arms, ensembles, backend)
             for r, f, tr, te in jobs]
     if backend == "torch":
         from .probe_torch import map_on_streams
@@ -219,7 +220,7 @@ def nested_ladder(arms, y, n_trains=LADDER_N, n_folds=5, n_inner=5, seed=42, n_j
         for n in rungs:
             for d in range(n_draws(n, n_full, max_draws)):
                 sub = tr if n >= n_full else rng.choice(tr, size=n, replace=False)
-                jobs.append((n, (arms, y, np.sort(sub), te, n_inner, seed + 7 * d + 1000 * f, backend, device)))
+                jobs.append((n, (arms, y, np.sort(sub), te, n_inner, seed + 7 * d + 1000 * f, backend)))
     if backend == "torch":
         from .probe_torch import map_on_streams
         outs = map_on_streams(_one_draw, [a for _, a in jobs], n_jobs, device)
@@ -324,12 +325,13 @@ def compare_ladders(ours, ref):
     return {"max_abs_diff": float(max(diffs)), "recipe_mismatches": int(mismatches)}
 
 
-def pair_with_baseline(y, oof, baseline_dir, protocol):
+def pair_with_baseline(y, oof, baseline_dir, protocol, raw_atol=1e-8):
     """Paired R² gaps (ours - baseline) on identical spectra and folds, read from the
     baseline's nested_oof.npz. Refuses if the rows or folds differ: a gap on different rows is
     meaningless. The parent's results carry no test_folds, so fold identity is asserted via the
     protocol (n, repeats, folds, inner, seed) plus an identical raw-input arm (same rows + folds
-    + recipes give the same raw out-of-fold predictions)."""
+    + recipes give the same raw out-of-fold predictions; `raw_atol` loosens "same" for another
+    probe backend: sklearn's float32 LinearRegression rounds differently from the torch port)."""
     path = os.path.join(baseline_dir, "nested_oof.npz")
     base = np.load(path)
     with open(os.path.join(baseline_dir, "nested_results.json")) as f:
@@ -343,7 +345,7 @@ def pair_with_baseline(y, oof, baseline_dir, protocol):
         raise ValueError(f"baseline rows in {path} differ from ours (n={len(base['y'])} vs {len(y)}); "
                          "refusing to pair")
     if (np.shape(oof["raw"]) != base["raw"].shape
-            or not np.allclose(oof["raw"], base["raw"], rtol=0, atol=1e-8)):
+            or not np.allclose(oof["raw"], base["raw"], rtol=0, atol=raw_atol)):
         raise ValueError(f"raw-input out-of-fold predictions in {path} differ from ours "
                          "(different folds or rows); refusing to pair")
     families = ("embedding", f"embedding_top{ENSEMBLE_K}", "raw")

@@ -124,3 +124,18 @@ def test_unknown_backend_rejected():
     X, y = synthetic()
     with pytest.raises(ValueError, match="backend"):
         nc.run_nested({"layer0": X}, X, y, backend="jax")
+
+
+def test_map_on_streams_matches_sequential_on_every_device_layout():
+    torch = pytest.importorskip("torch")
+    from spectral_lejepa.evaluation.probe_torch import map_on_streams
+    X, y = synthetic(n=80, d=30)
+    folds = list(nc.KFold(5, shuffle=True, random_state=0).split(X))
+    args = [(X[tr], y[tr], X[te], RECIPES, 7, "torch") for tr, te in folds]
+    dev = torch_device()
+    seq = [nc._recipe_predictions(*a, device=dev) for a in args]
+    layouts = [(dev, 2)] + ([(["cuda:0", "cuda:1"], 2)] if torch.cuda.device_count() > 1 else [])
+    for devices, workers in layouts:
+        got = map_on_streams(lambda *a, device: nc._recipe_predictions(*a, device=device), args, workers, devices)
+        for g, s in zip(got, seq):
+            assert all(np.array_equal(g[rc], s[rc]) for rc in RECIPES), devices
