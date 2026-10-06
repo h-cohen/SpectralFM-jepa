@@ -76,6 +76,7 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
     assert lin["pretraining_run_id"] is None
     for key in ("pretraining_git_commit", "evaluation_git_commit", "evaluation_git_dirty"):
         assert key in lin
+    assert lin["evaluation_backend"] == "sklearn"
     s = json.loads((out_root / SET / "summary.json").read_text())
     assert top["sets"][SET]["n"] == 30
     for key in ("embedding_r2", "raw_r2", "canary", "vs_ref_mean_only", "vs_random_control"):
@@ -100,6 +101,10 @@ def test_evaluate_main_end_to_end(data_dir, tmp_path, monkeypatch):  # noqa: F81
         evaluate.main(["--checkpoint", str(ckpt), "--config", str(cfg_path), "evaluation.readouts=[mean,bogus]"])
     with pytest.raises(ValueError, match="flat_blocks"):
         evaluate.main(["--checkpoint", str(ckpt), "--config", str(cfg_path), "evaluation.flat_blocks=[-1]"])
+    ecfg["evaluation"]["backend"] = "jax"
+    cfg_path.write_text(yaml.safe_dump(ecfg))
+    with pytest.raises(ValueError, match="backend"):
+        evaluate.main(["--checkpoint", str(ckpt), "--config", str(cfg_path)])
 
 
 def test_verdict_and_scorecard():

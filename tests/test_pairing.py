@@ -36,3 +36,15 @@ def test_pairing_requires_identical_protocol_and_folds(tmp_path):
         pair_with_baseline(y, ours, tmp_path, {**PROTO, "seed": 43})
     with pytest.raises(ValueError, match="refusing to pair"):
         pair_with_baseline(y, {**ours, "raw": P + 1e-3}, tmp_path, PROTO)
+
+
+def test_pairing_raw_tolerance_for_another_backend(tmp_path):
+    y = np.arange(30, dtype=np.float64)
+    P = np.stack([y + 1, y - 1])
+    make_baseline(tmp_path, y, P)
+    ours = {"embedding": P + 0.5, "raw": P + 1e-4, "embedding_top3": P}
+    with pytest.raises(ValueError, match="refusing to pair"):
+        pair_with_baseline(y, ours, tmp_path, PROTO)
+    assert "embedding" in pair_with_baseline(y, ours, tmp_path, PROTO, raw_atol=1e-2 * np.std(y))
+    with pytest.raises(ValueError, match="refusing to pair"):   # other folds: large differences
+        pair_with_baseline(y, {**ours, "raw": P[:, ::-1]}, tmp_path, PROTO, raw_atol=1e-2 * np.std(y))

@@ -10,6 +10,7 @@ rows -- are paired, and paired_delta resamples the same spectra for both.
 from __future__ import annotations
 
 import collections
+import contextlib
 import json
 import os
 
@@ -24,52 +25,69 @@ MIN_N = 20          # below this, inner folds would fit on a handful of rows; su
 LADDER_N = (10, 20, 50, 100, 200, 500, 1000, 2000)
 
 
-def _inner_scores(X, y, n_inner, seed):
+def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device=None):
+    """{(norm, probe): prediction on X_te}: every normalizer fit on X_tr, each recipe's probe
+    fit on (X_tr', y_tr). backend "sklearn" is the reference (probe.py); "torch" runs the
+    float64 port (probe_torch.py) on `device`."""
+    recipes = list(dict.fromkeys(recipes))
+    if backend == "torch":
+        from .probe_torch import recipe_predictions
+        return recipe_predictions(X_tr, y_tr, X_te, recipes, seed=seed, device=device)
+    if backend != "sklearn":
+        raise ValueError(f"unknown probe backend {backend!r}; choose 'sklearn' or 'torch'")
+    T = fold_transforms(X_tr, X_te, seed=seed)
+    return {(norm, probe): fit_predict(T[norm][0], y_tr, T[norm][1], probe, seed) for norm, probe in recipes}
+
+
+def _inner_scores(X, y, n_inner, seed, backend="sklearn", device=None):
     """Inner-CV R² of every recipe, on these (training) rows only."""
     preds = {rc: np.zeros(len(y)) for rc in RECIPES}
     for itr, ite in KFold(n_inner, shuffle=True, random_state=seed).split(X):
-        T = fold_transforms(X[itr], X[ite], seed=seed)
-        for norm, probe in RECIPES:
-            a, b = T[norm]
-            preds[(norm, probe)][ite] = fit_predict(a, y[itr], b, probe, seed)
+        P = _recipe_predictions(X[itr], y[itr], X[ite], RECIPES, seed, backend, device)
+        for rc in RECIPES:
+            preds[rc][ite] = P[rc]
     return {rc: r2(y, p) for rc, p in preds.items()}
 
 
-def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles):
-    with threadpool_limits(limits=1):
+def _single_threaded(backend):
+    """sklearn folds run one BLAS thread each (joblib parallelizes over folds); the torch backend
+    leaves the (process-wide) BLAS pools alone, its concurrent folds are threads of one process."""
+    return threadpool_limits(limits=1) if backend == "sklearn" else contextlib.nullcontext()
+
+
+def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles, backend="sklearn", device=None):
+    with _single_threaded(backend):
         needed = sorted({a for names in families.values() for a in names}
                         | {a for names, _ in ensembles.values() for a in names})
-        inner = {a: _inner_scores(arms[a][tr], y[tr], n_inner, seed) for a in needed}
-        cache = {}
+        inner = {a: _inner_scores(arms[a][tr], y[tr], n_inner, seed, backend, device) for a in needed}
 
-        def transforms(arm):
-            if arm not in cache:
-                cache[arm] = fold_transforms(arms[arm][tr], arms[arm][te], seed=seed)
-            return cache[arm]
+        # the refits this fold needs, per arm: selected recipes, ensemble members, fixed arms
+        picks = {fam: max(((a, rc) for a in names for rc in RECIPES), key=lambda k: inner[k[0]][k[1]])
+                 for fam, names in families.items()}
+        best, tops = {}, {}
+        for name, (names, k) in ensembles.items():
+            best[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
+            tops[name] = sorted(names, key=lambda a: -inner[a][best[name][a]])[:k]
+        wanted = collections.defaultdict(list)
+        for arm, rc in picks.values():
+            wanted[arm].append(rc)
+        for name, top in tops.items():
+            for a_ in top:
+                wanted[a_].append(best[name][a_])
+        for arm in fixed_arms:
+            wanted[arm] += list(RECIPES)
+        refit = {arm: _recipe_predictions(arms[arm][tr], y[tr], arms[arm][te], rcs, seed, backend, device)
+                 for arm, rcs in wanted.items()}
 
         chosen = {}
-        for fam, names in families.items():
-            arm, (norm, probe) = max(((a, rc) for a in names for rc in RECIPES),
-                                     key=lambda k: inner[k[0]][k[1]])
-            a, b = transforms(arm)[norm]
-            chosen[fam] = {"pred": fit_predict(a, y[tr], b, probe, seed), "arm": arm,
+        for fam, (arm, (norm, probe)) in picks.items():
+            chosen[fam] = {"pred": refit[arm][(norm, probe)], "arm": arm,
                            "norm": norm, "probe": probe, "inner_r2": inner[arm][(norm, probe)]}
-        for name, (names, k) in ensembles.items():
-            best = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
-            top = sorted(names, key=lambda a: -inner[a][best[a]])[:k]
-            preds = []
-            for a_ in top:
-                norm, probe = best[a_]
-                a, b = transforms(a_)[norm]
-                preds.append(fit_predict(a, y[tr], b, probe, seed))
-            chosen[name] = {"pred": np.mean(preds, axis=0),
-                            "members": [{"arm": a_, "norm": best[a_][0], "probe": best[a_][1],
-                                         "inner_r2": inner[a_][best[a_]]} for a_ in top]}
-        fixed = {}
-        for arm in fixed_arms:
-            for norm, probe in RECIPES:
-                a, b = transforms(arm)[norm]
-                fixed[(arm, norm, probe)] = fit_predict(a, y[tr], b, probe, seed)
+        for name in ensembles:
+            chosen[name] = {"pred": np.mean([refit[a_][best[name][a_]] for a_ in tops[name]], axis=0),
+                            "members": [{"arm": a_, "norm": best[name][a_][0], "probe": best[name][a_][1],
+                                         "inner_r2": inner[a_][best[name][a_]]} for a_ in tops[name]]}
+        fixed = {(arm, norm, probe): refit[arm][(norm, probe)] for arm in fixed_arms for norm, probe in RECIPES}
     return chosen, fixed
 
 
@@ -93,7 +111,9 @@ def paired_delta(y, PA, PB, n_boot=1000, seed=0):
 
 
 def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
-              fixed_arms=(), ensembles=None, n_jobs=1):
+              fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None):
+    """backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
+    n_jobs concurrent folds per device (threads, one CUDA stream each)."""
     y = np.asarray(y, dtype=np.float64)
     n = len(y)
     ensembles = ensembles or {}
@@ -101,9 +121,12 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
     for r in range(n_repeats):
         for f, (tr, te) in enumerate(KFold(n_folds, shuffle=True, random_state=seed + r).split(y)):
             jobs.append((r, f, tr, te))
-    args = [(arms, families, y, tr, te, n_inner, seed + 1000 + 10 * r + f, fixed_arms, ensembles)
+    args = [(arms, families, y, tr, te, n_inner, seed + 1000 + 10 * r + f, fixed_arms, ensembles, backend)
             for r, f, tr, te in jobs]
-    if n_jobs > 1:
+    if backend == "torch":
+        from .probe_torch import map_on_streams
+        outs = map_on_streams(_outer_fold, args, n_jobs, device)
+    elif n_jobs > 1:
         from joblib import Parallel, delayed
         outs = Parallel(n_jobs=n_jobs)(delayed(_outer_fold)(*a) for a in args)
     else:
@@ -128,7 +151,8 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
     return res
 
 
-def run_nested(bank, input_raw, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, n_jobs=1):
+def run_nested(bank, input_raw, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, n_jobs=1, backend="sklearn",
+               device=None):
     """Raw input vs the embedding (every block, mean-pooled), each at its nested-selected
     recipe; the top-3 block average; every block alone (depth profile / fixed-block readout);
     raw input at every fixed recipe. Returns (json-able results, {family: oof [R, n]})."""
@@ -137,7 +161,8 @@ def run_nested(bank, input_raw, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, n
     families = {"raw": ["raw"], "embedding": stages, **{s: [s] for s in stages}}
     ensembles = {f"embedding_top{ENSEMBLE_K}": (stages, ENSEMBLE_K)}
     res = nested_cv(arms, families, y, n_repeats=n_repeats, n_folds=n_folds, n_inner=n_inner,
-                    seed=seed, fixed_arms=("raw",), ensembles=ensembles, n_jobs=n_jobs)
+                    seed=seed, fixed_arms=("raw",), ensembles=ensembles, n_jobs=n_jobs, backend=backend,
+                    device=device)
     families = {**families, **ensembles}
     y64 = np.asarray(y, dtype=np.float64)
     out = {
@@ -170,18 +195,19 @@ def n_draws(n, n_full, max_draws=None):
     return min(d, max_draws) if max_draws else d
 
 
-def _one_draw(arms, y, sub, te, n_inner, seed):
+def _one_draw(arms, y, sub, te, n_inner, seed, backend="sklearn", device=None):
     out = {}
-    with threadpool_limits(limits=1):
+    with _single_threaded(backend):
         for name, X in arms.items():
-            inner = _inner_scores(X[sub], y[sub], min(n_inner, len(sub)), seed)
+            inner = _inner_scores(X[sub], y[sub], min(n_inner, len(sub)), seed, backend, device)
             norm, probe = max(RECIPES, key=lambda rc: inner[rc])
-            a, b = fold_transforms(X[sub], X[te], seed=seed)[norm]
-            out[name] = {"r2": r2(y[te], fit_predict(a, y[sub], b, probe, seed)), "recipe": f"{norm}+{probe}"}
+            pred = _recipe_predictions(X[sub], y[sub], X[te], [(norm, probe)], seed, backend, device)[(norm, probe)]
+            out[name] = {"r2": r2(y[te], pred), "recipe": f"{norm}+{probe}"}
     return out
 
 
-def nested_ladder(arms, y, n_trains=LADDER_N, n_folds=5, n_inner=5, seed=42, n_jobs=1, max_draws=None):
+def nested_ladder(arms, y, n_trains=LADDER_N, n_folds=5, n_inner=5, seed=42, n_jobs=1, max_draws=None,
+                  backend="sklearn", device=None):
     """Per outer fold and label budget n: random n-row subsets of the training fold; inner CV on
     those n rows picks the recipe; scored on the held-out fold. Arms share subsets (paired)."""
     y = np.asarray(y, dtype=np.float64)
@@ -194,8 +220,11 @@ def nested_ladder(arms, y, n_trains=LADDER_N, n_folds=5, n_inner=5, seed=42, n_j
         for n in rungs:
             for d in range(n_draws(n, n_full, max_draws)):
                 sub = tr if n >= n_full else rng.choice(tr, size=n, replace=False)
-                jobs.append((n, (arms, y, np.sort(sub), te, n_inner, seed + 7 * d + 1000 * f)))
-    if n_jobs > 1:
+                jobs.append((n, (arms, y, np.sort(sub), te, n_inner, seed + 7 * d + 1000 * f, backend)))
+    if backend == "torch":
+        from .probe_torch import map_on_streams
+        outs = map_on_streams(_one_draw, [a for _, a in jobs], n_jobs, device)
+    elif n_jobs > 1:
         from joblib import Parallel, delayed
         outs = Parallel(n_jobs=n_jobs)(delayed(_one_draw)(*a) for _, a in jobs)
     else:
@@ -224,33 +253,34 @@ def nested_ladder(arms, y, n_trains=LADDER_N, n_folds=5, n_inner=5, seed=42, n_j
     }
 
 
-def ladder_for_set(bank, input_raw, y, block, seed=42, n_jobs=1):
+def ladder_for_set(bank, input_raw, y, block, seed=42, n_jobs=1, backend="sklearn", device=None):
     """Raw input vs ONE block fixed in advance (the fixed-block readout)."""
     arms = {"raw": np.asarray(input_raw, dtype=np.float32), "block": bank[block]}
-    return {**nested_ladder(arms, y, seed=seed, n_jobs=n_jobs), "block": block}
+    return {**nested_ladder(arms, y, seed=seed, n_jobs=n_jobs, backend=backend, device=device), "block": block}
 
 
 # --- shuffled-label canary (canary.py) ---
 
-def _kfold_oof(X, y, seed, n_folds=5):
+def _kfold_oof(X, y, seed, n_folds=5, backend="sklearn", device=None):
     pred = np.zeros(len(y))
+    rc = ("standardize", "ridgecv")
     for tr, te in KFold(n_folds, shuffle=True, random_state=seed).split(X):
-        a, b = fold_transforms(X[tr], X[te], seed=seed)["standardize"]
-        pred[te] = fit_predict(a, y[tr], b, "ridgecv", seed)
+        pred[te] = _recipe_predictions(X[tr], y[tr], X[te], [rc], seed, backend, device)[rc]
     return pred
 
 
-def shuffled_label_canary(X, y, seed=42, threshold=0.02):
+def shuffled_label_canary(X, y, seed=42, threshold=0.02, backend="sklearn", device=None):
     """Permute y and rerun the same probe: an honest pipeline scores R² ~ 0."""
     y = np.asarray(y, dtype=np.float64)
     y_shuffled = np.random.default_rng(seed).permutation(y)
-    real = r2(y, _kfold_oof(X, y, seed))
-    shuffled = r2(y_shuffled, _kfold_oof(X, y_shuffled, seed))
+    real = r2(y, _kfold_oof(X, y, seed, backend=backend, device=device))
+    shuffled = r2(y_shuffled, _kfold_oof(X, y_shuffled, seed, backend=backend, device=device))
     return {"real_r2": real, "shuffled_r2": shuffled, "passed": bool(shuffled <= threshold)}
 
 
-def run_canary(X_block, input_raw, y, seed=42):
-    return {"block": shuffled_label_canary(X_block, y, seed), "raw": shuffled_label_canary(input_raw, y, seed)}
+def run_canary(X_block, input_raw, y, seed=42, backend="sklearn", device=None):
+    return {"block": shuffled_label_canary(X_block, y, seed, backend=backend, device=device),
+            "raw": shuffled_label_canary(input_raw, y, seed, backend=backend, device=device)}
 
 
 # --- comparisons and pairing ---
@@ -295,12 +325,13 @@ def compare_ladders(ours, ref):
     return {"max_abs_diff": float(max(diffs)), "recipe_mismatches": int(mismatches)}
 
 
-def pair_with_baseline(y, oof, baseline_dir, protocol):
+def pair_with_baseline(y, oof, baseline_dir, protocol, raw_atol=1e-8):
     """Paired R² gaps (ours - baseline) on identical spectra and folds, read from the
     baseline's nested_oof.npz. Refuses if the rows or folds differ: a gap on different rows is
     meaningless. The parent's results carry no test_folds, so fold identity is asserted via the
     protocol (n, repeats, folds, inner, seed) plus an identical raw-input arm (same rows + folds
-    + recipes give the same raw out-of-fold predictions)."""
+    + recipes give the same raw out-of-fold predictions; `raw_atol` loosens "same" for another
+    probe backend: sklearn's float32 LinearRegression rounds differently from the torch port)."""
     path = os.path.join(baseline_dir, "nested_oof.npz")
     base = np.load(path)
     with open(os.path.join(baseline_dir, "nested_results.json")) as f:
@@ -314,7 +345,7 @@ def pair_with_baseline(y, oof, baseline_dir, protocol):
         raise ValueError(f"baseline rows in {path} differ from ours (n={len(base['y'])} vs {len(y)}); "
                          "refusing to pair")
     if (np.shape(oof["raw"]) != base["raw"].shape
-            or not np.allclose(oof["raw"], base["raw"], rtol=0, atol=1e-8)):
+            or not np.allclose(oof["raw"], base["raw"], rtol=0, atol=raw_atol)):
         raise ValueError(f"raw-input out-of-fold predictions in {path} differ from ours "
                          "(different folds or rows); refusing to pair")
     families = ("embedding", f"embedding_top{ENSEMBLE_K}", "raw")
