@@ -45,9 +45,19 @@ def normalize_signal(x: torch.Tensor) -> torch.Tensor:
     return F.layer_norm(x, x.shape[-1:])
 
 
+def normalize(x: torch.Tensor, method: str, stats: dict | None) -> torch.Tensor:
+    """`sample_zscore` (per spectrum) or `global` ((x - mean) / std from the packed stats.json)."""
+    if method == "sample_zscore":
+        return normalize_signal(x)
+    if method == "global":
+        return (x - stats["mean"]) / stats["std"]
+    raise ValueError(f"unknown normalization {method!r}: use 'sample_zscore' or 'global'")
+
+
 class SpectraDataset(Dataset):
-    def __init__(self, paths):
+    def __init__(self, paths, normalization="sample_zscore", stats=None):
         self.paths = list(paths)
+        self.normalization, self.stats = normalization, stats
 
     def __len__(self):
         return len(self.paths)
@@ -59,7 +69,34 @@ class SpectraDataset(Dataset):
             raise ValueError(f"{path}: expected shape ({SEQUENCE_LENGTH},), got {x.shape}")
         if not np.isfinite(x).all():
             raise ValueError(f"{path}: contains NaN or inf")
-        return normalize_signal(torch.from_numpy(x))
+        return normalize(torch.from_numpy(x), self.normalization, self.stats)
+
+
+class PackedSpectra(Dataset):
+    """Selected rows of a packed `spectra.npy`; the memmap opens lazily so DataLoader workers are safe."""
+
+    def __init__(self, packed_dir, rows, normalization="sample_zscore", stats=None):
+        self.path = os.path.join(packed_dir, "spectra.npy")
+        self.rows = np.asarray(rows)
+        self.normalization, self.stats = normalization, stats
+        self._array = None
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, i):
+        if self._array is None:
+            self._array = np.load(self.path, mmap_mode="r")
+        x = torch.from_numpy(np.array(self._array[self.rows[i]], dtype=np.float32))
+        return normalize(x, self.normalization, self.stats)
+
+
+def packed_train_rows(packed_dir) -> np.ndarray:
+    """All rows of the packed array except dropped (constant/non-finite) and validation rows."""
+    n = len(np.load(os.path.join(packed_dir, "spectra.npy"), mmap_mode="r"))
+    excluded = np.concatenate([np.load(os.path.join(packed_dir, f"{name}_rows.npy"))
+                               for name in ("drop", "valid")])
+    return np.setdiff1d(np.arange(n), excluded)
 
 
 def subsample(paths, max_samples, seed):
@@ -70,8 +107,8 @@ def subsample(paths, max_samples, seed):
     return [paths[i] for i in idx]
 
 
-def make_loader(paths, batch_size, shuffle, seed, num_workers, drop_last) -> DataLoader:
+def make_loader(dataset, batch_size, shuffle, seed, num_workers, drop_last) -> DataLoader:
     generator = torch.Generator().manual_seed(seed)  # makes the shuffle order reproducible
-    return DataLoader(SpectraDataset(paths), batch_size=batch_size, shuffle=shuffle,
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
                       drop_last=drop_last, num_workers=num_workers, generator=generator,
                       pin_memory=torch.cuda.is_available(), persistent_workers=num_workers > 0)

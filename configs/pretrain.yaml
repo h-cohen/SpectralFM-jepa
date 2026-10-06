@@ -6,6 +6,9 @@ experiment:
   output_dir: outputs
 
 data:
+  source: manifests            # manifests | packed
+  packed_dir: null             # directory with spectra.npy, stats.json, drop_rows.npy, valid_rows.npy
+  normalization: sample_zscore # sample_zscore | global (global needs source=packed)
   # fairseq manifests (train.tsv / valid.tsv); /storage/noy roots are remapped to /mnt5/noy
   manifest_dir: /mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one
   sequence_length: 245

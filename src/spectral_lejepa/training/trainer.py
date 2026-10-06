@@ -5,6 +5,7 @@ validation losses, representation/masking diagnostics, checkpoints and W&B loggi
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import random
@@ -17,7 +18,8 @@ import torch
 import yaml
 from torch.optim.lr_scheduler import LambdaLR
 
-from ..data.loader import SpectraDataset, make_loader, manifest_fingerprint, read_manifest, subsample
+from ..data.loader import (PackedSpectra, SpectraDataset, make_loader, manifest_fingerprint, packed_train_rows,
+                           read_manifest, subsample)
 from ..models.masking import make_mask
 from ..models.vit_1d import build_model
 from ..utils import wandb as wb
@@ -129,17 +131,35 @@ def train(cfg: dict) -> dict:
     amp = bool(tcfg["amp"]) and device.type == "cuda"
 
     # --- data ---
-    train_manifest = os.path.join(dcfg["manifest_dir"], "train.tsv")
-    valid_manifest = os.path.join(dcfg["manifest_dir"], "valid.tsv")
-    train_paths = subsample(read_manifest(train_manifest), dcfg["max_train_samples"], seed)
-    valid_ds = SpectraDataset(read_manifest(valid_manifest))
+    norm = dcfg["normalization"]
+    if dcfg["source"] == "packed":
+        packed_dir = dcfg["packed_dir"]
+        stats = json.loads((Path(packed_dir) / "stats.json").read_text())
+        global_stats = {"mean": stats["mean"], "std": stats["std"]}
+        valid_rows = np.load(Path(packed_dir) / "valid_rows.npy")
+        train_rows = subsample(packed_train_rows(packed_dir), dcfg["max_train_samples"], seed)
+        train_ds = PackedSpectra(packed_dir, train_rows, norm, global_stats)
+        valid_ds = PackedSpectra(packed_dir, valid_rows[:2048], norm, global_stats)
+        data_derived = {"packed_dir": str(packed_dir), "global_stats": global_stats,
+                        "n_rows": stats["n_rows"], "n_dropped": stats["n_dropped"]}
+    elif dcfg["source"] == "manifests":
+        if norm == "global":
+            raise ValueError("global normalization needs data.source=packed")
+        train_manifest = os.path.join(dcfg["manifest_dir"], "train.tsv")
+        valid_manifest = os.path.join(dcfg["manifest_dir"], "valid.tsv")
+        train_ds = SpectraDataset(subsample(read_manifest(train_manifest), dcfg["max_train_samples"], seed), norm)
+        valid_ds = SpectraDataset(read_manifest(valid_manifest), norm)
+        data_derived = {"train_manifest": manifest_fingerprint(train_manifest),
+                        "valid_manifest": manifest_fingerprint(valid_manifest)}
+    else:
+        raise ValueError(f"data.source={dcfg['source']!r}: use 'manifests' or 'packed'")
     valid_signals = torch.stack([valid_ds[i] for i in range(len(valid_ds))])   # small, fixed
     batch_size = tcfg["batch_size"]
-    loader = make_loader(train_paths, batch_size, shuffle=True, seed=seed,
+    loader = make_loader(train_ds, batch_size, shuffle=True, seed=seed,
                          num_workers=dcfg["num_workers"], drop_last=True)
     steps_per_epoch = len(loader)
     if steps_per_epoch == 0:
-        raise ValueError(f"{len(train_paths)} training samples is fewer than one batch ({batch_size})")
+        raise ValueError(f"{len(train_ds)} training samples is fewer than one batch ({batch_size})")
     total_steps, warmup_steps = schedule_lengths(steps_per_epoch, tcfg)
     below = batch_size < RECOMMENDED_MIN_BATCH
     if below:
@@ -152,10 +172,8 @@ def train(cfg: dict) -> dict:
     out_dir.mkdir(parents=True, exist_ok=False)
     derived = {"derived": {
         "steps_per_epoch": steps_per_epoch, "total_steps": total_steps, "warmup_steps": warmup_steps,
-        "train_samples": len(train_paths), "valid_samples": len(valid_ds),
-        "batch_size_below_256": below, "output_dir": str(out_dir),
-        "train_manifest": manifest_fingerprint(train_manifest),
-        "valid_manifest": manifest_fingerprint(valid_manifest)}}
+        "train_samples": len(train_ds), "valid_samples": len(valid_ds),
+        "batch_size_below_256": below, "output_dir": str(out_dir), **data_derived}}
     resolved = {**cfg, **derived}
     (out_dir / "config.yaml").write_text(yaml.safe_dump(resolved, sort_keys=False))
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"], extra_config=derived, name=run_name)

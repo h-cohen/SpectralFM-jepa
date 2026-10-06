@@ -1,3 +1,4 @@
+import json
 import math
 from pathlib import Path
 
@@ -143,3 +144,31 @@ def test_checkpoint_upload_is_opt_in(data_dir, tmp_path, monkeypatch, flag, expe
     with pytest.warns(UserWarning):
         train(cfg)
     assert len(calls) == expected
+
+
+def test_packed_global_run(tmp_path):
+    rng = np.random.default_rng(0)
+    packed = tmp_path / "packed"
+    packed.mkdir()
+    np.save(packed / "spectra.npy", rng.normal(5.0, 2.0, size=(100, 245)).astype(np.float32))
+    stats = {"mean": 5.0, "std": 2.0, "n_rows": 100, "n_dropped": 2}
+    (packed / "stats.json").write_text(json.dumps(stats))
+    np.save(packed / "drop_rows.npy", np.array([1, 2]))
+    np.save(packed / "valid_rows.npy", np.arange(10, 30))
+    cfg = load_config(REPO / "configs" / "pretrain.yaml", [
+        "experiment.name=packed", f"experiment.output_dir={tmp_path / 'out'}",
+        "data.source=packed", f"data.packed_dir={packed}", "data.normalization=global",
+        *TINY_OVERRIDES, "training.max_steps=6", "training.log_every=1"])
+    with pytest.warns(UserWarning, match="batch_size=8"):
+        result = train(cfg)
+    assert all(math.isfinite(h["train/loss"]) for h in result["history"])
+    derived = load_checkpoint(Path(result["output_dir"]) / "checkpoint_last.pt")["config"]["derived"]
+    assert derived["global_stats"] == {"mean": 5.0, "std": 2.0}
+    assert derived["train_samples"] == 100 - 2 - 20 and derived["valid_samples"] == 20
+
+
+def test_global_requires_packed(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "out")
+    cfg["data"]["normalization"] = "global"
+    with pytest.raises(ValueError, match="needs data.source=packed"):
+        train(cfg)

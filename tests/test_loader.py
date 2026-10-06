@@ -7,8 +7,8 @@ import torch
 import torch.nn.functional as F
 
 from spectral_lejepa.data.loader import (
-    SEQUENCE_LENGTH, SpectraDataset, make_loader, manifest_fingerprint, normalize_signal,
-    read_manifest, remap_root, subsample,
+    SEQUENCE_LENGTH, PackedSpectra, SpectraDataset, make_loader, manifest_fingerprint, normalize,
+    normalize_signal, packed_train_rows, read_manifest, remap_root, subsample,
 )
 
 REAL_VALID = "/mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one/valid.tsv"
@@ -45,7 +45,7 @@ def test_read_manifest(tmp_path):
 
 
 def test_batch_shape_dtype_and_normalization(tmp_path):
-    loader = make_loader(read_manifest(write_set(tmp_path)), batch_size=4, shuffle=False,
+    loader = make_loader(SpectraDataset(read_manifest(write_set(tmp_path))), batch_size=4, shuffle=False,
                          seed=0, num_workers=0, drop_last=True)
     batch = next(iter(loader))
     assert batch.shape == (4, SEQUENCE_LENGTH)
@@ -95,3 +95,36 @@ def test_real_valid_split():
     assert len(paths) == 1000 and paths[0].startswith("/mnt5/noy/")
     x = SpectraDataset(paths)[0]
     assert x.shape == (SEQUENCE_LENGTH,) and torch.isfinite(x).all()
+
+
+def write_packed(tmp_path, n=20):
+    raw = np.random.default_rng(1).normal(2.0, 3.0, size=(n, SEQUENCE_LENGTH)).astype(np.float32)
+    np.save(tmp_path / "spectra.npy", raw)
+    np.save(tmp_path / "drop_rows.npy", np.array([0, 5]))
+    np.save(tmp_path / "valid_rows.npy", np.array([3, 7, 9]))
+    return raw
+
+
+def test_normalize_methods():
+    x = torch.randn(3, SEQUENCE_LENGTH) * 4 + 1
+    assert torch.equal(normalize(x, "sample_zscore", None), F.layer_norm(x, x.shape[-1:]))
+    assert torch.allclose(normalize(x, "global", {"mean": 1.0, "std": 4.0}), (x - 1.0) / 4.0)
+    with pytest.raises(ValueError):
+        normalize(x, "bogus", None)
+
+
+def test_packed_spectra_normalization(tmp_path):
+    raw = write_packed(tmp_path)
+    stats = {"mean": 2.0, "std": 3.0}
+    g = PackedSpectra(tmp_path, [4, 2], "global", stats)
+    assert len(g) == 2
+    assert torch.allclose(g[0], (torch.from_numpy(raw[4]) - 2.0) / 3.0)
+    z = PackedSpectra(tmp_path, [2], "sample_zscore", None)[0]
+    assert torch.allclose(z, F.layer_norm(torch.from_numpy(raw[2]), (SEQUENCE_LENGTH,)))
+
+
+def test_packed_train_rows_exclude_dropped_and_valid(tmp_path):
+    write_packed(tmp_path)
+    rows = packed_train_rows(tmp_path)
+    assert len(rows) == 20 - 2 - 3
+    assert not {0, 5, 3, 7, 9} & set(rows.tolist())
