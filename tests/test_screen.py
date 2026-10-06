@@ -184,3 +184,18 @@ def test_screen2_config_keys_valid():
         all_overrides = shared_overrides + arm_overrides
         cfg = load_config(str(REPO / "configs" / "pretrain.yaml"), all_overrides)
         assert cfg is not None, f"Failed to load config for arm {arm_name}"
+
+
+def test_screen5_configs_are_consistent():
+    from spectral_lejepa.config import load_config
+    repo = Path(screen.__file__).resolve().parents[1]
+    scfg = yaml.safe_load((repo / "configs/screen5.yaml").read_text())
+    ecfg = yaml.safe_load((repo / scfg["eval_config"]).read_text())
+    assert scfg["name"] == "screen-5" and scfg["eval_set"] == "labeled_data"
+    assert scfg["eval_config"] == "configs/eval_small5.yaml" and ecfg["wandb"]["group"] == "screen-5"
+    assert ecfg["experiment"]["output_dir"] == "outputs/screen-5/eval"
+    assert "screen5" in ecfg["wandb"]["tags"]
+    assert set(scfg["arms"]) == {"sigreg_ref", "visreg"}
+    for arm, expected in (("sigreg_ref", "sigreg"), ("visreg", "visreg")):
+        cfg = load_config(repo / "configs/pretrain.yaml", [*scfg["shared_overrides"], *scfg["arms"][arm]])
+        assert cfg["training"]["regularizer"] == expected
