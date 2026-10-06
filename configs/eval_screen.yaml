@@ -9,7 +9,7 @@ evaluation:
   batch_size: 64
   max_samples: 5000
   n_jobs: 8
-  backend: sklearn          # probe backend: sklearn (reference) | torch (float64 port, GPU)
+  backend: torch            # probe backend: torch (float64 GPU port, parity-checked) | sklearn (reference)
   probe_device: cuda        # torch backend device(s): cuda:0, or a list [cuda:0, cuda:1] (round-robin)
   probe_workers: 2          # torch backend: concurrent folds per probe device (~2 GB each at labeled_data scale)
   min_n: 20
