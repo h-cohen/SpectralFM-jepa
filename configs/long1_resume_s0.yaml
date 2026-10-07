@@ -1,0 +1,74 @@
+experiment:
+  name: lr50_s0_resume
+  seed: 0
+  output_dir: outputs/long-1
+data:
+  source: packed
+  packed_dir: /mnt5/home/hadar/nova/data/spectra_all
+  normalization: global
+  manifest_dir: /mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one
+  sequence_length: 245
+  max_train_samples: null
+  num_workers: 12
+  source_weights:
+    labeled_regression: 0.5
+    default: 0.5
+model:
+  num_patches: 24
+  dim: 256
+  depth: 6
+  heads: 8
+  mlp_dim: 1024
+  dropout: 0.0
+  predictor_dim: 192
+  predictor_depth: 4
+  predictor_heads: 6
+  predictor_mlp_dim: 768
+  projector: none
+  projector_hidden_dim: 1024
+  projector_dim: 128
+masking:
+  strategy: random
+  mask_ratio: 0.75
+  num_blocks: 3
+training:
+  batch_size: 256
+  epochs: 10
+  max_steps: null
+  optimizer: adamw
+  learning_rate: 0.0005
+  weight_decay: 0.05
+  warmup_epochs: 1.0
+  final_lr_ratio: 0.001
+  lambda_sigreg: 0.05
+  sigreg_num_slices: 1024
+  sigreg_knots: 17
+  sigreg_t_max: 3.0
+  regularizer: sigreg
+  visreg_slices: 4096
+  visreg_lambda: 0.6
+  global_weight: 1.0
+  global_views: 2
+  global_keep: 0.5
+  amp: true
+  grad_clip: null
+  log_every: 50
+  val_every: 25000
+  diag_every: 25000
+  ckpt_every: 50000
+  device: cuda
+  init_checkpoint: null
+  resume: outputs/long-1/lr50_s0_20261007-100813/checkpoint_step200000.pt
+wandb:
+  enabled: true
+  log_checkpoints: false
+  entity: null
+  project: spectralfm-lejepa
+  group: long-1-resume
+  job_type: pretrain
+  tags:
+  - lejepa
+  - spectralfm
+  - 1d
+  - long1
+  - alldata

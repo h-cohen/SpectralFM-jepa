@@ -254,3 +254,52 @@ def test_global_term_training(data_dir, tmp_path):
     cfg["training"]["global_keep"] = 0.0
     with pytest.raises(ValueError, match="global_keep"):
         train(cfg)
+
+
+def test_resume_restores_absolute_step_and_optimizer(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "base", "resume_base")
+    cfg["training"].update(max_steps=6, ckpt_every=3, log_every=1, val_every=6, diag_every=6)
+    with pytest.warns(UserWarning):
+        base = train(cfg)
+    checkpoint = Path(base["output_dir"]) / "checkpoint_step3.pt"
+    cfg = tiny_cfg(data_dir, tmp_path / "resumed", "resumed")
+    cfg["training"].update(max_steps=6, ckpt_every=3, log_every=1, val_every=6, diag_every=6,
+                           resume=str(checkpoint))
+    with pytest.warns(UserWarning):
+        result = train(cfg)
+    assert [h["train/global_step"] for h in result["history"]] == [4, 5, 6]
+    assert result["history"][0]["train/learning_rate"] == pytest.approx(
+        cfg["training"]["learning_rate"] * lr_factor(4, 1, 6, .001))
+    resumed = load_checkpoint(result["final_checkpoint"])
+    assert resumed["step"] == 6
+    assert all(s["step"].item() == 6 for s in resumed["optimizer"]["state"].values())
+    assert "scheduler" in resumed and "rng_state" in resumed
+    cfg["training"]["learning_rate"] = .02
+    with pytest.raises(ValueError, match="learning_rate"):
+        train(cfg)
+    cfg["training"]["init_checkpoint"] = str(checkpoint)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        train(cfg)
+
+
+def test_legacy_resume_scheduler_keeps_cosine_position():
+    from spectral_lejepa.training.trainer import restore_optimization
+    from torch.optim.lr_scheduler import LambdaLR
+    p = torch.nn.Parameter(torch.ones(1))
+    optimizer = torch.optim.AdamW([p], lr=.001)
+    scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, 2, 10, .001))
+    scaler = torch.amp.GradScaler('cpu', enabled=False)
+    for _ in range(4):
+        optimizer.zero_grad()
+        p.sum().backward()
+        optimizer.step()
+        scheduler.step()
+    ckpt = {'optimizer': optimizer.state_dict(), 'scaler': scaler.state_dict(), 'step': 4}
+    fresh = torch.optim.AdamW([torch.nn.Parameter(torch.ones(1))], lr=.001)
+    schedule = LambdaLR(fresh, lambda s: lr_factor(s, 2, 10, .001))
+    restore_optimization(ckpt, fresh, schedule, scaler)
+    assert schedule.last_epoch == 4
+    assert fresh.param_groups[0]['lr'] == pytest.approx(.001 * lr_factor(4, 2, 10, .001))
+    fresh.step()
+    schedule.step()
+    assert fresh.param_groups[0]['lr'] == pytest.approx(.001 * lr_factor(5, 2, 10, .001))

@@ -149,6 +149,41 @@ def load_init_checkpoint(path, cfg) -> dict | None:
     return {"ckpt": ckpt, "info": {"path": str(path), "sha256": sha256_file(path), "step": ckpt["step"]}}
 
 
+def load_resume_checkpoint(path, cfg):
+    if cfg["training"].get("resume") and cfg["training"].get("init_checkpoint"):
+        raise ValueError("training.resume and init_checkpoint are mutually exclusive")
+    if not path:
+        return None
+    result = load_init_checkpoint(path, cfg)
+    old = result["ckpt"]["config"]
+    ignored = {"resume", "init_checkpoint", "device", "log_every", "val_every", "diag_every", "ckpt_every"}
+    for section in ("model", "data", "masking", "training"):
+        for key in set(old[section]) | set(cfg[section]):
+            if section == "training" and key in ignored:
+                continue
+            if section == "data" and key == "num_workers":
+                continue
+            if old[section].get(key) != cfg[section].get(key):
+                raise ValueError(f"training.resume incompatible {section}.{key}")
+    if old["experiment"]["seed"] != cfg["experiment"]["seed"]:
+        raise ValueError("training.resume incompatible experiment.seed")
+    for key in ("optimizer", "scaler", "step"):
+        if key not in result["ckpt"]:
+            raise ValueError(f"training.resume missing {key}")
+    return result
+
+
+def restore_optimization(ckpt, optimizer, scheduler, scaler):
+    optimizer.load_state_dict(ckpt["optimizer"])
+    scaler.load_state_dict(ckpt["scaler"])
+    if "scheduler" in ckpt:
+        scheduler.load_state_dict(ckpt["scheduler"])
+    else:
+        scheduler.last_epoch = ckpt["step"]
+        scheduler._step_count = ckpt["step"] + 1
+        scheduler._last_lr = [g["lr"] for g in optimizer.param_groups]
+
+
 def train(cfg: dict) -> dict:
     ecfg, dcfg, mcfg, kcfg, tcfg = (cfg[k] for k in ("experiment", "data", "model", "masking", "training"))
     make_mask(kcfg, 1, mcfg["num_patches"])   # validates the masking config before any work
@@ -169,7 +204,8 @@ def train(cfg: dict) -> dict:
     device = resolve_device(tcfg["device"])
     amp = bool(tcfg["amp"]) and device.type == "cuda"
 
-    init = load_init_checkpoint(tcfg.get("init_checkpoint"), cfg)
+    resume = load_resume_checkpoint(tcfg.get("resume"), cfg)
+    init = resume or load_init_checkpoint(tcfg.get("init_checkpoint"), cfg)
 
     # --- data ---
     norm = dcfg["normalization"]
@@ -208,6 +244,12 @@ def train(cfg: dict) -> dict:
     if steps_per_epoch == 0:
         raise ValueError(f"{len(train_ds)} training samples is fewer than one batch ({batch_size})")
     total_steps, warmup_steps = schedule_lengths(steps_per_epoch, tcfg)
+    if resume:
+        previous = resume["ckpt"]["config"].get("derived", {})
+        if previous.get("total_steps", total_steps) != total_steps or previous.get("steps_per_epoch", steps_per_epoch) != steps_per_epoch:
+            raise ValueError("training.resume incompatible schedule/data length")
+        if not 0 <= resume["ckpt"]["step"] < total_steps:
+            raise ValueError("training.resume step must precede total_steps")
     below = batch_size < RECOMMENDED_MIN_BATCH
     if below:
         warnings.warn(f"batch_size={batch_size} < {RECOMMENDED_MIN_BATCH}: SIGReg's batch statistic is "
@@ -222,7 +264,7 @@ def train(cfg: dict) -> dict:
         "train_samples": len(train_ds), "valid_samples": len(valid_ds),
         "batch_size_below_256": below, "output_dir": str(out_dir), **data_derived}}
     if init:
-        derived["derived"]["init_checkpoint"] = init["info"]
+        derived["derived"]["resume" if resume else "init_checkpoint"] = init["info"]
     resolved = {**cfg, **derived}
     (out_dir / "config.yaml").write_text(yaml.safe_dump(resolved, sort_keys=False))
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"], extra_config=derived, name=run_name)
@@ -240,11 +282,14 @@ def train(cfg: dict) -> dict:
     scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
     scaler = torch.amp.GradScaler(device.type, enabled=amp)
     mask_generator = torch.Generator().manual_seed(seed + 1)
+    if resume:
+        restore_optimization(resume["ckpt"], optimizer, scheduler, scaler)
     num_patches = mcfg["num_patches"]
     max_norm = tcfg["grad_clip"] or float("inf")
 
+    start_step = resume["ckpt"]["step"] if resume else 0
     latest, reference_rank = {}, None
-    metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, 0, seed, device, reference_rank)
+    metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, start_step, seed, device, reference_rank)
     latest.update(metrics)
 
     def checkpoint(step, epoch):
@@ -252,17 +297,35 @@ def train(cfg: dict) -> dict:
         path = out_dir / f"checkpoint_step{step}.pt"
         for target in (path, out_dir / "checkpoint_last.pt"):
             save_checkpoint(target, model=model, optimizer=optimizer, scaler=scaler, step=step,
-                            epoch=epoch, config=resolved, metadata=metadata, metrics=dict(latest))
+                            epoch=epoch, config=resolved, metadata=metadata, metrics=dict(latest), scheduler=scheduler,
+                            rng_state={"torch": torch.get_rng_state(), "numpy": np.random.get_state(),
+                                       "python": random.getstate(), "mask": mask_generator.get_state(),
+                                       "cuda": torch.cuda.get_rng_state_all() if device.type == "cuda" else None})
         if run is not None and cfg["wandb"].get("log_checkpoints", False):
             wb.log_checkpoint(run, path, f"lejepa-{run.id}", ["latest", f"step-{step}"], meta)
 
-    step, samples_seen, history, epoch_pass = 0, 0, [], 0
+    step, samples_seen, history, epoch_pass = start_step, start_step * batch_size, [], start_step // steps_per_epoch
+    if resume:
+        rng = resume["ckpt"].get("rng_state")
+        if rng:
+            torch.set_rng_state(rng["torch"])
+            np.random.set_state(rng["numpy"])
+            random.setstate(rng["python"])
+            mask_generator.set_state(rng["mask"])
+            if device.type == "cuda" and rng.get("cuda"):
+                torch.cuda.set_rng_state_all(rng["cuda"])
+        else:
+            warnings.warn("Legacy resume checkpoint has no RNG state; stochastic sequence restarts")
+        print(f"Resuming step {step}/{total_steps}, lr={optimizer.param_groups[0]['lr']:.8g}", flush=True)
     model.train()
     while step < total_steps:
         if sampler is not None:
             sampler.set_epoch(epoch_pass)
         epoch_pass += 1
-        for x in loader:
+        skip_batches = step % steps_per_epoch
+        for batch_index, x in enumerate(loader):
+            if batch_index < skip_batches:
+                continue
             x = x.to(device, non_blocking=True)
             masked_idx, visible_idx = make_mask(kcfg, len(x), num_patches, mask_generator, device)
             view_idxs = draw_views(global_cfg, len(x), num_patches, mask_generator, device)
@@ -288,6 +351,8 @@ def train(cfg: dict) -> dict:
                 record.update({"train/learning_rate": scheduler.get_last_lr()[0], "train/epoch": epoch,
                                "train/global_step": step, "train/samples_seen": samples_seen,
                                "train/grad_norm": float(grad_norm)})
+                if resume:
+                    print(f"step={step} loss={record['train/loss']:.6g} lr={record['train/learning_rate']:.8g}", flush=True)
                 history.append(record)
                 wb.log(run, record, step=step)
             if step % tcfg["val_every"] == 0 or last:

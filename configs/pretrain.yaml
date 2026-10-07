@@ -62,6 +62,7 @@ training:
   diag_every: 1000
   ckpt_every: 5000
   device: cuda
+  resume: null                 # restore optimizer/scaler and original schedule from checkpoint
   init_checkpoint: null        # path: continue pretraining from these weights (same model and normalization; fresh optimizer)
 
 wandb:
