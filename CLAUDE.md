@@ -24,7 +24,9 @@ Configs: `configs/screen6.yaml` (arm `long_g1_lr50`) and `configs/long1.yaml`.
 - `training.global_weight=1`;
 - `data.source_weights={labeled_regression: 0.5, default: 0.5}`.
 
-At 3 epochs it wins 5/8 (3 strong), with mean Δ +0.045.
+- At 3 epochs it wins 5/8 (3 strong), with mean Δ +0.045.
+- The long-1 10-epoch run was stopped at 4 epochs (step 200k): both seeds win 5/8 (seed 0: mean Δ +0.069).
+- Next step: a true resume to 10 epochs (see `plans/SUMMARY.md` §6).
 
 ## Environment rules
 
