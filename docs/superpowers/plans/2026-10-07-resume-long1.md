@@ -20,16 +20,16 @@
 - Preserve init_checkpoint semantics and fresh training behavior.
 
 ### Task 1: True resume
-- [ ] Add resume tests: absolute step/LR, optimizer counts, incompatible config, mutual exclusion, scheduler reconstruction.
-- [ ] Run tests and observe failure.
-- [ ] Implement training.resume and state restoration, scheduler/RNG persistence.
-- [ ] Run focused tests and full fast suite; review diff; commit as Hadar.
+- [x] Add resume tests: absolute step/LR, optimizer counts, incompatible config, mutual exclusion, scheduler reconstruction.
+- [x] Run tests and observe failure.
+- [x] Implement training.resume and state restoration, scheduler/RNG persistence.
+- [x] Run focused tests and full fast suite; review diff; commit as Hadar.
 
 ### Task 2: Launch and evaluate
-- [ ] Generate resolved configs from each original checkpoint, changing only resume and bookkeeping.
-- [ ] Check healthy GPU availability; launch two detached runs with OMP_NUM_THREADS=4, JOBLIB_TEMP_FOLDER=/dev/shm via bash -ic.
-- [ ] Verify progress beyond 200k and finite loss; queue final evaluation using eval_long1.yaml and random control.
-- [ ] Update plans/SUMMARY.md and execution ledger with processes, logs and next evaluation milestones.
+- [x] Generate resolved configs from each original checkpoint, changing only resume and bookkeeping.
+- [x] Check healthy GPU availability; launch two detached runs with OMP_NUM_THREADS=4, JOBLIB_TEMP_FOLDER=/dev/shm via bash -ic.
+- [x] Verify progress beyond 200k and finite loss; queue final evaluation using eval_long1.yaml and random control.
+- [x] Update plans/SUMMARY.md and execution ledger with processes, logs and next evaluation milestones.
 
 ## Execution ledger
 - Approval: user explicitly instructed continuation of the proposed resume plan; execute inline without repeating authorization.
@@ -38,3 +38,8 @@
 - Focused verification: 17 training tests passed. Full fast suite running.
 - Review: legacy weighted resume is sound; launcher revised to evaluate the exact emitted checkpoint.
 - Limitation: RNG restoration saves global/mask generators, but unweighted DataLoader shuffle-generator state is not saved. Current long-1 uses deterministic epoch-seeded weighted sampling. Exact stochastic replay is not claimed.
+
+- Task 1 complete: da18751; RED showed resume restarting at step 1, GREEN restored absolute steps/moments/LR; full suite 157 passed, 8 deselected.
+- Task 2 launch complete: sessions 75671/3722; verified steps 200750/200650, finite losses and original schedule. Final evaluations queued after successful training.
+- Training and final evaluation remain running/pending; goal improvement beyond prior 5/8 has not yet been measured.
+- Independent reviewer: no blocking issue for weighted resumes; exact emitted checkpoint lookup corrected before launch.
