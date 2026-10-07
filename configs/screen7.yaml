@@ -1,0 +1,31 @@
+# Screen 7: tokenizer resolution and seed noise around the screen-6 winner (long_g1_lr50:
+# global term + 50% labeled-regression mix, 3 epochs), with the random-init control.
+name: screen-7
+output_dir: outputs/screen-7
+eval_config: configs/eval_small7.yaml
+eval_set: labeled_data         # the set the screen table scores
+shared_overrides:
+  - data.source=packed
+  - data.packed_dir=/mnt5/home/hadar/nova/data/spectra_all
+  - data.normalization=global
+  - data.num_workers=12
+  - masking.mask_ratio=0.75
+  - training.epochs=3
+  - training.global_weight=1.0
+  - "data.source_weights={labeled_regression: 0.5, default: 0.5}"
+  - training.val_every=10000
+  - training.diag_every=10000
+  - training.ckpt_every=25000
+  - experiment.output_dir=outputs/screen-7
+  - wandb.group=screen-7
+  - "wandb.tags=[lejepa,spectralfm,1d,screen7,alldata]"
+arms:
+  p48_lr50: [model.num_patches=48]
+  p12_lr50: [model.num_patches=12]
+  lr50_s2: [experiment.seed=2]
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: screen-7
+  tags: [lejepa, spectralfm, 1d, screen7, alldata]
