@@ -5,6 +5,7 @@ import math
 import re
 from pathlib import Path
 
+from scripts.scorecard_figures import dataset_comparison_figure, paired_gains_figure
 from scripts.training_progress import SETS
 
 ARMS = ('control_s0', 'control_s1', 'random50_s0', 'random50_s1', 'block75_s0', 'block75_s1')
@@ -113,6 +114,29 @@ def _markdown(result):
     return '\n'.join(lines) + '\n'
 
 
+def figure_records(result):
+    records = []
+    for arm, arm_data in result['arms'].items():
+        variant, seed = arm.rsplit('_s', 1)
+        label = f'{variant} seed{seed}'
+        sets = {}
+        for dataset, point in arm_data['sets'].items():
+            uncertainty = point['paired_uncertainty']
+            model_random = uncertainty.get('model_vs_random') or {}
+            model_control = uncertainty.get('model_vs_control') or {}
+            sets[dataset] = {
+                'n': point['n'], 'raw_r2': point['raw_r2'], 'model_r2': point['model_r2'],
+                'random_r2': point['random_r2'], 'delta_vs_raw': point['delta_vs_raw'],
+                'sd_vs_raw': (uncertainty.get('model_minus_raw') or {}).get('sd'),
+                'delta_vs_random': (point['model_r2'] - point['random_r2']
+                                    if point['model_r2'] is not None and point['random_r2'] is not None else None),
+                'sd_vs_random': model_random.get('sd'), 'delta_vs_control': point['delta_vs_control'],
+                'sd_vs_control': model_control.get('sd'),
+            }
+        records.append({'label': label, 'sets': sets})
+    return records
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path('outputs/screen-8'))
@@ -156,6 +180,18 @@ def main(argv=None):
                 point['delta_vs_raw'], point['control_raw_r2'], point['control_model_r2'], point['control_delta_vs_raw'],
                 point['delta_vs_control'], *(pair.get(field) for pair, keys in zip(pairs, fields) for field in keys)])
     run.log({'decision/per_dataset': wandb.Table(columns=score_columns, data=score_rows)})
+    records = figure_records(result)
+    figures = [
+        ('decision/per_dataset_r2', dataset_comparison_figure(
+            records, SETS, title='Screen 8: nested-CV R² by arm, seed and dataset')),
+        ('decision/paired_gains', paired_gains_figure(
+            records, SETS, title='Screen 8: paired gains by arm, seed and dataset')),
+    ]
+    for key, fig in figures:
+        fig.savefig(root / f'{key.rsplit("/", 1)[-1]}.png', dpi=180, bbox_inches='tight')
+        run.log({key: wandb.Image(fig)})
+        import matplotlib.pyplot as plt
+        plt.close(fig)
     for name, row in result['decisions'].items():
         for key, value in row['gates'].items():
             if value is not None:

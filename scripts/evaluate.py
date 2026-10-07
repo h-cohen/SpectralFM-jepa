@@ -21,6 +21,7 @@ from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_fo
 from spectral_lejepa.models.vit_1d import EvalBackbone, build_model
 from spectral_lejepa.training.checkpoint import load_model, sha256_file
 from spectral_lejepa.utils import wandb as wb
+from scripts.scorecard_figures import dataset_comparison_figure, paired_gains_figure
 
 
 def flat_metrics(prefix, d):
@@ -73,25 +74,6 @@ def scorecard(sets, key):
     return {"wins": sum(r["verdict"] in ("win", "strong-win") for r in rows),
             "strong_wins": sum(r["verdict"] == "strong-win" for r in rows), "sets": len(rows),
             "mean_delta": float(np.mean([r["delta_vs_raw"] for r in rows])) if rows else float("nan")}
-
-
-def scorecard_figure(sets):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    names = list(sets)
-    x = np.arange(len(names))
-    fig, ax = plt.subplots(figsize=(1.0 + 0.9 * len(names), 3.5))
-    ax.bar(x - 0.2, [sets[n]["delta_vs_raw"] for n in names], 0.4, label="model")
-    if all("random_control" in sets[n] for n in names):
-        ax.bar(x + 0.2, [sets[n]["random_control"]["delta_vs_raw"] for n in names], 0.4, label="random init")
-    ax.axhline(WIN_MARGIN, color="k", ls="--", lw=1, label=f"aspiration +{WIN_MARGIN} (any gain wins)")
-    ax.axhline(0, color="0.5", lw=0.8)
-    ax.set_xticks(x, names, rotation=45, ha="right")
-    ax.set_ylabel("R² − raw R² (nested CV)")
-    ax.legend(fontsize=8)
-    fig.tight_layout()
-    return fig
 
 
 def main(argv=None):
@@ -218,7 +200,27 @@ def main(argv=None):
                  s.get("vs_random_control", {}).get("delta"), s.get("vs_random_control", {}).get("sd")] for n, s in sets.items()]
         run.log({"scorecard/table": wandb.Table(columns=cols, data=data)})
         wb.log(run, flat_metrics("scorecard", card))
-        wb.log_figure(run, "scorecard/delta_vs_raw", scorecard_figure(sets))
+        plot_sets = {name: {"n": summary["n"], "raw_r2": summary["raw_r2"],
+                            "model_r2": summary["embedding_r2"],
+                            "random_r2": summary.get("random_control", {}).get("embedding_r2"),
+                            "delta_vs_raw": summary["delta_vs_raw"],
+                            "sd_vs_raw": summary.get("embedding_minus_raw", {}).get("sd"),
+                            "delta_vs_random": summary.get("vs_random_control", {}).get("delta"),
+                            "sd_vs_random": summary.get("vs_random_control", {}).get("sd")}
+                      for name, summary in sets.items()}
+        scorecard_dir = out_root / "scorecard"
+        scorecard_dir.mkdir(exist_ok=True)
+        figures = [
+            ("scorecard/per_dataset_r2", dataset_comparison_figure(
+                [{"label": f"step {ckpt['step']}", "sets": plot_sets}], list(plot_sets),
+                title=f"Frozen probe results at checkpoint step {ckpt['step']}")),
+            ("scorecard/paired_gains", paired_gains_figure(
+                [{"label": f"step {ckpt['step']}", "sets": plot_sets}], list(plot_sets),
+                title=f"Paired gains at checkpoint step {ckpt['step']}")),
+        ]
+        for key, fig in figures:
+            fig.savefig(scorecard_dir / f"{key.rsplit('/', 1)[-1]}.png", dpi=180, bbox_inches="tight")
+            wb.log_figure(run, key, fig)
     wb.finish(run)
     print("outputs:", out_root)
 

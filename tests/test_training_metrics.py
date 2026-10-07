@@ -47,10 +47,129 @@ def presentation_row(step=200000):
 
 def test_latest_figure_advances_with_completed_evaluation():
     import matplotlib.pyplot as plt
-    from scripts.training_progress import seed_comparison_figure
+    from scripts.training_progress import seed_comparison_figure, seed_paired_gains_figure
     fig = seed_comparison_figure([presentation_row(), presentation_row(497990)])
-    assert '497990' in fig.axes[0].get_title()
+    assert '497990' in fig._suptitle.get_text()
+    assert len(fig.axes) == 8
     plt.close(fig)
+    gains = seed_paired_gains_figure([presentation_row(497990)])
+    assert '497990' in gains._suptitle.get_text()
+    assert all('paired bootstrap SD' in ax.get_xlabel() for ax in gains.axes)
+    plt.close(gains)
+
+
+def test_refresh_evaluations_reuses_presentation_run_without_replaying_training_history(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    import scripts.training_progress as progress
+    monkeypatch.setattr(progress, 'OUTPUT', tmp_path)
+    monkeypatch.setattr(progress, 'ROOT', tmp_path)
+    monkeypatch.setattr(progress, 'evaluation_rows', lambda roots: [presentation_row(497990)])
+    (tmp_path / 'run.json').write_text(json.dumps({'id': 'existing123'}))
+    calls = {'logs': []}
+
+    class Run:
+        summary = {}
+        url = 'https://wandb.invalid/runs/existing123'
+
+        def log(self, data):
+            calls['logs'].append(data)
+
+        def finish(self):
+            calls['finished'] = True
+
+    monkeypatch.setitem(__import__('sys').modules, 'wandb', SimpleNamespace(
+        init=lambda **kwargs: (calls.update(init=kwargs) or Run()),
+        Table=lambda **kwargs: kwargs,
+        Html=lambda html: html,
+        Image=lambda figure: figure,
+    ))
+
+    progress.main(['--refresh-evaluations'])
+
+    assert calls['init']['id'] == 'existing123'
+    assert calls['init']['resume'] == 'allow'
+    assert not any('seed0/optimizer_step' in item for item in calls['logs'])
+    assert any('evaluation/latest_per_dataset_r2' in item for item in calls['logs'])
+    assert any('evaluation/latest_paired_gains' in item for item in calls['logs'])
+    assert (tmp_path / 'latest_per_dataset_r2.png').is_file()
+    assert calls['finished'] is True
+
+
+def test_presentation_run_startup_resumes_id_recorded_in_run_manifest(tmp_path, monkeypatch):
+    import json
+    import scripts.training_progress as progress
+    monkeypatch.setattr(progress, 'OUTPUT', tmp_path)
+    (tmp_path / 'run.json').write_text(json.dumps({'id': 'existing123', 'url': 'old-url', 'sources': {}}))
+    calls = {}
+
+    class Run:
+        id = 'existing123'
+        url = 'https://wandb.invalid/runs/existing123'
+
+    class Wandb:
+        def init(self, **kwargs):
+            calls.update(kwargs)
+            return Run()
+
+    progress.init_presentation_run(Wandb(), {0: ['source0'], 1: ['source1']}, {'training': {}}, 100)
+
+    assert calls['id'] == 'existing123'
+    assert calls['resume'] == 'allow'
+    assert json.loads((tmp_path / 'run.json').read_text())['id'] == 'existing123'
+
+
+def test_resumed_watcher_starts_after_each_source_run_cursor():
+    from scripts.training_progress import history_cursors
+
+    class Source:
+        def __init__(self, row):
+            self.summary = {'_step': row}
+
+    class Api:
+        def run(self, path):
+            return Source({'old0': 50, 'old1': 60, 'resume0': 500, 'resume1': 600}[path.rsplit('/', 1)[-1]])
+
+    sources = {0: ['old0', 'resume0'], 1: ['old1', 'resume1']}
+    last_status = {'0': {'source_run': 'resume0', 'step': 480, 'history_step': 470},
+                   '1': {'source_run': 'resume1', 'step': 590, 'history_step': 580}}
+
+    assert history_cursors(Api(), sources, last_status) == {
+        'old0': 50, 'resume0': 470, 'old1': 60, 'resume1': 580,
+    }
+
+
+def test_resumed_watcher_prefers_persisted_processed_cursors():
+    from scripts.training_progress import history_cursors
+
+    class Api:
+        def run(self, path):
+            raise AssertionError(f'persisted cursor should avoid querying {path}')
+
+    sources = {0: ['old0', 'resume0']}
+    persisted = {'old0': 45, 'resume0': 480}
+
+    assert history_cursors(Api(), sources, {}, persisted) == persisted
+
+
+def test_resumed_watcher_recovers_history_cursor_when_legacy_status_has_only_optimizer_step():
+    from scripts.training_progress import history_cursors
+
+    class Source:
+        summary = {'_step': 500, 'train/global_step': 500}
+
+        def scan_history(self, **kwargs):
+            return iter([{'_step': 498, 'train/global_step': 499},
+                         {'_step': 499, 'train/global_step': 500}])
+
+    class Api:
+        def run(self, path):
+            return Source()
+
+    cursors = history_cursors(Api(), {0: ['resume0']},
+                              {'0': {'source_run': 'resume0', 'step': 500}})
+
+    assert cursors['resume0'] == 499
 
 
 def test_summary_includes_raw_model_and_random_scores():

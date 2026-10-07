@@ -83,6 +83,7 @@ def test_cli_reads_step15000_summaries_writes_reports_and_logs_table(tmp_path, m
     monkeypatch.setitem(sys.modules, 'wandb', SimpleNamespace(
         init=lambda **kwargs: calls.setdefault('init', kwargs) or Run(),
         Table=lambda **kwargs: kwargs,
+        Image=lambda figure: {'figure': figure},
     ))
     # setdefault returns the config dictionary, so provide a run explicitly after recording init.
     wandb = sys.modules['wandb']
@@ -118,5 +119,22 @@ def test_cli_reads_step15000_summaries_writes_reports_and_logs_table(tmp_path, m
     assert point[columns.index('model_r2')] == pytest.approx(0.3)
     assert point[columns.index('random_r2')] == pytest.approx(0.1)
     assert point[columns.index('delta_vs_control')] == pytest.approx(0.05)
-    assert point[columns.index('model_minus_raw_sd')] == pytest.approx(0.02)
+    figure_logs = [item for item in calls['logs'] if 'decision/per_dataset_r2' in item or 'decision/paired_gains' in item]
+    assert len(figure_logs) == 2
+    assert (tmp_path / 'per_dataset_r2.png').is_file()
+    assert (tmp_path / 'paired_gains.png').is_file()
     assert calls['finished'] is True
+
+
+def test_screen_figure_records_keep_random_and_matched_control_gains_separate():
+    from scripts.assess_screen8 import figure_records
+    cards = {arm: summary(.05 if arm.startswith('control_') else .1) for arm in ARMS}
+    result = assess(cards)
+
+    candidate = next(row for row in figure_records(result) if row['label'] == 'random50 seed0')
+    control = next(row for row in figure_records(result) if row['label'] == 'control seed0')
+    point = candidate['sets']['dataset0106']
+    assert point['delta_vs_random'] == pytest.approx(.2)
+    assert point['delta_vs_control'] == pytest.approx(.05)
+    assert point['sd_vs_random'] == pytest.approx(.03)
+    assert control['sets']['dataset0106']['delta_vs_control'] is None

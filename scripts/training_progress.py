@@ -17,6 +17,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
+from scripts.scorecard_figures import dataset_comparison_figure, paired_gains_figure
 from spectral_lejepa.utils.wandb import training_metrics
 
 SETS = ('labeled_data', 'dataset0055', 'dataset0106', 'dataset0109',
@@ -66,6 +67,34 @@ def load_sources(path):
     return sources
 
 
+def history_cursors(api, sources, last_status, processed_cursors=None):
+    """Resume source scans after rows already represented on the live run."""
+    cursors = {}
+    processed_cursors = processed_cursors or {}
+    for seed, run_ids in sources.items():
+        latest = last_status.get(str(seed), {})
+        latest_run = latest.get('source_run')
+        latest_step = latest.get('step')
+        for run_id in run_ids:
+            if run_id in processed_cursors:
+                cursors[run_id] = int(processed_cursors[run_id])
+                continue
+            if run_id == latest_run and latest_step is not None:
+                history_step = latest.get('history_step')
+                if history_step is None:
+                    source = api.run(f'hcohen/spectralfm-lejepa/{run_id}')
+                    history_step = -1
+                    for row in source.scan_history(keys=['train/global_step'], page_size=50000):
+                        if row.get('train/global_step') == latest_step and row.get('_step') is not None:
+                            history_step = max(history_step, int(row['_step']))
+                cursors[run_id] = int(history_step)
+                continue
+            source = api.run(f'hcohen/spectralfm-lejepa/{run_id}')
+            cursor = source.summary.get('_step', source.summary.get('train/global_step', -1))
+            cursors[run_id] = int(cursor) if cursor is not None else -1
+    return cursors
+
+
 def evaluation_table(rows):
     columns = ['experiment', 'checkpoint_step', 'dataset', 'n', 'raw_r2', 'model_r2',
                'delta_vs_raw', 'paired_delta_sd', 'random_r2', 'delta_vs_random',
@@ -100,25 +129,48 @@ def comparison_figure(rows):
     return fig
 
 
-def seed_comparison_figure(rows):
+def latest_seed_rows(rows):
     selected = []
     for seed in (0, 1):
         candidates = [r for r in rows if f'/lr50_s{seed}_' in r['name'] and r['step'] is not None]
         if candidates:
             selected.append(max(candidates, key=lambda r: r['step']))
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
-    for ax, row in zip(axes, selected[:2]):
-        x = np.arange(8)
-        sets = row['sets']
-        ax.bar(x-.25, [sets[s]['raw_r2'] for s in SETS], .25, label='Raw spectrum')
-        ax.bar(x, [sets[s]['embedding_r2'] for s in SETS], .25, label='Pretrained FM')
-        ax.bar(x+.25, [sets[s].get('random_control', {}).get('embedding_r2', np.nan) for s in SETS], .25, label='Random init')
-        ax.set_xticks(x, [s.replace('dataset','') for s in SETS], rotation=45, ha='right')
-        ax.set_title(f"{row['name'].split('/')[-1]}: {row['wins']}/8 wins")
-        ax.set_ylabel('Nested-CV R²'); ax.legend(fontsize=8)
-    fig.suptitle('Latest evaluated 50% mix checkpoints (not current live weights)')
-    fig.tight_layout()
+    return selected
+
+
+def _latest_figure_records(rows):
+    records = []
+    for row in latest_seed_rows(rows):
+        sets = {}
+        for name, score in row['sets'].items():
+            sets[name] = {
+                'n': score.get('n'), 'raw_r2': score.get('raw_r2'),
+                'model_r2': score.get('embedding_r2'),
+                'random_r2': score.get('random_control', {}).get('embedding_r2'),
+                'delta_vs_raw': score.get('embedding_r2') - score.get('raw_r2'),
+                'sd_vs_raw': score.get('embedding_minus_raw', {}).get('sd'),
+                'delta_vs_random': (score.get('embedding_r2') - score['random_control']['embedding_r2']
+                                    if score.get('random_control', {}).get('embedding_r2') is not None else None),
+                'sd_vs_random': score.get('vs_random_control', {}).get('sd'),
+            }
+        seed_label = 0 if '/lr50_s0_' in row['name'] else 1
+        records.append({'label': f'seed{seed_label} step {row["step"]}', 'sets': sets})
+    return records
+
+
+def seed_comparison_figure(rows):
+    records = _latest_figure_records(rows)
+    steps = ', '.join(record['label'] for record in records) or 'no completed checkpoints'
+    fig = dataset_comparison_figure(
+        records, SETS, title=f'Latest evaluated 50% mix checkpoints ({steps}; not current live weights)')
     return fig
+
+
+def seed_paired_gains_figure(rows):
+    records = _latest_figure_records(rows)
+    steps = ', '.join(record['label'] for record in records) or 'no completed checkpoints'
+    return paired_gains_figure(
+        records, SETS, title=f'Latest evaluated 50% mix paired gains ({steps}; not current live weights)')
 
 
 def narrative(rows):
@@ -154,14 +206,64 @@ All-eight has not been reached. Evaluation checkpoint results update when comple
 </body></html>'''
 
 
-def main():
+def publish_evaluations(run, rows):
+    import wandb
+    columns, values = evaluation_table(rows)
+    report = narrative(rows)
+    (OUTPUT / 'presentation.html').write_text(report)
+    (OUTPUT / 'scorecards.json').write_text(json.dumps(rows, indent=2))
+    run.log({'procedure/guide': wandb.Html(report),
+             'evaluation/all_datasets': wandb.Table(columns=columns, data=values)})
+    for key, fig in [('evaluation/experiment_comparison', comparison_figure(rows)),
+                     ('evaluation/latest_per_dataset_r2', seed_comparison_figure(rows)),
+                     ('evaluation/latest_paired_gains', seed_paired_gains_figure(rows))]:
+        fig.savefig(OUTPUT / (key.split('/')[-1] + '.png'), dpi=180, bbox_inches='tight')
+        run.log({key: wandb.Image(fig)})
+        plt.close(fig)
+    run.summary['evaluation/complete_scorecards'] = len(rows)
+    run.summary['evaluation/best_observed_wins'] = max(r['wins'] for r in rows)
+
+
+def init_presentation_run(wandb, sources, cfg, total_steps):
+    options = {
+        'entity': 'hcohen', 'project': 'spectralfm-lejepa', 'group': 'training-presentation',
+        'job_type': 'presentation', 'name': 'Training procedure — live two-seed progress',
+        'tags': ['presentation', 'live-progress', 'no-artifacts'],
+        'config': {'source_runs': sources, 'training': cfg['training'], 'target_steps': total_steps,
+                   'goal': 'frozen FM beats raw on majority/all eight', 'protocol': 'unchanged nested CV'},
+    }
+    manifest_path = OUTPUT / 'run.json'
+    resuming = False
+    if manifest_path.exists():
+        previous = json.loads(manifest_path.read_text())
+        if previous.get('id'):
+            options.update(id=previous['id'], resume='allow')
+            resuming = True
+    run = wandb.init(**options)
+    manifest_path.write_text(json.dumps({'id': run.id, 'url': run.url, 'sources': sources}, indent=2))
+    return run, resuming
+
+
+def main(argv=None):
     import wandb
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--watch', action='store_true')
     ap.add_argument('--interval', type=float, default=60)
     ap.add_argument('--source-manifest', type=Path)
-    args = ap.parse_args()
+    ap.add_argument('--refresh-evaluations', action='store_true',
+                    help='update evaluation tables and figures on the existing presentation run')
+    args = ap.parse_args(argv)
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    if args.refresh_evaluations:
+        run_info = json.loads((OUTPUT / 'run.json').read_text())
+        run = wandb.init(entity='hcohen', project='spectralfm-lejepa', id=run_info['id'], resume='allow')
+        roots = [ROOT / 'outputs', ROOT.parent / 'SpectralFM-jepa-wt' / 'outputs']
+        rows = evaluation_rows([root for root in roots if root.exists()])
+        if rows:
+            publish_evaluations(run, rows)
+        run.finish()
+        print(f'Refreshed evaluation figures for {len(rows)} complete scorecards on {run.url}', flush=True)
+        return
     api = wandb.Api(timeout=60)
     if args.source_manifest:
         sources = load_sources(args.source_manifest)
@@ -172,17 +274,19 @@ def main():
             sources[seed] = [cfg['lineage']['pretraining_run_id'], resumed]
     cfg = __import__('yaml').safe_load((ROOT / 'configs/long1_resume_s0.yaml').read_text())
     total = 497990
-    run = wandb.init(entity='hcohen', project='spectralfm-lejepa', group='training-presentation',
-                     job_type='presentation', name='Training procedure — live two-seed progress',
-                     tags=['presentation', 'live-progress', 'no-artifacts'],
-                     config={'source_runs': sources, 'training': cfg['training'], 'target_steps': total,
-                             'goal': 'frozen FM beats raw on majority/all eight', 'protocol': 'unchanged nested CV'})
-    (OUTPUT / 'run.json').write_text(json.dumps({'id': run.id, 'url': run.url, 'sources': sources}, indent=2))
+    run, resuming = init_presentation_run(wandb, sources, cfg, total)
     print('Presentation URL:', run.url, flush=True)
     for seed in sources:
         run.define_metric(f'seed{seed}/optimizer_step')
         run.define_metric(f'seed{seed}/*', step_metric=f'seed{seed}/optimizer_step')
-    cursors = {rid: -1 for ids in sources.values() for rid in ids}
+    if resuming:
+        status_path = OUTPUT / 'status.json'
+        last_status = json.loads(status_path.read_text()) if status_path.exists() else {}
+        cursor_path = OUTPUT / 'cursors.json'
+        processed_cursors = json.loads(cursor_path.read_text()) if cursor_path.exists() else {}
+        cursors = history_cursors(api, sources, last_status, processed_cursors)
+    else:
+        cursors = {rid: -1 for ids in sources.values() for rid in ids}
     signature = None
     last = {}
     while True:
@@ -203,25 +307,16 @@ def main():
                     payload = {f'seed{seed}/{k}':v for k,v in measured.items()}
                     payload[f'seed{seed}/optimizer_step'] = step
                     run.log(payload)
-                    last[seed] = {'step':step, 'source_run':rid, 'state':source.state}
+                    last[seed] = {'step':step, 'history_step':row['_step'],
+                                  'source_run':rid, 'state':source.state}
                 run.summary[f'seed{seed}/source_url'] = source.url
+                (OUTPUT / 'cursors.json').write_text(json.dumps(cursors, indent=2))
         roots = [ROOT/'outputs', ROOT.parent/'SpectralFM-jepa-wt'/'outputs']
         rows = evaluation_rows([root for root in roots if root.exists()])
         new_signature = [(r['path'], Path(r['path']).stat().st_mtime_ns) for r in rows]
         if rows and new_signature != signature:
             signature = new_signature
-            columns, values = evaluation_table(rows)
-            report = narrative(rows)
-            (OUTPUT/'presentation.html').write_text(report)
-            (OUTPUT/'scorecards.json').write_text(json.dumps(rows, indent=2))
-            run.log({'procedure/guide':wandb.Html(report),
-                     'evaluation/all_datasets':wandb.Table(columns=columns, data=values)})
-            for key, fig in [('evaluation/experiment_comparison', comparison_figure(rows)),
-                             ('evaluation/latest_two_seeds', seed_comparison_figure(rows))]:
-                fig.savefig(OUTPUT/(key.split('/')[-1]+'.png'), dpi=180, bbox_inches='tight')
-                run.log({key:wandb.Image(fig)}); plt.close(fig)
-            run.summary['evaluation/complete_scorecards'] = len(rows)
-            run.summary['evaluation/best_observed_wins'] = max(r['wins'] for r in rows)
+            publish_evaluations(run, rows)
         run.summary['last_refresh_unix'] = time.time()
         (OUTPUT/'status.json').write_text(json.dumps(last, indent=2))
         print('Refresh:', json.dumps(last), 'scorecards:', len(rows), flush=True)

@@ -82,7 +82,9 @@ bash -ic 'uv run python -m scripts.screen --config configs/<screen>.yaml --gpus 
 - Live W&B view: https://wandb.ai/hcohen/spectralfm-lejepa/runs/u2b9gssq .
 - `scripts/training_progress.py --watch` reads the original/resumed long-1 histories and completed eight-set local scorecards into a separate presentation run; it never writes to source training runs.
 - Presentation user service: `spectralfm-presentation`; source manifest `outputs/training-progress/sources.json`; log `outputs/training-progress.log`; local HTML, figures, scorecards and watcher status under `outputs/training-progress/`.
-- Panels: `seed0/`, `seed1/` (absolute optimizer steps, weighted losses, LR, progress, validation and representation health); `evaluation/` (raw/FM/random controls, uncertainty, experiment comparisons); `procedure/guide` (recipe, protocol and interpretation).
+- Panels: `seed0/`, `seed1/` (absolute optimizer steps, weighted losses, LR, progress, validation and representation health); `evaluation/` (raw/FM/random controls, per-dataset R², paired gains with bootstrap SD and the +0.05 threshold, experiment comparisons); `procedure/guide` (recipe, protocol and interpretation).
+- Use `scripts/scorecard_figures.py` for evaluation and screen-8 plots. The live presentation can refresh its existing W&B run with `bash -ic '.venv/bin/python -m scripts.training_progress --refresh-evaluations'`; local PNG exports live under `outputs/training-progress/` and `outputs/screen-8/`.
+- The live watcher resumes the presentation run recorded in `outputs/training-progress/run.json` and persists per-source W&B `_step` cursors in `outputs/training-progress/cursors.json`; status keeps both optimizer and history steps.
 - Probe results remain checkpoint measurements. Falling pretraining loss is not proof of downstream gains. Validation/diagnostics remain every 25k steps.
 - New training runs define explicit `optimizer_step` axes and weighted objective contributions through `utils/wandb.py`; the already-running jobs use the separate view to receive these additions without restart.
 
