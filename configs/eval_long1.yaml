@@ -1,0 +1,53 @@
+# Long-run evaluation: the 7 small sets, then labeled_data, with the random-init control (no merged set, no ladder).
+experiment:
+  name: long1_eval
+  seed: 42
+  output_dir: outputs/long-1/eval
+
+evaluation:
+  device: cuda
+  batch_size: 64
+  max_samples: 5000
+  n_jobs: 8
+  backend: torch            # probe backend: torch (float64 GPU port, parity-checked) | sklearn (reference)
+  probe_device: cuda        # torch backend device(s): cuda:0, or a list [cuda:0, cuda:1] (round-robin)
+  probe_workers: 2          # torch backend: concurrent folds per probe device (~2 GB each at labeled_data scale)
+  min_n: 20
+  readouts: [mean, seg4, flat]
+  flat_blocks: [0, 1, 2]   # flat readout only for early blocks (cost); null = all blocks
+  random_control: true
+  ladder_sets: []
+  ladder_block_from: labeled_data   # unused while ladder_sets is empty
+
+# name -> list of label-set directories (several = merged, as clean-eval's merge_label_sets)
+label_sets:
+  dataset0055: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0055]
+  dataset0106: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0106]
+  dataset0109: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0109]
+  dataset0112: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0112]
+  dataset0113: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0113]
+  dataset0114: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0114]
+  dataset0120: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0120]
+  labeled_data: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_data]   # last: the slowest set
+
+baseline:
+  tag: ref_feb25
+  checkpoint: /mnt5/noy/SpectralFM/checkpoints/runai/runai_long_train_2026-02-25_13-46-46.pt
+  parent_repo: /mnt5/home/hadar/nova/SpectralFM-label-regression-eval-merged
+  run_dirs:          # relative to parent_repo; each holds bank.npz + nested_results.json + nested_oof.npz
+    labeled_data: code/eval_outputs/label_probe_regression_labeled_data_ref_feb25/label_probe/labeled_data
+    dataset0055: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0055
+    dataset0106: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0106
+    dataset0109: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0109
+    dataset0112: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0112
+    dataset0113: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0113
+    dataset0114: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0114
+    dataset0120: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0120
+
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: long-1
+  job_type: eval
+  tags: [lejepa, spectralfm, 1d, eval, long1]

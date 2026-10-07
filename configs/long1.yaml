@@ -1,0 +1,30 @@
+# Long run: the screen-6 winner (global term + 50% labeled-regression mix), 10 epochs, two seeds, plus an 80% mix.
+# Decision record: screen-6 long_g1_lr50 won 5/8 (3 strong), mean delta +0.045, +0.051 vs random init.
+name: long-1
+output_dir: outputs/long-1
+eval_config: configs/eval_long1.yaml
+eval_set: labeled_data         # the set the screen table scores
+shared_overrides:
+  - data.source=packed
+  - data.packed_dir=/mnt5/home/hadar/nova/data/spectra_all
+  - data.normalization=global
+  - data.num_workers=12
+  - masking.mask_ratio=0.75
+  - training.epochs=10
+  - training.global_weight=1.0
+  - training.val_every=25000
+  - training.diag_every=25000
+  - training.ckpt_every=50000
+  - experiment.output_dir=outputs/long-1
+  - wandb.group=long-1
+  - "wandb.tags=[lejepa,spectralfm,1d,long1,alldata]"
+arms:
+  lr50_s0: ["data.source_weights={labeled_regression: 0.5, default: 0.5}"]
+  lr50_s1: ["data.source_weights={labeled_regression: 0.5, default: 0.5}", experiment.seed=1]
+  lr80_s0: ["data.source_weights={labeled_regression: 0.8, default: 0.2}"]
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: long-1
+  tags: [lejepa, spectralfm, 1d, long1, alldata]
