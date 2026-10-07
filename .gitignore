@@ -226,3 +226,5 @@ artifacts/
 .env
 .env.*
 .superpowers/
+rolling_status.md
+rolling_status.html
