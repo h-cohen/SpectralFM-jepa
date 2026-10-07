@@ -76,3 +76,12 @@ bash -ic 'uv run python -m scripts.screen --config configs/<screen>.yaml --gpus 
   - `screen.py` (multi-GPU arm queue);
   - `parity_gpu_eval.py`;
   - `pack_*.py` (data packing).
+
+## Training-progress presentation
+
+- Live W&B view: https://wandb.ai/hcohen/spectralfm-lejepa/runs/hkvku2ea .
+- `scripts/training_progress.py --watch` reads the original/resumed long-1 histories and completed eight-set local scorecards into a separate presentation run; it never writes to source training runs.
+- Presentation session: 54577; log `outputs/training-progress.log`; local HTML, figures, scorecards and watcher status under `outputs/training-progress/`.
+- Panels: `seed0/`, `seed1/` (absolute optimizer steps, weighted losses, LR, progress, validation and representation health); `evaluation/` (raw/FM/random controls, uncertainty, experiment comparisons); `procedure/guide` (recipe, protocol and interpretation).
+- Probe results remain checkpoint measurements. Falling pretraining loss is not proof of downstream gains. Validation/diagnostics remain every 25k steps.
+- New training runs define explicit `optimizer_step` axes and weighted objective contributions through `utils/wandb.py`; the already-running jobs use the separate view to receive these additions without restart.

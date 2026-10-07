@@ -66,12 +66,41 @@ def init_run(cfg, job_type, extra_config=None, name=None):
     config = {**cfg, **git_info(), "software": software_versions(), "hostname": socket.gethostname(),
               "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
               **(extra_config or {})}
-    return wandb.init(project=w["project"], entity=w["entity"], group=w["group"], job_type=job_type,
+    run = wandb.init(project=w["project"], entity=w["entity"], group=w["group"], job_type=job_type,
                       tags=list(w["tags"]), name=name, config=config)
+    if job_type == "pretrain":
+        run.define_metric("optimizer_step")
+        for prefix in ("train/*", "valid/*", "representation/*", "progress/*"):
+            run.define_metric(prefix, step_metric="optimizer_step")
+        run.define_metric("valid/loss", summary="min")
+        run.define_metric("progress/percent_complete", summary="last")
+    return run
+
+
+def training_metrics(metrics, tcfg, total_steps):
+    """Measured loss terms plus their actual objective weights and absolute progress."""
+    out = dict(metrics)
+    for prefix in ("train", "valid"):
+        mse, reg, glob = (f"{prefix}/{key}" for key in ("mse_loss", "sigreg_loss", "global_loss"))
+        if mse in out and reg in out:
+            visreg = tcfg.get("regularizer") == "visreg"
+            lam = tcfg["visreg_lambda"] if visreg else tcfg["lambda_sigreg"]
+            out[f"{prefix}/prediction_contribution"] = out[mse] * (1 - lam if visreg else 1)
+            out[f"{prefix}/regularizer_contribution"] = out[reg] * lam
+            out[f"{prefix}/global_contribution"] = out.get(glob, 0.) * tcfg.get("global_weight", 0.)
+    step = out.get("train/global_step")
+    if step is not None and total_steps:
+        out["progress/percent_complete"] = 100 * step / total_steps
+        out["progress/steps_remaining"] = max(0, total_steps - step)
+    return out
 
 
 def log(run, metrics, step=None):
     if run is not None:
+        if getattr(run, "job_type", None) == "pretrain":
+            metrics = training_metrics(metrics, run.config["training"], run.config["derived"]["total_steps"])
+            if step is not None:
+                metrics["optimizer_step"] = step
         run.log(metrics, step=step)
 
 
