@@ -30,7 +30,10 @@ def evaluation_rows(roots):
     rows = []
     for root in roots:
         for path in sorted(Path(root).rglob('summary.json')):
-            data = json.loads(path.read_text())
+            try:
+                data = json.loads(path.read_text())
+            except json.JSONDecodeError:
+                continue
             if not set(SETS).issubset(data.get('sets', {})):
                 continue
             sets = {name: data['sets'][name] for name in SETS}
@@ -42,6 +45,25 @@ def evaluation_rows(roots):
                              sets=sets, wins=sum(d > 0 for d in deltas),
                              strong_wins=sum(d >= .05 for d in deltas), mean_delta=float(np.mean(deltas))))
     return rows
+
+
+def load_sources(path):
+    """Load source run IDs from a manifest keyed by seed number."""
+    manifest = json.loads(Path(path).read_text())
+    if not isinstance(manifest, dict):
+        raise ValueError('source manifest must be a JSON object')
+    sources = {}
+    for seed in (0, 1):
+        key = str(seed)
+        if key not in manifest:
+            raise ValueError(f'source manifest is missing seed {seed}')
+        run_ids = manifest[key]
+        if not isinstance(run_ids, list) or not run_ids:
+            raise ValueError(f'source manifest seed {seed} must have a non-empty list of run IDs')
+        if any(not isinstance(run_id, str) or not run_id for run_id in run_ids):
+            raise ValueError(f'source manifest seed {seed} run IDs must be non-empty strings')
+        sources[seed] = run_ids
+    return sources
 
 
 def evaluation_table(rows):
@@ -120,6 +142,7 @@ Total loss = masked prediction MSE + .05 × token SIGReg + pooled-view loss.
 The pooled loss is .95 × view invariance + .05 × pooled SIGReg. Weighted contributions are logged separately.
 Validation uses fixed spectra/masks every 25,000 steps; representation rank/std diagnose collapse.
 Lower pretraining loss does not establish downstream improvement.</p>
+<p><b>Screen 8:</b> six matched continuations compare random75, random50 and block75 across seeds0/1. Each initializes from its seed’s 200k checkpoint, resets AdamW equally, and runs a fresh 15k-step schedule. Screen-step15000 means 200k initial exposure plus15k continuation; it is not a from-scratch comparison. Validation/diagnostics occur every5k in this screen. Candidate selection requires repeated hard-set improvement with majority and regression guards; final recipe requires longer confirmation and a third seed.</p>
 <p><b>Scoring:</b> frozen nested-CV parameter_0 regression; 2×5 outer, 5 inner, seed 42.
 Any ΔR²&gt;0 wins; ΔR²≥.05 is strong. Normalizers/readouts/probes are selected inside folds.
 Pretraining includes evaluation spectra without labels (approved transductive setup).
@@ -136,13 +159,17 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--watch', action='store_true')
     ap.add_argument('--interval', type=float, default=60)
+    ap.add_argument('--source-manifest', type=Path)
     args = ap.parse_args()
     OUTPUT.mkdir(parents=True, exist_ok=True)
     api = wandb.Api(timeout=60)
-    sources = {}
-    for seed, stamp, resumed in [(0, '100813', 'wxrdfq4n'), (1, '100812', 'wuw24e91')]:
-        cfg = json.loads((ROOT / f'outputs/long-1/eval/lr50_s{seed}_20261007-{stamp}_step200000/summary.json').read_text())
-        sources[seed] = [cfg['lineage']['pretraining_run_id'], resumed]
+    if args.source_manifest:
+        sources = load_sources(args.source_manifest)
+    else:
+        sources = {}
+        for seed, stamp, resumed in [(0, '100813', 'wxrdfq4n'), (1, '100812', 'wuw24e91')]:
+            cfg = json.loads((ROOT / f'outputs/long-1/eval/lr50_s{seed}_20261007-{stamp}_step200000/summary.json').read_text())
+            sources[seed] = [cfg['lineage']['pretraining_run_id'], resumed]
     cfg = __import__('yaml').safe_load((ROOT / 'configs/long1_resume_s0.yaml').read_text())
     total = 497990
     run = wandb.init(entity='hcohen', project='spectralfm-lejepa', group='training-presentation',

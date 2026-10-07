@@ -61,3 +61,41 @@ def test_summary_includes_raw_model_and_random_scores():
     assert '<th>Mean random R²</th>' in report
     columns, values = evaluation_table([presentation_row()])
     assert values[0][columns.index('paired_delta_vs_random_sd')] == .02
+
+
+def test_load_sources_reads_manifest_into_integer_seed_keys(tmp_path):
+    import json
+    from scripts.training_progress import load_sources
+    manifest = tmp_path / 'sources.json'
+    manifest.write_text(json.dumps({'0': ['old0', 'resume0'], '1': ['old1', 'resume1']}))
+
+    assert load_sources(manifest) == {0: ['old0', 'resume0'], 1: ['old1', 'resume1']}
+
+
+@pytest.mark.parametrize('manifest_data', [
+    {'0': ['old0'], '1': []},
+    {'0': ['old0']},
+    {'0': ['old0', 12], '1': ['resume1']},
+])
+def test_load_sources_rejects_missing_seeds_empty_lists_and_nonstring_ids(tmp_path, manifest_data):
+    import json
+    from scripts.training_progress import load_sources
+    manifest = tmp_path / 'sources.json'
+    manifest.write_text(json.dumps(manifest_data))
+
+    with pytest.raises(ValueError):
+        load_sources(manifest)
+
+
+def test_evaluation_rows_skips_partially_written_json(tmp_path):
+    from scripts.training_progress import SETS, evaluation_rows
+    (tmp_path / 'partial').mkdir()
+    (tmp_path / 'partial' / 'summary.json').write_text('{"sets":')
+    complete = {s: {'raw_r2': .3, 'embedding_r2': .4} for s in SETS}
+    (tmp_path / 'complete').mkdir()
+    (tmp_path / 'complete' / 'summary.json').write_text(__import__('json').dumps({'sets': complete}))
+
+    rows = evaluation_rows([tmp_path])
+
+    assert len(rows) == 1
+    assert rows[0]['wins'] == 8

@@ -206,3 +206,28 @@ def test_screen5_configs_are_consistent():
         else:              # exactly screen-3 cont_natural apart from the regularizer
             assert t["init_checkpoint"].endswith("global_mask75_20261006-060636/checkpoint_last.pt")
             assert t["max_steps"] == 15000
+
+
+def test_screen8_is_matched_two_seed_masking_continuation():
+    from spectral_lejepa.config import load_config
+    scfg = yaml.safe_load((REPO / 'configs/screen8.yaml').read_text())
+    cfgs = {arm: load_config(REPO / 'configs/pretrain.yaml', [*scfg['shared_overrides'], *overrides])
+            for arm, overrides in scfg['arms'].items()}
+    assert set(cfgs) == {'control_s0','control_s1','random50_s0','random50_s1','block75_s0','block75_s1'}
+    for seed in (0,1):
+        control = cfgs[f'control_s{seed}']
+        for arm in ('control', 'random50', 'block75'):
+            cfg = cfgs[f'{arm}_s{seed}']
+            assert cfg['experiment']['seed'] == seed
+            assert cfg['training'] == control['training']
+            assert cfg['model'] == control['model'] and cfg['data'] == control['data']
+            assert cfg['training']['resume'] is None
+            assert cfg['training']['init_checkpoint'].endswith('checkpoint_step200000.pt')
+            assert f'lr50_s{seed}_' in cfg['training']['init_checkpoint']
+            assert cfg['training']['max_steps'] == 15000
+            assert cfg['data']['source_weights'] == {'labeled_regression':.5,'default':.5}
+        assert cfgs[f'random50_s{seed}']['masking']['mask_ratio'] == .5
+        assert cfgs[f'block75_s{seed}']['masking']['strategy'] == 'block'
+    ecfg = yaml.safe_load((REPO / scfg['eval_config']).read_text())
+    assert len(ecfg['label_sets']) == 8 and 'merged' not in ecfg['label_sets']
+    assert ecfg['evaluation']['random_control'] is True

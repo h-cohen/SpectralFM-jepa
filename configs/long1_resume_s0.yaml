@@ -9,7 +9,7 @@ data:
   manifest_dir: /mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one
   sequence_length: 245
   max_train_samples: null
-  num_workers: 12
+  num_workers: 4
   source_weights:
     labeled_regression: 0.5
     default: 0.5
@@ -55,7 +55,7 @@ training:
   log_every: 50
   val_every: 25000
   diag_every: 25000
-  ckpt_every: 50000
+  ckpt_every: 10000
   device: cuda
   init_checkpoint: null
   resume: outputs/long-1/lr50_s0_20261007-100813/checkpoint_step200000.pt

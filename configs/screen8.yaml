@@ -1,0 +1,57 @@
+# Matched post-200k 15k-step continuation; fresh optimizer/schedule in every arm.
+name: screen-8
+output_dir: outputs/screen-8
+eval_config: configs/eval_small8.yaml
+eval_set: labeled_data
+shared_overrides:
+- data.source=packed
+- data.packed_dir=/mnt5/home/hadar/nova/data/spectra_all
+- data.normalization=global
+- data.num_workers=4
+- 'data.source_weights={labeled_regression: 0.5, default: 0.5}'
+- masking.mask_ratio=0.75
+- training.max_steps=15000
+- training.global_weight=1.0
+- training.val_every=5000
+- training.diag_every=5000
+- training.ckpt_every=5000
+- experiment.output_dir=outputs/screen-8
+- wandb.group=screen-8
+- wandb.tags=[lejepa,spectralfm,screen8,masking,continuation,alldata]
+arms:
+  control_s0:
+  - experiment.seed=0
+  - training.init_checkpoint=outputs/long-1/lr50_s0_20261007-100813/checkpoint_step200000.pt
+  control_s1:
+  - experiment.seed=1
+  - training.init_checkpoint=outputs/long-1/lr50_s1_20261007-100812/checkpoint_step200000.pt
+  random50_s0:
+  - experiment.seed=0
+  - training.init_checkpoint=outputs/long-1/lr50_s0_20261007-100813/checkpoint_step200000.pt
+  - masking.mask_ratio=0.5
+  random50_s1:
+  - experiment.seed=1
+  - training.init_checkpoint=outputs/long-1/lr50_s1_20261007-100812/checkpoint_step200000.pt
+  - masking.mask_ratio=0.5
+  block75_s0:
+  - experiment.seed=0
+  - training.init_checkpoint=outputs/long-1/lr50_s0_20261007-100813/checkpoint_step200000.pt
+  - masking.strategy=block
+  - masking.num_blocks=3
+  block75_s1:
+  - experiment.seed=1
+  - training.init_checkpoint=outputs/long-1/lr50_s1_20261007-100812/checkpoint_step200000.pt
+  - masking.strategy=block
+  - masking.num_blocks=3
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: screen-8
+  tags:
+  - lejepa
+  - spectralfm
+  - screen8
+  - masking
+  - continuation
+  - alldata
