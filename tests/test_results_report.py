@@ -64,6 +64,29 @@ def test_rendered_report_is_self_contained_and_labels_win_rule(tmp_path):
 
     assert '<!doctype html>' in html.lower()
     assert 'ΔR² &gt; 0' in html or 'ΔR² > 0' in html
-    assert 'https://' not in html
+    assert '<script src=' not in html.lower()
+    assert '<link href="http' not in html.lower()
     assert 'dataset0055' in html
     assert 'application/json' in html
+
+
+def test_report_includes_snapshot_of_active_paired_runs(tmp_path):
+    _write_summary(
+        tmp_path / 'outputs/long-1/eval/lr50_s0_resume_step497990/summary.json',
+        step=497990, model=.72, raw=.60, random=.66, wins=5,
+    )
+    manifest = {
+        'snapshot_at': '2026-10-08 16:18 IDT',
+        'target_steps': 497990,
+        'runs': [{'patches': 48, 'seed': 2, 'step': 700, 'run_id': 'abc123',
+                  'state': 'running', 'service': 'spectralfm-paired-p48-s2'}],
+    }
+    (tmp_path / 'outputs/paired-long').mkdir(parents=True)
+    (tmp_path / 'outputs/paired-long/manifest.json').write_text(json.dumps(manifest))
+
+    html = render_html(collect_report_data(tmp_path))
+
+    assert 'Confirmatory comparison in progress' in html
+    assert 'abc123' in html
+    assert '"step":700' in html
+    assert 'r.patches' in html and 'r.seed' in html and 'r.step' in html
