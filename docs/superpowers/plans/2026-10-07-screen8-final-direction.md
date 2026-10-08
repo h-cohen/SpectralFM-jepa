@@ -45,7 +45,7 @@
 - [x] Apply the promotion gates: neither masking candidate passed all gates, so neither was promoted.
 - [x] These are recipe-selection gates, not a change to the user-defined win metric and not a statistical confidence claim.
 - [x] Assess all six completed scorecards, write decision JSON/Markdown and W&B decision run. All six are complete; no arbitrary automatic heavy training.
-- [x] Evaluate both resumed250k checkpoints serially on CUDA6 (physical7); 350k evaluations remain queued until both checkpoints exist. Final evaluations remain queued by resume launcher.
+- [x] Evaluate resumed250k and350k checkpoints serially on CUDA6 (physical7); both milestone sets completed. Final evaluations completed automatically after both ten-epoch runs.
 - [x] Run live presentation as a user service with current source IDs; record service names, logs, links and state in SUMMARY.md.
 
 ## Final full training policy
@@ -57,7 +57,7 @@ The provisional final recipe is the existing24-patch, mask75, global-term1, 50% 
 - Detached systemd user-service probe succeeded. Previous terminal session persistence was insufficient.
 - Cavecrew evidence investigator independently favors matched masking before a48-patch long run.
 
-- Durable services: long1 seed0/1, screen8 controller, milestones, and presentation were launched under independent `/user.slice/.../user@1040.service/app.slice/` cgroups. The screen controller has completed all six arms; its transient service is no longer present because it finished. Long runs continue with the original cosine schedule.
+- Durable services: long1 seed0/1, screen8 controller, milestones, and presentation ran under independent `/user.slice/.../user@1040.service/app.slice/` cgroups. Screen8, milestone evaluation, and both ten-epoch long runs completed; the presentation watcher remains active.
 - Source manifest now uses original histories plus new resume IDs8zrttyj7/3cj18b2q; stale lost trajectories are excluded. Presentation runu2b9gssq; plan runfjbztblr; controlleru4k2kge9; initial pending decision54umpbjc.
 - RED/GREEN: config test failed before screen8 config existed, then passed. Builder's source/partial-JSON tests failed then11passed. Assessor tests failed before implementation/reporting fields existed, then5passed. Independent lighter-model review found reporting omissions, corrected with measured raw/model/random and48per-set rows.
 - Full suite initially observed the reporting test's RED state because it started while the builder changed that test/module. Confirmed `KeyError: mean_raw_r2`; no unrelated failing tests. After all edits completed, fresh full suite174passed,8deselected, one sandbox NVML warning. `git diff --check` and shell syntax check passed.
@@ -65,12 +65,22 @@ The provisional final recipe is the existing24-patch, mask75, global-term1, 50% 
 - Ruling: retain exact evaluation protocol and user win rule; use explicit separate promotion gates only for experimental triage.
 - Ruling: short null screen does not rule out long training; 48patch remains conditional next architecture before reconstruction/teacher changes.
 - W&B table metadata is managed by the SDK as table artifacts; no model/checkpoint files are uploaded. Prior repository table logging already uses this mechanism.
-- Runtime results and final recipe confirmation remain pending. Services queue complete probes/assessment without depending on an active chat turn. The current provisional recipe is not presented as a newly measured winner.
+- Screen8 and both long1 seeds completed. Final long1 results are seed0 5/8 wins (mean Δ +0.0442) and seed1 3/8 (mean Δ +0.0105); majority performance did not repeat in both seeds. The current recipe remains provisional.
 
 ## Runtime status (2026-10-08 05:08 IDT)
 
-- Both long1 services are active and progressing with finite losses: seed0 ~345.6k and seed1 ~345.7k of 497,990 steps. Their 250k scorecards each win 6/8 against raw (mean Δ +0.0812 and +0.0385); these are intermediate checkpoints, not final claims.
+- Both long1 services completed 497,990 steps and their final evaluations. Seed0 wins 5/8 (mean Δ +0.0442); seed1 wins 3/8 (mean Δ +0.0105). These two seeds do not establish repeatable majority performance.
 - All six screen8 evaluations completed. Final assessor run: https://wandb.ai/hcohen/spectralfm-lejepa/runs/3hki6g5s . Neither candidate passed every registered gate: random50 missed wins-per-seed (5/8, 4/8); block75 missed positive hard-set gain in each seed (seed1 −0.0424). No masking candidate was promoted and no heavy follow-on training was launched.
-- The milestone service remains active, serially evaluating the 250k/350k checkpoints on CUDA6. Both 250k scorecards are present; 350k checkpoints are not yet available, so the remaining milestone evaluations are waiting as designed.
-- The presentation service remains active, refreshing through ~345k and showing 35 complete scorecards. Its latest long1 evaluation remains the 250k checkpoint; live training progress is not evaluation evidence.
-- Current user-manager check: long1 seed0, long1 seed1, milestones, and presentation all report `active`; the screen service is absent because its controller completed. Final evaluation and recipe choice remain pending.
+- The milestone queue completed both 250k and350k evaluations for each seed. At350k, seed0 won4/8 and seed1 won5/8; later checkpoint scores were not monotonic.
+- The presentation service remains active, showing both runs finished at497,990 and39 complete scorecards. The screen service, milestone service, and long1 services are inactive because their jobs completed.
+- Current user-manager check: only `spectralfm-presentation` reports `active`. Final recipe choice is open; the screen8 masking variants were not promoted.
+
+## Follow-up paired architecture experiment (pre-registered 2026-10-08)
+
+- Compare fresh 24-patch and48-patch runs on the same seeds0,1,2 (six runs total), each from scratch for10 epochs/497,990 steps. Hold all other settings fixed: packed data, global normalization, 50/50 source weights, mask ratio.75, random masking, d256/depth6, batch256, AdamW5e-4, global weight1, SIGReg.05, and the same training/validation protocol.
+- Use four data workers per job,10k-step recovery checkpoints,25k training diagnostics, and detached user services. GPU3 is excluded; CUDA6 (physical GPU7) is reserved for evaluation. Final evaluations share an exclusive file lock so only one eight-dataset nested-CV probe runs at a time.
+- Log each run to W&B group `paired-long-confirmatory`; retain optimizer-step coordinates, weighted loss components, learning rate, validation/representation diagnostics, throughput and run configuration. Do not upload checkpoints.
+- Evaluate only the pre-registered final checkpoint for the architecture decision, with the unchanged eight-set nested-CV protocol, raw spectrum and same-architecture random-init control. Do not choose a checkpoint by inspecting intermediate downstream evaluations.
+- Report per-dataset ΔR², wins/strong wins, paired-fold uncertainty, and across-seed mean±SD. Call a recipe majority-positive only if its mean per-dataset Δ is positive on at least5/8 datasets and at least two of three seeds individually win5/8 or more. Call one architecture better than the other only if the paired-seed mean gain across the eight datasets is positive and the 48-patch arm is better in at least two of three seed pairs. These are exploratory selection rules, not significance claims. All-eight requires positive seed-mean Δ on every dataset and remains aspirational.
+- Run only after a CUDA smoke check passes and all six training devices are visible. The accepted 48-patch one-seed/three-epoch result (5/8 wins) remains exploratory and does not count as one of the fresh full-schedule seeds.
+- Report artifact: `outputs/training-progress/results_report.html`, generated by `scripts/build_results_report.py`; it embeds all chart code and current scorecards for offline presentation.
