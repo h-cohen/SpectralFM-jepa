@@ -92,9 +92,9 @@ bash -ic 'uv run python -m scripts.screen --config configs/<screen>.yaml --gpus 
 
 - Plan: `docs/superpowers/plans/2026-10-07-screen8-final-direction.md`. Registered in W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/fjbztblr .
 - Long1 seeds0/1 run under `spectralfm-long1-s0` / `spectralfm-long1-s1`, with 10k-step checkpoints. Previous terminal-managed runs vanished near222k; their latest saved state was200k, so those unsaved steps were lost.
-- `spectralfm-screen8` runs `configs/screen8.yaml`: random75 control, random50, block75 across seeds0/1. Every arm starts from matched200k weights and uses the same fresh15k optimizer schedule. Initial screen: https://wandb.ai/hcohen/spectralfm-lejepa/runs/u4k2kge9 .
-- `scripts/assess_screen8.py` automatically writes/logs complete eight-set decisions after the screen. Candidate gates are exploratory; they never change the user-defined win metric or automatically launch heavy training.
-- `spectralfm-long1-milestones` evaluates250k/350k checkpoints serially on CUDA6; the main launchers evaluate final checkpoints on their GPUs.
+- Screen8 completed all six arms; its final assessment is https://wandb.ai/hcohen/spectralfm-lejepa/runs/3hki6g5s (controller: https://wandb.ai/hcohen/spectralfm-lejepa/runs/u4k2kge9). Neither random50 nor block75 passed every registered gate, so no masking candidate was promoted and no heavy follow-on training was launched.
+- `scripts/assess_screen8.py` writes/logs complete eight-set decisions. Candidate gates are exploratory; they never change the user-defined win metric or automatically launch heavy training.
+- `spectralfm-long1-milestones` evaluates250k/350k checkpoints serially on CUDA6; both 250k evaluations are complete (6/8 raw wins per seed), and 350k evaluations await the checkpoints. Main launchers evaluate final checkpoints on their GPUs.
 - Inspect lifecycle with `systemctl --user status spectralfm-long1-s0 spectralfm-long1-s1 spectralfm-screen8 spectralfm-long1-milestones spectralfm-presentation`. Independent user services replace execution-tool sessions.
 - Provisional final recipe remains24 patches/mask75/global weight1/50% mix/10 epochs. Mask changes require repeated gains; final recipe needs longer confirmation and at least a third seed. If masks do not help, repeated48-patch long training precedes new reconstruction or teacher architecture.
 - Subagents use lighter `gpt-6-luna` via native Cavecrew delegation. No Caveman runtime cost telemetry is claimed.

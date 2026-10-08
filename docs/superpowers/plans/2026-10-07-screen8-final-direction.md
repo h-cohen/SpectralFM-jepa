@@ -42,10 +42,10 @@
 ### Task 3: Measured decisions and presentation
 - [x] Add source manifest support so presentation follows restarted runs; skip in-progress JSON safely.
 - [x] Add assessment with raw/model/random scores, controls, uncertainty and promotion gates; tests RED/GREEN.
-- [ ] Promote a masking candidate only if each seed wins≥5/8, hard-set mean gain over matched continuation is positive in both seeds, overall mean gain is positive, seed-mean LD regression≤.01 and other stable-set regressions≤.05.
+- [x] Apply the promotion gates: neither masking candidate passed all gates, so neither was promoted.
 - [x] These are recipe-selection gates, not a change to the user-defined win metric and not a statistical confidence claim.
-- [ ] Assess all six completed scorecards, write decision JSON/Markdown and W&B decision run. Missing results remain pending; no arbitrary automatic heavy training.
-- [x] Evaluate resumed250k/350k checkpoints serially on CUDA6 (physical7). Final evaluations remain queued by resume launcher.
+- [x] Assess all six completed scorecards, write decision JSON/Markdown and W&B decision run. All six are complete; no arbitrary automatic heavy training.
+- [x] Evaluate both resumed250k checkpoints serially on CUDA6 (physical7); 350k evaluations remain queued until both checkpoints exist. Final evaluations remain queued by resume launcher.
 - [x] Run live presentation as a user service with current source IDs; record service names, logs, links and state in SUMMARY.md.
 
 ## Final full training policy
@@ -57,7 +57,7 @@ The provisional final recipe is the existing24-patch, mask75, global-term1, 50% 
 - Detached systemd user-service probe succeeded. Previous terminal session persistence was insufficient.
 - Cavecrew evidence investigator independently favors matched masking before a48-patch long run.
 
-- Durable services: long1 seed0/1, screen8, milestones, presentation all verified active with independent `/user.slice/.../user@1040.service/app.slice/` cgroups. First four screen arms have finite W&B losses; block arms queued. Long runs verified beyond205k with original cosine schedule.
+- Durable services: long1 seed0/1, screen8 controller, milestones, and presentation were launched under independent `/user.slice/.../user@1040.service/app.slice/` cgroups. The screen controller has completed all six arms; its transient service is no longer present because it finished. Long runs continue with the original cosine schedule.
 - Source manifest now uses original histories plus new resume IDs8zrttyj7/3cj18b2q; stale lost trajectories are excluded. Presentation runu2b9gssq; plan runfjbztblr; controlleru4k2kge9; initial pending decision54umpbjc.
 - RED/GREEN: config test failed before screen8 config existed, then passed. Builder's source/partial-JSON tests failed then11passed. Assessor tests failed before implementation/reporting fields existed, then5passed. Independent lighter-model review found reporting omissions, corrected with measured raw/model/random and48per-set rows.
 - Full suite initially observed the reporting test's RED state because it started while the builder changed that test/module. Confirmed `KeyError: mean_raw_r2`; no unrelated failing tests. After all edits completed, fresh full suite174passed,8deselected, one sandbox NVML warning. `git diff --check` and shell syntax check passed.
@@ -66,3 +66,11 @@ The provisional final recipe is the existing24-patch, mask75, global-term1, 50% 
 - Ruling: short null screen does not rule out long training; 48patch remains conditional next architecture before reconstruction/teacher changes.
 - W&B table metadata is managed by the SDK as table artifacts; no model/checkpoint files are uploaded. Prior repository table logging already uses this mechanism.
 - Runtime results and final recipe confirmation remain pending. Services queue complete probes/assessment without depending on an active chat turn. The current provisional recipe is not presented as a newly measured winner.
+
+## Runtime status (2026-10-08 05:08 IDT)
+
+- Both long1 services are active and progressing with finite losses: seed0 ~345.6k and seed1 ~345.7k of 497,990 steps. Their 250k scorecards each win 6/8 against raw (mean Δ +0.0812 and +0.0385); these are intermediate checkpoints, not final claims.
+- All six screen8 evaluations completed. Final assessor run: https://wandb.ai/hcohen/spectralfm-lejepa/runs/3hki6g5s . Neither candidate passed every registered gate: random50 missed wins-per-seed (5/8, 4/8); block75 missed positive hard-set gain in each seed (seed1 −0.0424). No masking candidate was promoted and no heavy follow-on training was launched.
+- The milestone service remains active, serially evaluating the 250k/350k checkpoints on CUDA6. Both 250k scorecards are present; 350k checkpoints are not yet available, so the remaining milestone evaluations are waiting as designed.
+- The presentation service remains active, refreshing through ~345k and showing 35 complete scorecards. Its latest long1 evaluation remains the 250k checkpoint; live training progress is not evaluation evidence.
+- Current user-manager check: long1 seed0, long1 seed1, milestones, and presentation all report `active`; the screen service is absent because its controller completed. Final evaluation and recipe choice remain pending.
