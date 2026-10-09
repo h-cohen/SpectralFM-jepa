@@ -229,3 +229,5 @@ artifacts/
 rolling_status.md
 rolling_status.html
 plans/
+
+.tmp/

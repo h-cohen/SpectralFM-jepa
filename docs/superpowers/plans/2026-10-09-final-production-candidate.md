@@ -37,3 +37,11 @@
 - Live job advanced to4,000steps with finite loss.8420,gradient norm18.04, recent throughput.150s/step. Serviceactive andGPU0utilization75%,6,546MiB. NVML warning is present because of the known broken GPU; CUDA smoke and actual training both work.
 - Resolved training pool12,748,642rows; diagnostic validation subset2,048; global corpus12,758,642. Source masses default/regression.5/.5. Training config and core training code hashes unchanged since registration.
 - Diagram visually inspected after rasterizing SVG; final report uses scoped SVG styles. Postlaunch report/gate logging refinements are recorded separately from prelaunch file hashes; they do not change training or qualification thresholds.
+
+## Recovery (2026-10-10)
+
+- Original run failed at75,000during W&B diagnostic PNG creation: `OSError: [Errno28] No space left on device`. Logged loss.201128andgradient norm.481664were finite; failure was media logging, not observed numerical divergence.
+- Last intact recovery checkpoint is70,000with optimizer,scheduler,scaler and complete Python/NumPy/Torch/CUDA/mask RNG state. Resume validation confirms the original497,990step schedule.5,000unsaved steps are replayed.
+- Launcher now supports `--resume CHECKPOINT`, preserves the previous training log, and uses repository-local `.tmp` on the filesystem with1.5TiBfree instead of shared `/tmp`.
+- `log_figure` closes figures in a finally block and warns on ENOSPC/EDQUOT without aborting training; unrelated logging errors still propagate. Loss/checkpoint failures remain fatal.Regression tests cover both paths.
+- Recovery service:`spectralfm-final-model-s101-recovery`; new W&B run`ylymmcnn`: https://wandb.ai/hcohen/spectralfm-lejepa/runs/ylymmcnn . Prior run`ibdymf53`remains in manifest lineage. Same seed,model,objective,sampling,schedule and final fixed-readout gate.

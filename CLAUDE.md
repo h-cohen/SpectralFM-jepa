@@ -13,7 +13,7 @@
 - Configs: `configs/final_model.yaml`, `configs/eval_final_model.yaml`.
 - 48 patches, d256, 6 blocks; global normalization; 75% random masking; batch 256; SIGReg 0.05; pooled weight 1; expected 50/50 source sampling. AdamW 5e-4, ten epochs / 497,990 steps, seed 101.
 - Export candidate: block-2 flat, 12,288 features; all six blocks train. Other blocks remain available in the full checkpoint for analysis.
-- Service: `spectralfm-final-model-s101`; W&B run `ibdymf53`, group `final-model-fixed-block2`.
+- Service: `spectralfm-final-model-s101-recovery`; W&B run `ylymmcnn`, group `final-model-fixed-block2`.
 - Output: `outputs/final-model/`. Pipeline: training → TorchScript export → fixed-readout evaluation → benchmark gate → report.
 - Gate:eight finite sets, at least five raw wins, positive mean gains versus raw/random, all canaries passing. Passing is benchmark qualification; deployment-domain validation remains separate.
 - Existing 48-patch block-2 flat features win 7/8 in each of three seeds; 0106 loses. This readout choice is retrospective and is being replicated, not an architectural requirement.

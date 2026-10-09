@@ -68,7 +68,7 @@ uv sync
 systemd-run --user --unit=spectralfm-final-model-s101 bash -ic 'cd /mnt5/home/hadar/nova/SpectralFM-jepa && bash scripts/launch_final_model.sh'
 ```
 
-The interactive login shell loads the user's W&B environment. The durable launcher runs training, export, evaluation, the predeclared gate, and report rebuild. For standalone export or evaluation, take the checkpoint path printed in `outputs/final-model/training.log`:
+The interactive login shell loads the user's W&B environment. The durable launcher runs training, export, evaluation, the predeclared gate, and report rebuild. Use `--resume CHECKPOINT` for recovery; optimizer, scheduler and RNG state are restored. Temporary files stay in ignored `.tmp/`. For standalone export or evaluation, take the checkpoint path printed in `outputs/final-model/training.log`:
 
 ```bash
 CHECKPOINT="$(sed -n 's/^final checkpoint: //p' outputs/final-model/training.log | tail -1)"

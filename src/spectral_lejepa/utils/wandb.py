@@ -7,6 +7,8 @@ or `wandb.enabled: false` turns every helper here into a no-op.
 from __future__ import annotations
 
 import os
+import errno
+import warnings
 import platform
 import socket
 import subprocess
@@ -105,10 +107,16 @@ def log(run, metrics, step=None):
 
 
 def log_figure(run, key, fig, step=None):
-    if run is not None:
-        import wandb
-        run.log({key: wandb.Image(fig)}, step=step)
-    plt.close(fig)
+    try:
+        if run is not None:
+            import wandb
+            run.log({key: wandb.Image(fig)}, step=step)
+    except OSError as exc:
+        if exc.errno not in (errno.ENOSPC, errno.EDQUOT):
+            raise
+        warnings.warn(f'Skipping figure {key} at step {step}: media disk unavailable ({exc})')
+    finally:
+        plt.close(fig)
 
 
 def log_checkpoint(run, path, artifact_name, aliases, metadata):
