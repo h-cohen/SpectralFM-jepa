@@ -86,7 +86,26 @@ def test_report_includes_snapshot_of_active_paired_runs(tmp_path):
 
     html = render_html(collect_report_data(tmp_path))
 
-    assert 'Confirmatory comparison in progress' in html
+    assert 'Confirmatory comparison in progress' not in html
     assert 'abc123' in html
     assert '"step":700' in html
     assert 'r.patches' in html and 'r.seed' in html and 'r.step' in html
+
+
+def test_story_evidence_is_loaded_and_missing_evidence_is_explicit(tmp_path):
+    folder = tmp_path / 'outputs/training-progress'
+    folder.mkdir(parents=True)
+    payload = {'schema_version': 1, 'rows': [], 'sigreg_causal_status': 'No matched SIGReg-off control measured.'}
+    (folder / 'story_evidence.json').write_text(json.dumps(payload))
+    data = collect_report_data(tmp_path)
+    assert data['story'] == payload
+    html = render_html(data)
+    assert 'Training-time regularization' in html
+    assert 'schematic' not in html.lower()
+    assert 'whitening' not in html.lower()
+    assert 'No matched SIGReg-off control' in html
+    assert '<script src=' not in html
+    assert 'Historical checkpoint progression' not in html
+    assert 'Screen 8: masking decision' not in html
+    assert '(B, 48, 6)' in html
+    assert '(1, 12288)' in html

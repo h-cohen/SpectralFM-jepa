@@ -1,0 +1,63 @@
+# Evaluate only block2 flat. No layer/readout search or checkpoint selection.
+experiment:
+  name: production_fixed_block2_eval
+  seed: 42
+  output_dir: outputs/final-model/eval
+evaluation:
+  device: cuda
+  batch_size: 64
+  max_samples: 5000
+  n_jobs: 8
+  backend: torch
+  probe_device: cuda
+  probe_workers: 1
+  min_n: 20
+  readouts:
+  - flat
+  flat_blocks:
+  - 2
+  random_control: true
+  ladder_sets: []
+  ladder_block_from: labeled_data
+label_sets:
+  dataset0055:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0055
+  dataset0106:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0106
+  dataset0109:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0109
+  dataset0112:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0112
+  dataset0113:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0113
+  dataset0114:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0114
+  dataset0120:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0120
+  labeled_data:
+  - /mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_data
+baseline:
+  tag: ref_feb25
+  checkpoint: /mnt5/noy/SpectralFM/checkpoints/runai/runai_long_train_2026-02-25_13-46-46.pt
+  parent_repo: /mnt5/home/hadar/nova/SpectralFM-label-regression-eval-merged
+  run_dirs:
+    labeled_data: code/eval_outputs/label_probe_regression_labeled_data_ref_feb25/label_probe/labeled_data
+    dataset0055: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0055
+    dataset0106: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0106
+    dataset0109: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0109
+    dataset0112: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0112
+    dataset0113: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0113
+    dataset0114: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0114
+    dataset0120: code/eval_outputs/label_probe_regression_ref_feb25/label_probe/dataset0120
+wandb:
+  enabled: true
+  entity: null
+  project: spectralfm-lejepa
+  group: final-model-fixed-block2
+  job_type: eval
+  tags:
+  - lejepa
+  - spectralfm
+  - eval
+  - fixed-block2-flat
+  - final-candidate
