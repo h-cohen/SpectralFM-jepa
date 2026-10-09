@@ -1,11 +1,4 @@
-"""Diagnostics used to decide lambda_sigreg from measurements rather than assumptions.
-
-representation_stats() summarizes a set of embeddings [N, D]:
-  mean_norm, std (mean per-dimension std), effective_rank (exp of the entropy of the
-  normalized singular values; D for isotropic data, ~1 for collapse), covariance_trace,
-  covariance_condition (largest / smallest non-negligible covariance eigenvalue; inf when
-  everything collapsed) and mean_pairwise_cosine (1.0 when all embeddings point the same way).
-"""
+"""Embedding rank, covariance and collapse diagnostics."""
 from __future__ import annotations
 
 import matplotlib

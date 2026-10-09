@@ -1,22 +1,4 @@
-"""LeJEPA objective for masked latent prediction:
-
-    loss = MSE(predicted, target_masked) + lambda_sigreg * SIGReg(target)
-
-MSE compares predictions only with the target embeddings at the SAME masked positions.
-SIGReg (lightly's implementation of the LeJEPA regularizer) tests whether embeddings look
-like an isotropic Gaussian. It is applied per token position: target [B, 24, D] is
-transposed to [24, B, D], so each position is tested across the B independent samples of
-the batch (N = B), and the 24 statistics are averaged. SIGReg sums cos/sin over the batch
-and scales by N, so it runs in fp32 with autocast off.
-
-Optional sample-level term (global_weight > 0), given pooled embeddings views [V+1, B, D] of the
-full spectrum and V random patch subsets: loss += global_weight * ((1-lambda) * mean((views -
-views.mean(0))^2) + lambda * SIGReg(views)); SIGReg runs per view across the batch, then averages.
-
-regularizer="visreg" swaps SIGReg for VISReg (training/visreg.py) on the same tensors, with the paper's
-convex weighting: (1 - visreg_lambda) * (MSE or invariance) + visreg_lambda * reg. The returned
-sigreg_loss / global_sigreg_loss keys then hold the VISReg total, plus reg_center / reg_scale / reg_shape.
-"""
+"""Masked MSE plus token and pooled-view regularization. SIGReg runs in fp32 over the batch axis."""
 from __future__ import annotations
 
 import torch
@@ -48,7 +30,7 @@ class LeJEPAObjective(nn.Module):
             mse = F.mse_loss(predicted.float(), target_masked.float())
             if self.regularizer == "sigreg":
                 lam = self.lambda_sigreg
-                reg = self.sigreg(target.float().transpose(0, 1))   # [24, B, D]
+                reg = self.sigreg(target.float().transpose(0, 1))   # [T, B, D]
                 loss = mse + lam * reg
                 out = {"mse_loss": mse, "sigreg_loss": reg}
             else:

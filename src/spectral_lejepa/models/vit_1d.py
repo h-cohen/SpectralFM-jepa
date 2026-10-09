@@ -1,15 +1,4 @@
-"""1-D ViT pieces for LeJEPA on 24-token spectra.
-
-    tokens = tokenizer(signal)                         [B, 24, D]
-    context = encoder(tokens[visible])                 [B, n_vis, D]   only visible tokens
-    predicted = predictor(context, masked positions)   [B, n_mask, D]
-    target = encoder(tokens)                           [B, 24, D]      SAME encoder, all tokens
-    target_masked = target[masked]                     [B, n_mask, D]
-
-There is no EMA/teacher network and no stop-gradient: gradients reach the encoder through
-both the context and the target path. SIGReg (training/loss.py) prevents the collapse that
-stop-gradients exist to prevent elsewhere.
-"""
+"""Shared 1-D transformer encoder and masked-token predictor. Both encoder paths receive gradients."""
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -97,10 +86,10 @@ class LeJEPA(nn.Module):
             raise ValueError(f"unknown projector {projector!r}; use 'none' or 'mlp'")
 
     def forward(self, x, masked_idx, visible_idx, view_idxs=None):
-        tokens = self.tokenizer(x)                                            # [B, 24, D]
+        tokens = self.tokenizer(x)                                            # [B, T, D]
         context = self.encoder(gather_tokens(tokens, visible_idx))            # [B, n_vis, D]
         predicted = self.predictor(context, visible_idx, masked_idx)          # [B, n_mask, D]
-        target = self.encoder(tokens)                                         # [B, 24, D]
+        target = self.encoder(tokens)                                         # [B, T, D]
         views = None
         if view_idxs is not None:   # pooled encoder outputs (before any projector): full view, then subsets
             views = torch.stack([target.mean(1)] + [self.encoder(gather_tokens(tokens, idx)).mean(1)
@@ -120,14 +109,7 @@ class LeJEPA(nn.Module):
 
 
 class EvalBackbone(nn.Module):
-    """The interface the clean-eval extraction expects:
-    model(input_values=[B, 245], output_hidden_states=True).hidden_states -> tuple of [B, T, D].
-
-    hidden_states = (tokens, block 1, ..., block depth-1, final normed output); the last entry
-    is exactly the target representation used in training. The projector is never used here.
-    Deliberately has no `feature_extractor` / `feature_projection` attributes: the parent eval
-    treats those names as data2vec conv taps.
-    """
+    """Expose tokenizer/block states; the last state includes the final LayerNorm."""
 
     def __init__(self, model: LeJEPA):
         super().__init__()

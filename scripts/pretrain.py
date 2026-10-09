@@ -1,8 +1,4 @@
-"""Pretrain LeJEPA on SpectralFM spectra.
-
-  uv run python scripts/pretrain.py [--config configs/pretrain.yaml] [key.sub=value ...]
-  e.g. uv run python scripts/pretrain.py training.max_steps=300 data.max_train_samples=20000
-"""
+"""Pretrain from a YAML config with optional key=value overrides."""
 import argparse
 
 from spectral_lejepa.config import load_config

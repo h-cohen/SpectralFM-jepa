@@ -1,10 +1,4 @@
-"""VISReg (Wu, Balestriero, Levine 2026, arXiv 2606.02572): variance-invariance-sketching regularizer.
-
-For z [..., N, D] (leading dims are independent tests, like lightly's SIGReg) it returns, averaged over the
-leading dims, a center term (mean^2), a scale term ((1 - std)^2) and a shape term: the sorted random 1-D
-projections of the std-normalized batch (stop-grad on std) against standard-normal quantiles.
-One set of unit-norm directions is drawn per call from torch's global RNG on z's device.
-"""
+"""VISReg: center, scale and sliced distribution regularization (arXiv:2606.02572)."""
 from __future__ import annotations
 
 import torch

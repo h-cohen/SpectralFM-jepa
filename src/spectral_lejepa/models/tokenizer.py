@@ -1,12 +1,4 @@
-"""245-point signal -> 24 patch tokens.
-
-245 = 24 x 10 + 5, so equal patches are impossible without dropping or inventing samples.
-We split the signal into 24 contiguous, non-overlapping patches with np.array_split:
-5 patches of 11 samples (indices 0..54), then 19 patches of 10 (55..244). Every sample
-lands in exactly one patch, so masking a patch hides exactly its samples and no
-neighbouring token can leak them. Each 10-sample patch is right-padded with one zero to
-width 11 so one shared Linear(11 -> dim) embeds all patches.
-"""
+"""Contiguous patch projection with zero padding and learned positions."""
 from __future__ import annotations
 
 import numpy as np
@@ -37,11 +29,11 @@ class PatchTokenizer(nn.Module):
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
     def patchify(self, x: torch.Tensor) -> torch.Tensor:
-        """[B, 245] -> [B, 24, 11]."""
+        """[B, L] -> [B, T, ceil(L/T)]."""
         if x.shape[-1] != self.sequence_length:
             raise ValueError(f"expected signals of length {self.sequence_length}, got {x.shape[-1]}")
         return F.pad(x, (0, 1))[:, self.index]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """[B, 245] -> [B, 24, dim] tokens, positional embedding included."""
+        """[B, L] -> [B, T, dim] tokens, positional embedding included."""
         return self.proj(self.patchify(x)) + self.pos_embed

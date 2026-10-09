@@ -1,8 +1,4 @@
-"""Pretraining loop: spectra -> random mask -> LeJEPA forward -> MSE + lambda*SIGReg -> AdamW.
-
-Linear warmup then cosine decay (the LeJEPA recipe), fp16 autocast on GPU, periodic
-validation losses, representation/masking diagnostics, checkpoints and W&B logging.
-"""
+"""Masked-latent pretraining with validation, diagnostics and reproducible checkpoints."""
 from __future__ import annotations
 
 import json
@@ -106,12 +102,11 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
 
 
 def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, reference_rank):
-    """Representation statistics on the whole valid set (+ figures when W&B is on).
-    Returns (metrics, reference_rank); the reference is the step-0 effective rank."""
+    """Log representation statistics and retain the initial rank as a collapse reference."""
     model.eval()
-    reps = diag.encode(model, valid_signals, device)                       # [N, 24, D]
+    reps = diag.encode(model, valid_signals, device)
     model.train()
-    pooled, sv = diag.representation_stats(reps.mean(dim=1))               # what the eval reads
+    pooled, sv = diag.representation_stats(reps.mean(dim=1))
     token, _ = diag.representation_stats(reps.reshape(-1, reps.shape[-1]))
     metrics = {**{f"representation/{k}": v for k, v in pooled.items()},
                **{f"representation/token_{k}": v for k, v in token.items()}}
@@ -135,7 +130,7 @@ def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, 
 
 
 def load_init_checkpoint(path, cfg) -> dict | None:
-    """The checkpoint to continue from (None when unset); it must share this run's model and normalization."""
+    """Load compatible model weights without restoring optimization state."""
     if not path:
         return None
     ckpt = load_checkpoint(path)
@@ -207,7 +202,6 @@ def train(cfg: dict) -> dict:
     resume = load_resume_checkpoint(tcfg.get("resume"), cfg)
     init = resume or load_init_checkpoint(tcfg.get("init_checkpoint"), cfg)
 
-    # --- data ---
     norm = dcfg["normalization"]
     weights, sampler = dcfg.get("source_weights"), None
     if weights and dcfg["source"] != "packed":
@@ -236,7 +230,7 @@ def train(cfg: dict) -> dict:
                         "valid_manifest": manifest_fingerprint(valid_manifest)}
     else:
         raise ValueError(f"data.source={dcfg['source']!r}: use 'manifests' or 'packed'")
-    valid_signals = torch.stack([valid_ds[i] for i in range(len(valid_ds))])   # small, fixed
+    valid_signals = torch.stack([valid_ds[i] for i in range(len(valid_ds))])
     batch_size = tcfg["batch_size"]
     loader = make_loader(train_ds, batch_size, shuffle=True, seed=seed,
                          num_workers=dcfg["num_workers"], drop_last=True, sampler=sampler)
@@ -255,7 +249,6 @@ def train(cfg: dict) -> dict:
         warnings.warn(f"batch_size={batch_size} < {RECOMMENDED_MIN_BATCH}: SIGReg's batch statistic is "
                       "estimated from fewer samples (logged as derived.batch_size_below_256=true)")
 
-    # --- run bookkeeping ---
     run_name = f"{ecfg['name']}_{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = Path(ecfg["output_dir"]) / run_name
     out_dir.mkdir(parents=True, exist_ok=False)
@@ -270,7 +263,6 @@ def train(cfg: dict) -> dict:
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"], extra_config=derived, name=run_name)
     metadata = {**wb.git_info(), "wandb_run_id": run.id if run is not None else None}
 
-    # --- model and optimization ---
     model = build_model(mcfg, dcfg["sequence_length"])
     if init:
         model.load_state_dict(init["ckpt"]["model"])
