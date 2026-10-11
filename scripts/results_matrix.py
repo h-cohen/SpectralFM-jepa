@@ -64,6 +64,9 @@ def collect_matrix(root):
                 rc_nested = read_json(path.parent / dataset / 'random_control/nested_results.json').get('families', {})
                 random['cells'][dataset] = {'r2': float(rc['embedding_r2']),
                     'sd': _number(rc.get('embedding_sd', rc_nested.get('embedding', {}).get('bootstrap_sd'))), 'n': p.get('n')}
+        if str(path.relative_to(root)).startswith('outputs/production-analysis/'):
+            model['label'] = 'Exploratory all-block analysis · ' + label
+            random['label'] = 'Random-init · exploratory all-block analysis · ' + label
         rows = [r for r in (model, raw, random) if r['cells']]
         for row in rows:
             row['baseline'] = raw['cells']

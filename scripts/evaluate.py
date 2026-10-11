@@ -165,6 +165,10 @@ def main(argv=None):
             rc_bank = extract_bank(random_backbone, model_input(raw, ckpt["config"]), device=vcfg["device"],
                                    batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
                                    flat_blocks=vcfg.get("flat_blocks"))
+            save_bank(rc_dir / 'bank.npz', rc_bank, raw, y,
+                      {'checkpoint': a.checkpoint, 'model': 'random_init_seed0', 'seed': seed,
+                       'set': name, 'model_input': method, 'readouts': tuple(vcfg['readouts']),
+                       'flat_blocks': vcfg.get('flat_blocks'), 'stages': tuple(rc_bank)})
             rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, **probe)
             if not np.allclose(rc_oof["raw"], oof["raw"], rtol=0, atol=1e-8):
                 raise RuntimeError("random-control raw OOFs differ from the model's: folds/rows are not paired")

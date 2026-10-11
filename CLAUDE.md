@@ -18,6 +18,8 @@
 - Gate: eight finite sets, at least five raw wins, positive mean gains versus raw/random, all canaries passing. Passing is benchmark qualification; deployment-domain validation remains separate.
 - Seed101 completed: 5/8 wins, mean ΔR² +0.080077 vs raw / +0.072296 vs random. Export verified at 497,990 steps. Not qualified: 0120 shuffled-label R² 0.0204456 exceeds the existing 0.020 limit. Threshold unchanged; final report refresh repaired.
 - Prior 48-patch block-2 flat features win 7/8 in each of three seeds; 0106 loses. This retrospective readout nomination is not an architectural requirement; the fresh seed101 replication wins 5/8.
+- Production analysis: `docs/superpowers/plans/2026-10-11-production-analysis.md`. Service `spectralfm-production-readouts` evaluates all21readouts, then controlled policies and refreshes the report. Output `outputs/production-analysis/`; W&B group `production-analysis`. Original qualification unchanged.
+- Gradient/permutation audits completed: block2prediction/SIGReg gradient norms are comparable; block6SIGReg norms are~18×prediction. Real-label R² exceeds100new permutations for raw/block2-flat; original shuffle42failure repeats and remains unresolved. Separate labelled development/deployment data requested before selecting further training; no new training launched.
 
 ## Repository map
 

@@ -124,6 +124,8 @@ def collect_report_data(repo_root):
     matrix = collect_matrix(root)
     from scripts.readout_variants import collect_variants
     variants = collect_variants(root)
+    from scripts.production_analysis_report import collect_analysis
+    analysis = collect_analysis(root)
     candidate_path = root / 'outputs/final-model/manifest.json'
     candidate = json.loads(candidate_path.read_text()) if candidate_path.exists() else None
     if candidate and candidate.get('run_id'):
@@ -171,6 +173,7 @@ def collect_report_data(repo_root):
         'matrix': matrix,
         'variants': variants,
         'final_candidate': candidate,
+        'production_analysis': analysis,
         'evaluation': {
             'protocol': 'Nested cross-validation: 2 outer repeats × 5 folds, with 5-fold inner selection.',
             'win_rule': 'A dataset is a win when pretrained model R² − raw R² > 0; strong win is ≥ +0.05.',
@@ -190,6 +193,8 @@ def render_html(data, export_dir=None):
     from scripts.readout_variants import render_variants
     variants_html = render_variants(data['variants']) if data.get('variants') else ''
     from scripts.architecture_diagram import render_dataflow
+    from scripts.production_analysis_report import render_analysis
+    analysis_html = render_analysis(data.get('production_analysis'), export_dir)
     flow_html = '<section class="section" id="tensorDataflow"><h2>Architecture and tensor dataflow</h2><p class="sub">Full six-block training objective; fixed two-block production inference. B=256 during training and B=1 for a single spectrum.</p><div class="card">' + render_dataflow() + '</div></section>'
     candidate = data.get('final_candidate')
     candidate_html = ''
@@ -209,7 +214,7 @@ def render_html(data, export_dir=None):
                 result += f'<p class="note"><b>Qualification blocker:</b> {details}. The existing canary limit is 0.02000. A single borderline shuffle result does not establish leakage, but the registered gate remains failed; no threshold was relaxed.</p>'
             candidate_html = candidate_html.replace('</div></section>', result + '</div></section>')
         completed = next((e for e in data.get('matrix', {}).get('evaluations', [])
-                          if e['id'].startswith('production_p48_s101_') and e['id'].endswith('_step497990')), None)
+                          if e['source'].startswith('outputs/final-model/eval/') and e['id'].endswith('_step497990')), None)
         if completed:
             head = '<tr><th>Fixed block2-flat / control</th>' + ''.join(f'<th>{DATASET_LABELS[d]}<br><small class="sample-count">n={completed["rows"][0]["cells"].get(d, {}).get("n", "unavailable")}</small></th>' for d in DATASETS) + '</tr>'
             body = []
@@ -243,6 +248,7 @@ def render_html(data, export_dir=None):
 <main class="wrap">
 __MATRIX__
 __CANDIDATE__
+__ANALYSIS__
 __FLOW__
 __VARIANTS__
 __STORY__
@@ -275,7 +281,7 @@ function screen(){if(!$('screenDecision'))return;const d=D.screen8?.decisions||{
 function activeStudy(){if(!$('activeStudySection'))return;const q=D.study;if(!q||!Array.isArray(q.runs)||!q.runs.length){$('activeStudySection').hidden=true;return}$('studySnapshot').textContent=`Status snapshot · ${q.snapshot_at||'time unavailable'} · target ${Number(q.target_steps||497990).toLocaleString()} optimizer steps`;$('activeRuns').innerHTML=q.runs.map(r=>{const id=String(r.run_id||'');const link=/^[a-z0-9]{8}$/.test(id)?`<a href="https://wandb.ai/hcohen/spectralfm-lejepa/runs/${id}" target="_blank" rel="noopener noreferrer">W&amp;B ${esc(id)}</a>`:`W&amp;B ${esc(id||'pending')}`;return `<article class="card metric"><div class="label">${Number(r.patches)===48?'48':'24'} patches · seed ${Number(r.seed)}</div><strong>${Number(r.step||0).toLocaleString()} / ${Number(q.target_steps||497990).toLocaleString()}</strong><small>${esc(r.state||'status unavailable')} · CUDA ${esc(r.cuda_index??'—')} · ${link}</small></article>`}).join('')}
 options('recordSelect');options('deltaSelect');$('recordSelect').value=String(Math.max(0,records.findIndex(r=>r.family==='24-patch'&&r.step===497990&&r.seed===0)));$('deltaSelect').value=$('recordSelect').value;$('recordSelect').addEventListener('change',r2chart);$('deltaSelect').addEventListener('change',deltaChart);timeline();r2chart();deltaChart();scoreTable();screen();activeStudy();
 })();
-</script></body></html>'''.replace('__DATA__', embedded).replace('__STORY__', story_html).replace('__MATRIX__', matrix_html).replace('__VARIANTS__', variants_html).replace('__FLOW__', flow_html).replace('__CANDIDATE__', candidate_html).replace('</style>', '.story-plot{width:100%;height:auto;display:block;margin:14px 0}.story-nav{display:flex;gap:16px;flex-wrap:wrap}.story-nav a{color:#087e83;text-decoration:none;font-weight:650}.pipeline{display:flex;gap:14px;align-items:center}.pipeline div{flex:1;background:#edf7f3;border-radius:10px;padding:16px}.pipeline small{display:block;color:#637581;margin-top:8px}@media(max-width:850px){.pipeline{flex-direction:column;align-items:stretch}.pipeline>span{text-align:center;transform:rotate(90deg)}}html{scroll-behavior:smooth}</style>')
+</script></body></html>'''.replace('__DATA__', embedded).replace('__STORY__', story_html).replace('__MATRIX__', matrix_html).replace('__VARIANTS__', variants_html).replace('__FLOW__', flow_html).replace('__CANDIDATE__', candidate_html).replace('__ANALYSIS__', analysis_html).replace('</style>', '.story-plot{width:100%;height:auto;display:block;margin:14px 0}.story-nav{display:flex;gap:16px;flex-wrap:wrap}.story-nav a{color:#087e83;text-decoration:none;font-weight:650}.pipeline{display:flex;gap:14px;align-items:center}.pipeline div{flex:1;background:#edf7f3;border-radius:10px;padding:16px}.pipeline small{display:block;color:#637581;margin-top:8px}@media(max-width:850px){.pipeline{flex-direction:column;align-items:stretch}.pipeline>span{text-align:center;transform:rotate(90deg)}}html{scroll-behavior:smooth}</style>')
     rendered = re.sub(r'<section class="section" id="activeStudySection">.*?</section>', '', rendered, flags=re.S)
     rendered = re.sub(r'<section class="section"><div class="section-head"><div><h2>Screen 8: masking decision</h2>.*?</section>', '', rendered, flags=re.S)
     stopping = '<section class="section"><details class="card"><summary>Does longer training help? Historical evidence and limits</summary><p>In the legacy 24-patch continuation runs, both seeds won 6/8 datasets at 250,000 steps, compared with 5/8 and 3/8 at the final 497,990-step checkpoint. Downstream performance was not monotonic with training duration.</p><p>This motivates a controlled early-stopping experiment. These are retrospective downstream evaluation scores: choosing a checkpoint from them would reuse the evaluation for selection. A valid stopping rule must be fixed using an independent validation criterion and tested on held-out tasks. The fresh paired study evaluated only final checkpoints, so it cannot establish when those runs should have stopped.</p></details></section>'
@@ -313,6 +319,14 @@ def main(argv=None):
     from scripts.architecture_diagram import render_dataflow
     (output.parent / 'tensor_dataflow.svg').write_text(render_dataflow())
     (output.parent / 'results_matrix.json').write_text(json.dumps(data['matrix'], indent=2, allow_nan=False))
+    analysis = data.get('production_analysis', {})
+    if analysis.get('policies') and analysis.get('permutations') and analysis.get('gradients'):
+        manifest_path = args.repo_root / 'outputs/production-analysis/manifest.json'
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text())
+            manifest.update(state='analyses-complete', completed=['all-block-evaluation', 'controlled-policies', 'permutation-audit', 'gradient-audit', 'report'],
+                            training_decision='pending independent development criterion; no training experiment launched')
+            manifest_path.write_text(json.dumps(manifest, indent=2))
     print(f'Report written: {output}')
 
 
