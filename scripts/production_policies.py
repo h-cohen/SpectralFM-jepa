@@ -37,7 +37,7 @@ def compare(bank, raw, y, **protocol):
     return results
 
 
-def run(bank_root, output, backend='torch', device='cuda', publish=False):
+def run(bank_root, output, backend='torch', device='cuda', publish=False, group='production-analysis'):
     output.mkdir(parents=True, exist_ok=True)
     families = policy_families()
     protocol = {'n_repeats': 2, 'n_folds': 5, 'n_inner': 5, 'seed': 42,
@@ -45,7 +45,7 @@ def run(bank_root, output, backend='torch', device='cuda', publish=False):
     run = None
     if publish:
         import wandb
-        run = wandb.init(project='spectralfm-lejepa', group='production-analysis', job_type='readout-policy-comparison',
+        run = wandb.init(project='spectralfm-lejepa', group=group, job_type='readout-policy-comparison',
                          config={'protocol': protocol, 'menu': MENU, 'bank_root': str(bank_root), 'exploratory': True})
     sets = {}
     for dataset in DATASETS:

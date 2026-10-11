@@ -126,6 +126,8 @@ def collect_report_data(repo_root):
     variants = collect_variants(root)
     from scripts.production_analysis_report import collect_analysis
     analysis = collect_analysis(root)
+    from scripts.continuation_report import collect_study
+    continuation = collect_study(root)
     candidate_path = root / 'outputs/final-model/manifest.json'
     candidate = json.loads(candidate_path.read_text()) if candidate_path.exists() else None
     if candidate and candidate.get('run_id'):
@@ -174,6 +176,7 @@ def collect_report_data(repo_root):
         'variants': variants,
         'final_candidate': candidate,
         'production_analysis': analysis,
+        'continuation_study': continuation,
         'evaluation': {
             'protocol': 'Nested cross-validation: 2 outer repeats × 5 folds, with 5-fold inner selection.',
             'win_rule': 'A dataset is a win when pretrained model R² − raw R² > 0; strong win is ≥ +0.05.',
@@ -195,6 +198,8 @@ def render_html(data, export_dir=None):
     from scripts.architecture_diagram import render_dataflow
     from scripts.production_analysis_report import render_analysis
     analysis_html = render_analysis(data.get('production_analysis'), export_dir)
+    from scripts.continuation_report import render_study
+    analysis_html += render_study(data.get('continuation_study'))
     flow_html = '<section class="section" id="tensorDataflow"><h2>Architecture and tensor dataflow</h2><p class="sub">Full six-block training objective; fixed two-block production inference. B=256 during training and B=1 for a single spectrum.</p><div class="card">' + render_dataflow() + '</div></section>'
     candidate = data.get('final_candidate')
     candidate_html = ''
@@ -320,6 +325,12 @@ def main(argv=None):
     (output.parent / 'tensor_dataflow.svg').write_text(render_dataflow())
     (output.parent / 'results_matrix.json').write_text(json.dumps(data['matrix'], indent=2, allow_nan=False))
     analysis = data.get('production_analysis', {})
+    continuation = data.get('continuation_study', {})
+    if continuation.get('preference_result'):
+        from scripts.continuation_study import write_json
+        write_json(args.repo_root / 'outputs/continuation-study/assessment.json',
+                   {'status': 'exploratory; original production gate unchanged',
+                    'preference': continuation['preference_result']})
     if analysis.get('policies') and analysis.get('permutations') and analysis.get('gradients'):
         manifest_path = args.repo_root / 'outputs/production-analysis/manifest.json'
         if manifest_path.exists():
