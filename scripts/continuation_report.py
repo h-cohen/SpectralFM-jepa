@@ -1,6 +1,7 @@
 """Offline status and paired continuation results."""
 import html
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -40,9 +41,16 @@ def collect_study(root):
             path = base / name / file
             if path.exists():
                 job[key] = json.loads(path.read_text())
+        log = base / name / 'pipeline.log'
+        if log.exists():
+            match = re.search(r'https://wandb.ai/hcohen/spectralfm-lejepa/runs/(\w+)', log.read_text())
+            if match:
+                job['run_id'] = match.group(1)
     baseline = Path(root) / data['baseline_policies']
     if baseline.exists():
-        data['preference_result'] = assess_study(data, json.loads(baseline.read_text()))
+        scores = json.loads(baseline.read_text())
+        data['baseline_scores'] = scores['scorecard']
+        data['preference_result'] = assess_study(data, scores)
     return data
 
 
@@ -52,7 +60,10 @@ def render_study(data):
     body = ['<section class="section" id="continuationStudy"><h2>Matched continuation · duration versus objective balance</h2><p>Two paired continuation seeds, each comparing unchanged SIGReg λ=.05 with λ=.01. Same seed101 starting checkpoint; fresh AdamW; 99,598 additional steps, 1,000 warmup steps, peak LR 5e-5, floor 5e-7. The frozen completed model remains the no-training baseline.</p><p class="note">Exploratory benchmark research. Two continuation seeds do not replace independent pretraining replication or deployment validation. Original export and failed qualification remain unchanged.</p><table class="table"><thead><tr><th>Run</th><th>λ</th><th>State</th><th>GPU (logical)</th></tr></thead><tbody>']
     for name, job in data['jobs'].items():
         state = job.get('progress', {}).get('state', 'registered')
-        body.append(f'<tr><td>{html.escape(name)}</td><td>{job["lambda_sigreg"]}</td><td>{html.escape(state)}</td><td>{job["logical_gpu"]}</td></tr>')
+        label = html.escape(name)
+        if job.get('run_id'):
+            label = f'<a href="https://wandb.ai/hcohen/spectralfm-lejepa/runs/{job["run_id"]}">{label}</a>'
+        body.append(f'<tr><td>{label}</td><td>{job["lambda_sigreg"]}</td><td>{html.escape(state)}</td><td>{job["logical_gpu"]}</td></tr>')
     body.append('</tbody></table><p class="small">W&B group: <a href="https://wandb.ai/hcohen/spectralfm-lejepa/groups/continuation-study">continuation-study</a>. Training records losses, gradient norm, learning rate, progress, validation and geometry; final audits measure per-term block2/block6 gradients. Final probes use fixed block2 and the predeclared four-readout menu. Other blocks are diagnostic; intermediate checkpoints do not select winners.</p>')
     finished = {n: j for n, j in data['jobs'].items() if j.get('results')}
     if finished:
@@ -78,9 +89,8 @@ def render_study(data):
         body.append('<p>Final comparisons pending. The existing 7/8 menu result belongs to the frozen baseline, not these new runs.</p>')
     if data.get('preference_result'):
         body.append('<p>Research preference: ' + html.escape(str(data['preference_result'])) + '. This is a predeclared development rule, not a release qualification.</p>')
-        baseline_path = data.get('baseline_policies')
-        if baseline_path and Path(baseline_path).exists() and finished:
-            baseline = json.loads(Path(baseline_path).read_text())['scorecard']
+        if data.get('baseline_scores') and finished:
+            baseline = data['baseline_scores']
             body.append('<table class="table"><thead><tr><th>Run / interface</th><th>Raw wins</th><th>Mean raw gain</th><th>Change from frozen baseline</th></tr></thead><tbody>')
             for name, job in finished.items():
                 for policy in ('fixed_block2', 'menu'):
