@@ -15,8 +15,9 @@
 - Export candidate: block-2 flat, 12,288 features; all six blocks train. Other blocks remain available in the full checkpoint for analysis.
 - Service: `spectralfm-final-model-s101-recovery`; W&B run `ylymmcnn`, group `final-model-fixed-block2`.
 - Output: `outputs/final-model/`. Pipeline: training → TorchScript export → fixed-readout evaluation → benchmark gate → report.
-- Gate:eight finite sets, at least five raw wins, positive mean gains versus raw/random, all canaries passing. Passing is benchmark qualification; deployment-domain validation remains separate.
-- Existing 48-patch block-2 flat features win 7/8 in each of three seeds; 0106 loses. This readout choice is retrospective and is being replicated, not an architectural requirement.
+- Gate: eight finite sets, at least five raw wins, positive mean gains versus raw/random, all canaries passing. Passing is benchmark qualification; deployment-domain validation remains separate.
+- Seed101 completed: 5/8 wins, mean ΔR² +0.080077 vs raw / +0.072296 vs random. Export verified at 497,990 steps. Not qualified: 0120 shuffled-label R² 0.0204456 exceeds the existing 0.020 limit. Threshold unchanged; final report refresh repaired.
+- Prior 48-patch block-2 flat features win 7/8 in each of three seeds; 0106 loses. This retrospective readout nomination is not an architectural requirement; the fresh seed101 replication wins 5/8.
 
 ## Repository map
 

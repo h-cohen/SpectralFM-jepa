@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 
@@ -18,6 +19,10 @@ DATASET_LABELS = {
     'dataset0112': '0112', 'dataset0113': '0113', 'dataset0114': '0114',
     'dataset0120': '0120',
 }
+
+
+def _finite(value):
+    return isinstance(value, (int, float)) and math.isfinite(value)
 
 
 def _normalized_set(point):
@@ -131,6 +136,13 @@ def collect_report_data(repo_root):
         assessment = root / 'outputs/final-model/assessment.json'
         if assessment.exists():
             candidate['assessment'] = json.loads(assessment.read_text())
+            summary_path = root / candidate['assessment'].get('summary', 'outputs/final-model/absent.json')
+            if summary_path.exists():
+                summary = json.loads(summary_path.read_text())
+                candidate['assessment']['failed_canaries'] = [
+                    {'dataset': name, 'arm': arm, 'shuffled_r2': canary.get('shuffled_r2')}
+                    for name, point in summary.get('sets', {}).items()
+                    for arm, canary in point.get('canary', {}).items() if not canary.get('passed')]
     if histories and study:
         by_run = {r['run_id']: r for r in histories}
         for run in study['runs']:
@@ -191,6 +203,10 @@ def render_html(data, export_dir=None):
             raw_gain = f'{assessment["mean_delta_vs_raw"]:+.4f}' if _finite(assessment.get('mean_delta_vs_raw')) else 'unavailable'
             random_gain = f'{assessment["mean_delta_vs_random"]:+.4f}' if _finite(assessment.get('mean_delta_vs_random')) else 'unavailable'
             result = f'<p class="note">Fixed-readout benchmark: {assessment["wins"]}/8 wins; mean ΔR² versus raw {raw_gain}, versus random {random_gain}. Benchmark qualified: {assessment["benchmark_qualified"]}. Deployment-domain release validation remains separate.</p>'
+            failed = assessment.get('failed_canaries', [])
+            if failed:
+                details = '; '.join(f'{html.escape(f["dataset"])} ({html.escape(f["arm"])}): shuffled-label R² {f["shuffled_r2"]:.5f}' for f in failed)
+                result += f'<p class="note"><b>Qualification blocker:</b> {details}. The existing canary limit is 0.02000. A single borderline shuffle result does not establish leakage, but the registered gate remains failed; no threshold was relaxed.</p>'
             candidate_html = candidate_html.replace('</div></section>', result + '</div></section>')
         completed = next((e for e in data.get('matrix', {}).get('evaluations', [])
                           if e['id'].startswith('production_p48_s101_') and e['id'].endswith('_step497990')), None)

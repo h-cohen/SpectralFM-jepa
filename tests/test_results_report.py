@@ -109,3 +109,26 @@ def test_story_evidence_is_loaded_and_missing_evidence_is_explicit(tmp_path):
     assert 'Screen 8: masking decision' not in html
     assert '(B, 48, 6)' in html
     assert '(1, 12288)' in html
+
+
+def test_completed_candidate_assessment_renders_failed_gate(tmp_path):
+    folder = tmp_path / 'outputs/final-model'
+    folder.mkdir(parents=True)
+    (folder / 'manifest.json').write_text(json.dumps({
+        'state': 'benchmark-not-qualified', 'seed': 101, 'patches': 48,
+        'step': 497990, 'run_id': 'abcd1234'}))
+    (folder / 'assessment.json').write_text(json.dumps({
+        'wins': 5, 'mean_delta_vs_raw': .0801, 'mean_delta_vs_random': .0723,
+        'benchmark_qualified': False, 'checks': {'all_canaries_pass': False}}))
+    html = render_html(collect_report_data(tmp_path))
+    assert 'benchmark-not-qualified' in html
+    assert '+0.0801' in html
+    assert 'Benchmark qualified: False' in html
+
+
+def test_score_normalization_computes_missing_deltas():
+    from scripts.build_results_report import _normalized_set
+    point = _normalized_set({'embedding_r2': .8, 'raw_r2': .6,
+                             'random_control': {'embedding_r2': .7}})
+    assert point['delta_vs_raw'] == pytest.approx(.2)
+    assert point['delta_vs_random'] == pytest.approx(.1)

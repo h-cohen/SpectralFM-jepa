@@ -45,3 +45,11 @@
 - Launcher now supports `--resume CHECKPOINT`, preserves the previous training log, and uses repository-local `.tmp` on the filesystem with1.5TiBfree instead of shared `/tmp`.
 - `log_figure` closes figures in a finally block and warns on ENOSPC/EDQUOT without aborting training; unrelated logging errors still propagate. Loss/checkpoint failures remain fatal.Regression tests cover both paths.
 - Recovery service:`spectralfm-final-model-s101-recovery`; new W&B run`ylymmcnn`: https://wandb.ai/hcohen/spectralfm-lejepa/runs/ylymmcnn . Prior run`ibdymf53`remains in manifest lineage. Same seed,model,objective,sampling,schedule and final fixed-readout gate.
+
+## Completed candidate
+
+- Training reached 497,990; export and all eight fixed block2-flat evaluations completed. Checkpoint SHA256, seed101, readout, finite output shape (1,12288) and native reference parity verified.
+- Raw wins5/8; three strong wins; mean ΔR² +0.080077 vs raw / +0.072296 vs matched random. Losses:0106−0.0908,0109−0.0056,0114−0.0002.
+- Gate remains not qualified:0120 shuffled-label block R²0.0204456318 exceeds the existing0.020 threshold. Other checks pass. A single borderline shuffle result is not proof of leakage; no threshold was relaxed or seed rerun to obtain a pass. Assessment:https://wandb.ai/hcohen/spectralfm-lejepa/runs/4qnq98xi .
+- Report refresh failed on an undefined `_finite` helper. Added the helper and regression tests for completed assessments and missing deltas;11focused tests pass. Report regenerated with candidate scores and explicit qualification blocker. Training/evaluation not rerun.
+- Artifacts:`outputs/final-model/production/{encoder.pt,metadata.json}`,`outputs/final-model/assessment.json`. Deployment remains unqualified pending investigation and independent domain validation.
