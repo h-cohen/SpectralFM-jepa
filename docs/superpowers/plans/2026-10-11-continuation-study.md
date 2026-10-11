@@ -31,3 +31,10 @@
 -14focused tests passed before launch;9report/config/preference tests passed after run-link rendering. Preregistration/codecommit82aa681 precedes allstarts. Four servicesverifiedactive,physicalGPUs0/1/2/4~6.5GBand92–93%utilization.
 - W&Bcontrol202`otcgb58r`,low202`8604lchm`,control203`rl1j6ygp`,low203`pqh525md`. Allfour atstep550:losses.13689/.03540/.13032/.03084;gradientnorms4.978/1.811/2.368/1.348 finite. Lowerweightedlossaloneisnotimprovement. Initialthroughput~.15s/step suggests~4hoursremainingtraining;finalnestedCV/policiesfollow.
 - Backgroundresearchresultsnotcomplete. Per-runstate andcheckpointsdurable;eachsuccessfulpipelineautomaticallyrebuildsreportunderlock. Nooriginalgate/exportmutationandnoreleasepromotion.
+
+## Final results (2026-10-12)
+
+- Allfourstatescompleted,finalpolicyoutputs/gradientaudits/reportwritten. Fixedmeanrawgains:control202+.081188,control203+.080210,low202+.079042,low203+.078723;baseline+.080077. Menu:.084609/.088908/.093238/.089280;baseline+.093253. Fixedwins6/5/6/6;menu6/6/6/7.
+- Preregisteredpreferencefixed=`duration_only`,menu=`inconclusive`. Controlfixedaverageimprovementonly+.000622;lowfixedregressesbothseeds. Noautomaticpromotion. Practicalrecommendationretainoriginal101andlambda.05,stopduration-onlysweeps,independentlyvalidatethefrozenfourreadoutmenu.
+- Finalblock6flatwinscontrol1/8each,low1/8and0/8. LowerlambdaimprovesvalidationpredictionMSEbutnotconsistentdownstreamperformance. Noall8winner. Fullrecommendation:`docs/PRODUCTION_RECOMMENDATION.md`;originalgate/exportunchanged.
+- Final compilation verified allfourcheckpoint/config hashes andeightdatasets perpolicyoutput. Nine focusedreport/config/preference tests passed. Independentlighterreviewconfirmedaggregatepracticalrecommendation; originalgateFalsepreserved.

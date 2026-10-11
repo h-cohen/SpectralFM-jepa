@@ -283,3 +283,10 @@ Evidence investigator, focused builder and independent reviewer all use lighter 
 - Four paired continuations launched as user systemd services:`spectralfm-continuation-{control,low-sigreg}-s{202,203}`. Same frozen101checkpoint,freshAdamW,99598additionalsteps,1000warmup,LR5e-5→5e-7,lambda.05/.01,alltrainingrows andunchangedsource/masking/batchrecipe. PhysicalGPUs0/1/2/4confirmedidlebeforelaunch,thenactive~6.5GB/92–93%utilization;UUIDpinned.
 - W&Bcontrol202`otcgb58r`,low202`8604lchm`,control203`rl1j6ygp`,low203`pqh525md`;groupcontinuation-study.14focusedtests andrealcheckpoint2stepsmoke passedwithfinitevalidationmetrics. Registrationcommittedbeforelaunchin82aa681.
 - Finalpipelinegradientaudit→allmean/seg4+flat2/6evaluation→fixed/menu/raw/randompolicycomparison→serializedreportrefresh. Predeclaredresearchcriterionrequiresconsistentbenefitonbothseedsandblock2preservation. Finalscoresremainpending;noautomaticdeploymentpromotionororiginalgatechange.
+
+## Final continuation recommendation (2026-10-12)
+
+- All four pipelines completed; config/checkpoint hashes and all eight policy datasets verified. Nine focused checks passed. Recommendation: retain original seed101, SIGReg .05, existing fixed block2 export; stop duration-only sweeps.
+- Fixed mean raw gain: baseline+.080077; control202/203+.081188/+.080210; low202/203+.079042/+.078723. Controls average only+.000622abovebaseline. Menu gains: baseline+.093253; controls+.084609/+.088908; low+.093238/+.089280. No new menu improves both seeds over baseline.
+- Predeclared research rule remains fixedduration_only/menuinconclusive; tiny duration gains do not justify automatic promotion. Final6flat winscontrol1/8each,low1/8and0/8. Lowerpredictionloss is not a downstream improvement. Original failed gate/export unchanged; independent group-disjoint labels still needed.
+- Compiled recommendation: `docs/PRODUCTION_RECOMMENDATION.md`; offline report updated with the completed-study conclusion. No further experiments or deployment launched.
