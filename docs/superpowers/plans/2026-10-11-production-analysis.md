@@ -34,8 +34,8 @@
 - [x] Test deterministic permutation audit and fold/row checks; implement frozen-feature audit separately.
 - [x] Test per-term gradient extraction preserves parameters; implement checkpoint diagnostic.
 - [x] Launch durable all-block,permutation and gradient jobs; record service/run IDs and verify live progress.
-- [ ] Compile completed outputs and plots into report; compare interface coverage and uncertainty.
-- [ ] Choose one targeted training experiment only after evidence and an independent development criterion are available. Otherwise report the exact remaining data requirement.
+- [x] Compile completed outputs and plots into report; compare interface coverage and uncertainty.
+- [x] Resolve the training decision: independent development criterion absent; document the recommended controlled experiment and exact data requirement without launching it.
 
 ## Execution ledger
 
@@ -46,3 +46,14 @@
 - Independent lighter-model review found no leakage/gate mutation blockers. Added a provenance check rejecting wrong-checkpoint analysis data.34relatedtests passed,followed by14focused tests after provenance/report changes;1expectedNVMLwarning. Distinct train/test-label selection regression verifies first-fold menu choice unchanged when outer-test labels are perturbed.
 - Optional independent labelled development/deployment data path is still pending. Training continuation is not automatically launched from these diagnostic ratios or reused benchmark scores.
 - Latest verification:32 focused policy,permutation,gradient,provenance,report,evaluator and model tests passed in53.66s; background readout service remains active with exit status0. Final report completion awaits the queued all-block and controlled-policy evaluations.
+
+## Completed comparison and decision
+
+- All-block service exited0. All8sets×21readouts and four controlled policies completed; policy W&B`hcwixghf`. Report has complete depth curves and model/random policy tables,paired gains and measured audits.
+- Fixed2flat:5/8,+.080077mean raw gain. Four-arm menu:7/8,+.093253raw,+.140900matchedrandom. Menu+raw:7/8,+.086825raw. Fixed multiscale:5/8,+.080146raw. None beats all8. Menu's0106gain+.003094±.028176and0114+.001823±.001545are pairedbootstrapSD,not guaranteed advantages.
+- Menu vsfixed paired gains:0055+.086210±.037454;0106+.093932±.035476;0112−.076712±.037483;0114+.001983±.000933;other4identical. On0112one of10outerfolds choosesseg4ratherthanflat. Adding choices can hurt held-out performance despite correct nesting.
+- Final6flat beats raw2/8,mean−.094886delta. Largest set:raw.830116,block2flat.958847,block6flat.67643. This depth pattern plus gradient imbalance motivates an objective-balance test; it does not establish a causal SIGReg effect or benefits of extra duration.
+- Recommended next research experiment:from the same final checkpoint,compare no continuation,matched2epoch continuation withlambda.05,andmatched2epoch continuation withlambda.01. Both continuations use the same fresh schedule (peak5e-5,1000warmupsteps,cosine to5e-7),99,598steps,freshAdamWstate,predeclaredpairedseed202,sampling/RNG,batch256,mask75%,normalization and pooled weight1. Full objective coefficient effects must be recorded;lowerlambdaalsochanges pooled-view invariance weighting (.95→.99),whilemaskedpredictionweightstays1. Keep readout menu fixed. This is a proposed sensitivity experiment,not a validated recipe or launched job.
+- Development requirement:separate raw245spectra andparameter_0labels,source/simulation/batch IDs for group-disjoint splits,and a reserved release holdout. Predeclare development metric and acceptable regressions before comparing continuations;release labels cannot select duration/readouts. Existing8benchmark labels have already informed design and remain exploratory.
+- Original assessment/export untouched;0120shuffle42failure remains. No promotion and no new training launched. Paired policy differences saved locally in`outputs/production-analysis/decision_analysis.json`.
+- Completed-report verification:11focused report/provenance/matrix/readout tests passed. Independent lighter-model evidence review confirmed counts and uncertainty;recommends retaining current fixed export until menu replication. No inference/export changes made.

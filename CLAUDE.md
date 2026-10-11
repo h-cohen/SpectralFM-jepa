@@ -20,6 +20,7 @@
 - Prior 48-patch block-2 flat features win 7/8 in each of three seeds; 0106 loses. This retrospective readout nomination is not an architectural requirement; the fresh seed101 replication wins 5/8.
 - Production analysis: `docs/superpowers/plans/2026-10-11-production-analysis.md`. Service `spectralfm-production-readouts` evaluates all21readouts, then controlled policies and refreshes the report. Output `outputs/production-analysis/`; W&B group `production-analysis`. Original qualification unchanged.
 - Gradient/permutation audits completed: block2prediction/SIGReg gradient norms are comparable; block6SIGReg norms are~18×prediction. Real-label R² exceeds100new permutations for raw/block2-flat; original shuffle42failure repeats and remains unresolved. Separate labelled development/deployment data requested before selecting further training; no new training launched.
+- All-block/policy analysis finished successfully. Four-readout menu wins7/8 (+.093253mean raw gain),fixed2flat5/8;rawfallback/multiscale do not improve aggregate menu. New0106/0114wins are small relative to uncertainty;0109still loses. Final6flat wins2/8. Proposed matched continuation tests duration versuslowerSIGReg;independentdevelopmentcriterion missing,no launch/promotion. Policy W&B`hcwixghf`;report updated with conclusions.
 
 ## Repository map
 

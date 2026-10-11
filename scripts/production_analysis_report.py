@@ -109,6 +109,17 @@ def render_analysis(data, export_dir=None):
     if not data or not any(data.get(k) for k in ('manifest', 'permutations', 'gradients', 'depth')):
         return ''
     body = ['<section class="section" id="productionAnalysis"><h2>Production analysis · frozen seed101 encoder</h2><p class="note">Exploratory reuse of the existing benchmark. The original qualification gate and model weights are unchanged; independent development/deployment data has not been supplied.</p>']
+    if data.get('policies'):
+        p = data['policies']
+        body.append('<h3>What the completed comparison tells us</h3><table class="table"><thead><tr><th>Interface</th><th>Wins over raw</th><th>Mean ΔR² vs raw</th><th>Mean ΔR² vs random</th></tr></thead><tbody>')
+        for name in ('fixed_block2', 'menu', 'menu_with_raw', 'multiscale'):
+            score = p['scorecard'][name]
+            random_gain = np.mean([s['policies'][name]['vs_random']['delta'] for s in p['sets'].values()])
+            body.append(f'<tr><td>{name}</td><td>{score["wins"]}/8</td><td>{score["mean_delta"]:+.4f}</td><td>{random_gain:+.4f}</td></tr>')
+        body.append('</tbody></table><p>The four-readout menu is the leading development interface. It improves coverage without retraining, but does not dominate fixed block2 on every task. The menu raises 0055 and 0106 while reducing 0112 from 0.7276 to 0.6509; one of ten outer folds chooses a different readout. A small-sample selection can hurt held-out performance even though selection is correctly confined to inner CV. Keep the fixed export unchanged until menu replication or independent validation.</p>')
+        body.append('<p>The new raw wins on 0106 (+0.0031 ± 0.0282 paired bootstrap SD) and 0114 (+0.0018 ± 0.0015) are small. A positive point estimate counts as a win under the declared rule, but is not evidence of a reliable advantage. 0109 still loses. Raw fallback and fixed concatenation do not improve the aggregate menu result; fallback cannot guarantee raw performance on unseen rows.</p>')
+        body.append('<p><strong>Training direction:</strong> test late-stage objective balance before committing to a longer full run. Compare an unchanged-loss continuation against a matched continuation with lower SIGReg, using the same checkpoint, steps, learning-rate schedule and sample stream. Include the frozen checkpoint as the no-training baseline. Monitor block2 preservation and block6 recovery; lower self-supervised loss alone is not a promotion criterion.</p>')
+        body.append('<p class="small">The measured depth and gradient patterns suggest this experiment; they do not prove SIGReg caused late-layer degradation. Block2 is not required by the architecture, and no new readout is added retrospectively to claim 8/8. Training duration has not been tested in a matched continuation. Before model promotion, supply independent spectra/parameter_0 labels with source, simulation or batch IDs for group-disjoint development and a reserved release holdout. The original canary failure remains unresolved.</p>')
     def add(fig, name, alt):
         body.append(f'<img class="story-plot" src="{_image(fig, name, export_dir)}" alt="{alt}">')
     if data.get('depth'):
