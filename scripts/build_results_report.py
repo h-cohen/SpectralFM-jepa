@@ -199,7 +199,7 @@ def render_html(data, export_dir=None):
     from scripts.production_analysis_report import render_analysis
     analysis_html = render_analysis(data.get('production_analysis'), export_dir)
     from scripts.continuation_report import render_study
-    analysis_html += render_study(data.get('continuation_study'))
+    analysis_html += render_study(data.get('continuation_study'), export_dir)
     flow_html = '<section class="section" id="tensorDataflow"><h2>Architecture and tensor dataflow</h2><p class="sub">Full six-block training objective; fixed two-block production inference. B=256 during training and B=1 for a single spectrum.</p><div class="card">' + render_dataflow() + '</div></section>'
     candidate = data.get('final_candidate')
     candidate_html = ''

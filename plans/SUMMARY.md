@@ -290,3 +290,8 @@ Evidence investigator, focused builder and independent reviewer all use lighter 
 - Fixed mean raw gain: baseline+.080077; control202/203+.081188/+.080210; low202/203+.079042/+.078723. Controls average only+.000622abovebaseline. Menu gains: baseline+.093253; controls+.084609/+.088908; low+.093238/+.089280. No new menu improves both seeds over baseline.
 - Predeclared research rule remains fixedduration_only/menuinconclusive; tiny duration gains do not justify automatic promotion. Final6flat winscontrol1/8each,low1/8and0/8. Lowerpredictionloss is not a downstream improvement. Original failed gate/export unchanged; independent group-disjoint labels still needed.
 - Compiled recommendation: `docs/PRODUCTION_RECOMMENDATION.md`; offline report updated with the completed-study conclusion. No further experiments or deployment launched.
+
+## Block-output plot and full production shortlist
+
+- Main “Where the signal lives” chapter now leads with seed101 flat/mean/seg4 at every state0–6; priorthree-seed plots explicitlyhistorical. Fourcontinuationdepthplots showmean/seg4allblocksandflat2/6withNaNgaps,neverinterpolatedunmeasuredscores. Twelvefocusedtests passed,includinggapregressionobservedRED→GREEN;originalfigurevisuallychecked.
+- Earlier48pseed2/block2flat isstrongesthistoricalfixedshortlist:7/8rawwins,meanΔ+.089366,remainingloss0106. Checkpoint`outputs/paired-long/p48_s2_20261008-161508/checkpoint_last.pt`. Current101menu7/8+.093253isadaptiveper-taskprocedure,notonefixedembedding. Current101export5/8+.080077 remainsunchangedandfailedqualification;nohistoricalcandidateautomaticallypromoted.

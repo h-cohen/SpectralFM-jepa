@@ -2,6 +2,8 @@
 
 Retain the original seed101 checkpoint at 497,990 steps. Keep SIGReg λ=.05 and the existing block2-flat export. Do not replace it with a continuation or spend on another duration-only full run from these findings.
 
+This recommendation compares the approved seed101 candidate with its four continuations; it is not a claim that seed101 is the highest-scoring historical fixed embedding. Earlier 48-patch seed2 with block2-flat scores 7/8 wins and mean raw gain +0.08937, versus seed101's 5/8 and +0.08008. It is the strongest fixed candidate within the earlier 48-patch block2 shortlist and deserves locked independent validation alongside seed101. Choosing it now from observed benchmark scores is retrospective selection. The current verified export is seed101, whose qualification remains failed; neither benchmark leadership nor an existing export establishes production readiness.
+
 | Training | Fixed block2: wins vs raw | Mean ΔR² vs raw | Four-readout menu: wins | Menu mean ΔR² |
 |---|---:|---:|---:|---:|
 | Frozen original |5/8|+.08008|7/8|+.09325|

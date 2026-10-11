@@ -46,6 +46,18 @@ def collect_study(root):
             match = re.search(r'https://wandb.ai/hcohen/spectralfm-lejepa/runs/(\w+)', log.read_text())
             if match:
                 job['run_id'] = match.group(1)
+        depth = {}
+        for directory in (base / name / 'eval').glob('*_step99598'):
+            for ds in DATASETS:
+                path = directory / ds / 'nested_results.json'
+                summary = directory / ds / 'summary.json'
+                if path.exists() and summary.exists():
+                    measured = json.loads(path.read_text())
+                    expected = job.get('progress', {}).get('checkpoint_sha256')
+                    if expected and measured['meta']['pretraining_checkpoint_sha256'] != expected:
+                        raise ValueError(f'{name}/{ds}: depth source checkpoint differs')
+                    depth[ds] = {'families': measured['families'], 'summary': json.loads(summary.read_text())}
+        job['depth'] = depth
     baseline = Path(root) / data['baseline_policies']
     if baseline.exists():
         scores = json.loads(baseline.read_text())
@@ -54,7 +66,7 @@ def collect_study(root):
     return data
 
 
-def render_study(data):
+def render_study(data, export_dir=None):
     if not data:
         return ''
     body = ['<section class="section" id="continuationStudy"><h2>Matched continuation · duration versus objective balance</h2><p>Two paired continuation seeds, each comparing unchanged SIGReg λ=.05 with λ=.01. Same seed101 starting checkpoint; fresh AdamW; 99,598 additional steps, 1,000 warmup steps, peak LR 5e-5, floor 5e-7. The frozen completed model remains the no-training baseline.</p><p class="note">Exploratory benchmark research. Two continuation seeds do not replace independent pretraining replication or deployment validation. Original export and failed qualification remain unchanged.</p><table class="table"><thead><tr><th>Run</th><th>λ</th><th>State</th><th>GPU (logical)</th></tr></thead><tbody>']
@@ -99,5 +111,11 @@ def render_study(data):
                     s = job['results']['scorecard'][policy]
                     body.append(f'<tr><td>{name} / {policy}</td><td>{s["wins"]}/8</td><td>{s["mean_delta"]:+.4f}</td><td>{s["mean_delta"]-baseline[policy]["mean_delta"]:+.4f}</td></tr>')
             body.append('</tbody></table>')
+    from scripts.production_analysis_report import depth_figure
+    from scripts.report_story import _image
+    for name, job in data['jobs'].items():
+        if job.get('depth'):
+            fig = depth_figure(job['depth'], title=f'Where the signal lives · {name} · λ={job["lambda_sigreg"]}')
+            body.append(f'<h3>Block outputs · {name}</h3><img class="story-plot" src="{_image(fig, "signal_by_block_" + name, export_dir)}" alt="Measured block outputs for {name}"><p class="small">Mean/seg4 measured at every block0–6. Flat measured only at2 and6; gaps at0,1,3,4,5 are unmeasured, not low scores. Bands are bootstrap SD for this checkpoint, not uncertainty across seeds.</p>')
     body.append('<p>Predeclared research preference: lower λ must improve mean raw gain versus frozen baseline and matched control on both seeds without reducing raw win count; block2 mean R² must stay within .005 of baseline. Inspect task regressions and uncertainty. If this fails, retain the current model and report the experiment as inconclusive. Production selection still requires independent labelled development and a reserved release holdout.</p></section>')
     return ''.join(body)

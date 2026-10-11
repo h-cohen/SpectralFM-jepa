@@ -64,7 +64,7 @@ def gradient_figure(data):
     return fig
 
 
-def depth_figure(depth):
+def depth_figure(depth, title='Where the signal lives · original seed101 · all blocks/readouts'):
     fig, axes = plt.subplots(2, 4, figsize=(15, 8))
     for ax, ds in zip(axes.flat, DATASETS):
         if ds not in depth:
@@ -73,10 +73,12 @@ def depth_figure(depth):
         point = depth[ds]
         ax.axhline(point['summary']['raw_r2'], color='#596b74', ls='--', label='Raw')
         for pool, suffix, color in [('mean', '', '#3976b8'), ('seg4', '/seg4', '#087e83'), ('flat', '/flat', '#d18a25')]:
-            stages = [s for s in range(7) if f'layer{s}{suffix}' in point['families']]
-            values = np.array([point['families'][f'layer{s}{suffix}']['r2_mean'] for s in stages])
-            sd = np.array([point['families'][f'layer{s}{suffix}']['bootstrap_sd'] for s in stages])
-            ax.plot(stages, values, 'o-', ms=4, color=color, label=pool)
+            stages = np.arange(7)
+            families = [point['families'].get(f'layer{s}{suffix}') for s in stages]
+            values = np.array([f['r2_mean'] if f else np.nan for f in families])
+            sd = np.array([f['bootstrap_sd'] if f else np.nan for f in families])
+            ax.plot(stages, values, 'o-', ms=4, color=color,
+                    label=f'{pool} ({256 if pool == "mean" else 1024 if pool == "seg4" else 12288:,}d)')
             ax.fill_between(stages, values-sd, values+sd, alpha=.12, color=color)
         ax.axvspan(5.75, 6.25, color='#d18a25', alpha=.09)
         ax.set_xticks(range(7), ['0\ntokens', '1', '2', '3', '4', '5', '6\nfinal'])
@@ -85,7 +87,7 @@ def depth_figure(depth):
         axes[0, 0].legend(fontsize=8)
     else:
         next((ax for ax, ds in zip(axes.flat, DATASETS) if ds in depth), axes[0, 0]).legend(fontsize=8)
-    fig.suptitle('Seed101 · all blocks and readouts · bands are bootstrap SD, not seed SD')
+    fig.suptitle(title + '\nBands: bootstrap SD · missing measurements leave gaps')
     return fig
 
 
@@ -118,8 +120,8 @@ def render_analysis(data, export_dir=None):
             body.append(f'<tr><td>{name}</td><td>{score["wins"]}/8</td><td>{score["mean_delta"]:+.4f}</td><td>{random_gain:+.4f}</td></tr>')
         body.append('</tbody></table><p>The four-readout menu is the leading development interface. It improves coverage without retraining, but does not dominate fixed block2 on every task. The menu raises 0055 and 0106 while reducing 0112 from 0.7276 to 0.6509; one of ten outer folds chooses a different readout. A small-sample selection can hurt held-out performance even though selection is correctly confined to inner CV. Keep the fixed export unchanged until menu replication or independent validation.</p>')
         body.append('<p>The new raw wins on 0106 (+0.0031 ± 0.0282 paired bootstrap SD) and 0114 (+0.0018 ± 0.0015) are small. A positive point estimate counts as a win under the declared rule, but is not evidence of a reliable advantage. 0109 still loses. Raw fallback and fixed concatenation do not improve the aggregate menu result; fallback cannot guarantee raw performance on unseen rows.</p>')
-        body.append('<p><strong>Training direction:</strong> test late-stage objective balance before committing to a longer full run. Compare an unchanged-loss continuation against a matched continuation with lower SIGReg, using the same checkpoint, steps, learning-rate schedule and sample stream. Include the frozen checkpoint as the no-training baseline. Monitor block2 preservation and block6 recovery; lower self-supervised loss alone is not a promotion criterion.</p>')
-        body.append('<p class="small">The measured depth and gradient patterns suggest this experiment; they do not prove SIGReg caused late-layer degradation. Block2 is not required by the architecture, and no new readout is added retrospectively to claim 8/8. Training duration has not been tested in a matched continuation. Before model promotion, supply independent spectra/parameter_0 labels with source, simulation or batch IDs for group-disjoint development and a reserved release holdout. The original canary failure remains unresolved.</p>')
+        body.append('<p><strong>Hypothesis tested:</strong> these depth and gradient measurements motivated matched continuations with unchanged versus lower SIGReg. The completed continuation chapter below compares those finals with this frozen baseline. Lower self-supervised loss alone is not a promotion criterion.</p>')
+        body.append('<p class="small">The measurements do not prove SIGReg caused late-layer degradation. Block2 is not required by the architecture, and no new readout is added retrospectively to claim 8/8. Matched duration/objective continuations are now complete, with no compelling replacement for this checkpoint. Before model promotion, supply independent spectra/parameter_0 labels with source, simulation or batch IDs for group-disjoint development and a reserved release holdout. The original canary failure remains unresolved.</p>')
     def add(fig, name, alt):
         body.append(f'<img class="story-plot" src="{_image(fig, name, export_dir)}" alt="{alt}">')
     if data.get('depth'):
