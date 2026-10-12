@@ -93,7 +93,8 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
         view_idxs = draw_views(global_cfg, len(x), num_patches, generator, device)
         with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
             out = model(x, masked_idx, visible_idx, view_idxs)
-        losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"))
+        losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
+                           reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'))
         for k in totals:
             totals[k] += losses[k].item()
         n_batches += 1
@@ -101,7 +102,8 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
     return {f"valid/{k}": v / n_batches for k, v in totals.items()}
 
 
-def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, reference_rank):
+def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, reference_rank,
+                    objective=None, global_cfg=None):
     """Log representation statistics and retain the initial rank as a collapse reference."""
     model.eval()
     reps = diag.encode(model, valid_signals, device)
@@ -114,6 +116,10 @@ def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, 
         reference_rank = pooled["effective_rank"]
     alert = diag.collapse_alert(pooled, reference_rank)
     metrics["representation/collapse_alert"] = int(alert)
+    if model.sigreg_projector is not None and objective is not None:
+        from .projection_diagnostics import run_projection_diagnostics
+        metrics.update(run_projection_diagnostics(run,model,objective,valid_signals,masking_cfg,
+                                                  global_cfg,step,seed,device))
     if alert:
         text = (f"step {step}: std={pooled['std']:.3g}, effective_rank={pooled['effective_rank']:.3g} "
                 f"(step-0 rank {reference_rank:.3g})")
@@ -135,13 +141,30 @@ def load_init_checkpoint(path, cfg) -> dict | None:
         return None
     ckpt = load_checkpoint(path)
     old = ckpt["config"]
-    if old["model"] != cfg["model"]:
+    head_keys = {'sigreg_projector', 'sigreg_projector_hidden_dim', 'sigreg_projector_dim'}
+    old_mode, new_mode = old['model'].get('sigreg_projector','none'), cfg['model'].get('sigreg_projector','none')
+    initialize_head = old_mode == 'none' and new_mode in ('control','mlp')
+    same_base = {k:v for k,v in old['model'].items() if k not in head_keys} == {k:v for k,v in cfg['model'].items() if k not in head_keys}
+    if old["model"] != cfg["model"] and not (same_base and (initialize_head or old_mode == new_mode == 'none')):
         raise ValueError(f"training.init_checkpoint model config differs from this run: "
                          f"{old['model']} vs {cfg['model']}")
     if old["data"]["normalization"] != cfg["data"]["normalization"]:
         raise ValueError(f"training.init_checkpoint data.normalization is {old['data']['normalization']!r}, "
                          f"this run uses {cfg['data']['normalization']!r}")
-    return {"ckpt": ckpt, "info": {"path": str(path), "sha256": sha256_file(path), "step": ckpt["step"]}}
+    return {"ckpt": ckpt, "info": {"path": str(path), "sha256": sha256_file(path), "step": ckpt["step"],
+                                    'initialize_sigreg_projector': initialize_head}}
+
+
+def initialize_weights(model, initial, resume=False):
+    if resume or not initial['info'].get('initialize_sigreg_projector'):
+        model.load_state_dict(initial['ckpt']['model'])
+        return
+    allowed = {'sigreg_projector.'+k for k in model.sigreg_projector.state_dict()}
+    if any(k.startswith('sigreg_projector.') for k in initial['ckpt']['model']):
+        raise ValueError('Unexpected head weights during initialization')
+    result = model.load_state_dict(initial['ckpt']['model'], strict=False)
+    if set(result.missing_keys) != allowed or result.unexpected_keys:
+        raise ValueError(f'Invalid initialization keys: {result}')
 
 
 def load_resume_checkpoint(path, cfg):
@@ -265,7 +288,7 @@ def train(cfg: dict) -> dict:
 
     model = build_model(mcfg, dcfg["sequence_length"])
     if init:
-        model.load_state_dict(init["ckpt"]["model"])
+        initialize_weights(model, init, resume=bool(resume))
     model = model.to(device)
     objective = LeJEPAObjective(tcfg["lambda_sigreg"], tcfg["sigreg_num_slices"],
                                 tcfg["sigreg_knots"], tcfg["sigreg_t_max"], tcfg["global_weight"],
@@ -281,8 +304,10 @@ def train(cfg: dict) -> dict:
 
     start_step = resume["ckpt"]["step"] if resume else 0
     latest, reference_rank = {}, None
-    metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, start_step, seed, device, reference_rank)
+    metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, start_step, seed, device, reference_rank,
+                                            objective,global_cfg)
     latest.update(metrics)
+    skipped_updates = resume['ckpt'].get('metrics',{}).get('amp_skipped_updates',0) if resume else 0
 
     def checkpoint(step, epoch):
         meta = {"config": resolved, "epoch": epoch, "global_step": step, "metrics": latest, **metadata}
@@ -323,13 +348,17 @@ def train(cfg: dict) -> dict:
             view_idxs = draw_views(global_cfg, len(x), num_patches, mask_generator, device)
             with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
                 out = model(x, masked_idx, visible_idx, view_idxs)
-            losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"))
+            losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
+                               reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'))
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(losses["loss"]).backward()
             scaler.unscale_(optimizer)
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            previous_scale = scaler.get_scale()
             scaler.step(optimizer)
             scaler.update()
+            skipped_updates += int(scaler.get_scale() < previous_scale)
+            latest['amp_skipped_updates'] = skipped_updates
             scheduler.step()
             step += 1
             samples_seen += len(x)
@@ -342,7 +371,8 @@ def train(cfg: dict) -> dict:
                     raise FloatingPointError(f"non-finite loss at step {step}: {record}")
                 record.update({"train/learning_rate": scheduler.get_last_lr()[0], "train/epoch": epoch,
                                "train/global_step": step, "train/samples_seen": samples_seen,
-                               "train/grad_norm": float(grad_norm)})
+                               "train/grad_norm": float(grad_norm), 'train/amp_scale': scaler.get_scale(),
+                               'train/amp_skipped_updates': skipped_updates})
                 if resume:
                     print(f"step={step} loss={record['train/loss']:.6g} lr={record['train/learning_rate']:.8g}", flush=True)
                 history.append(record)
@@ -354,7 +384,7 @@ def train(cfg: dict) -> dict:
                 wb.log(run, valid, step=step)
             if step % tcfg["diag_every"] == 0 or last:
                 metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, step,
-                                                          seed, device, reference_rank)
+                                                          seed, device, reference_rank,objective,global_cfg)
                 latest.update(metrics)
             if step % tcfg["ckpt_every"] == 0 or last:
                 checkpoint(step, epoch)

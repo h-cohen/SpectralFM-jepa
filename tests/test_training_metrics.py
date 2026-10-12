@@ -2,6 +2,17 @@ import pytest
 from spectral_lejepa.utils import wandb as wb
 
 
+def test_projector_comparison_logs_both_global_terms_with_actual_weights():
+    cfg=dict(regularizer='sigreg',lambda_sigreg=.05,global_weight=1.)
+    values={'train/mse_loss':2.,'train/sigreg_loss':10.,'train/global_inv_loss':.1,
+            'train/global_sigreg_loss':20.,'train/global_loss':1.095}
+    r=wb.training_metrics(values,cfg,100)
+    assert r['train/global_invariance_contribution']==pytest.approx(.095)
+    assert r['train/global_sigreg_contribution']==pytest.approx(1.)
+    assert sum(r[k] for k in ('train/prediction_contribution','train/regularizer_contribution',
+                              'train/global_invariance_contribution','train/global_sigreg_contribution'))==pytest.approx(3.595)
+
+
 @pytest.mark.parametrize('regularizer,expected', [('sigreg', (2., .5)), ('visreg', (.8, 6.))])
 def test_weighted_terms_explain_total(regularizer, expected):
     cfg = dict(regularizer=regularizer, lambda_sigreg=.05, visreg_lambda=.6, global_weight=1.)

@@ -72,7 +72,7 @@ def init_run(cfg, job_type, extra_config=None, name=None):
                       tags=list(w["tags"]), name=name, config=config)
     if job_type == "pretrain":
         run.define_metric("optimizer_step")
-        for prefix in ("train/*", "valid/*", "representation/*", "progress/*"):
+        for prefix in ("train/*", "valid/*", "representation/*", "progress/*", "projection/*", "gradient_terms/*"):
             run.define_metric(prefix, step_metric="optimizer_step")
         run.define_metric("valid/loss", summary="min")
         run.define_metric("progress/percent_complete", summary="last")
@@ -90,6 +90,10 @@ def training_metrics(metrics, tcfg, total_steps):
             out[f"{prefix}/prediction_contribution"] = out[mse] * (1 - lam if visreg else 1)
             out[f"{prefix}/regularizer_contribution"] = out[reg] * lam
             out[f"{prefix}/global_contribution"] = out.get(glob, 0.) * tcfg.get("global_weight", 0.)
+            if all(f'{prefix}/{k}' in out for k in ('global_inv_loss','global_sigreg_loss')):
+                weight = tcfg.get('global_weight',0.)
+                out[f'{prefix}/global_invariance_contribution'] = weight * (1-lam) * out[f'{prefix}/global_inv_loss']
+                out[f'{prefix}/global_sigreg_contribution'] = weight * lam * out[f'{prefix}/global_sigreg_loss']
     step = out.get("train/global_step")
     if step is not None and total_steps:
         out["progress/percent_complete"] = 100 * step / total_steps

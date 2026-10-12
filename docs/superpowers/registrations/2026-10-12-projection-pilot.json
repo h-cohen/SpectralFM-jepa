@@ -1,0 +1,60 @@
+{
+  "registered_at": "2026-10-12T12:50:55.995947+00:00",
+  "checkpoint": "outputs/paired-long/p48_s2_20261008-161508/checkpoint_last.pt",
+  "checkpoint_sha256": "ec4c041dc4f83aa04e9ec568a335cdf7e27dbc7aa7fac965f2fd1f686b566ff0",
+  "jobs": {
+    "control_s301": {
+      "seed": 301,
+      "arm": "control",
+      "physical_gpu": 0,
+      "gpu_uuid": "GPU-69e42c2d-27a4-ff64-073e-f3f6941027b1",
+      "train_config": "outputs/projection-pilot/control_s301/train.yaml",
+      "eval_config": "outputs/projection-pilot/control_s301/eval.yaml",
+      "train_sha256": "f5c92fd45a4f70c48aaeca5100b7dccd57be4b54638499981845ec583b96b8e2",
+      "eval_sha256": "62f5029e576142681da0c775b45c414b1f357264a288c60f0a96e572152daa6b",
+      "service": "spectralfm-projection-control-s301"
+    },
+    "projected_s301": {
+      "seed": 301,
+      "arm": "projected",
+      "physical_gpu": 1,
+      "gpu_uuid": "GPU-d54a30ae-7b4d-cc41-7d72-7ebdaf0f4798",
+      "train_config": "outputs/projection-pilot/projected_s301/train.yaml",
+      "eval_config": "outputs/projection-pilot/projected_s301/eval.yaml",
+      "train_sha256": "ede289fb47926b09e4efa230c5ec7b1d162e61142ec900e0fe4497eeb17479eb",
+      "eval_sha256": "904010e20f3eb56e88236203634b661e08f78ac1da737520adc485d51c0734ca",
+      "service": "spectralfm-projection-projected-s301"
+    },
+    "control_s302": {
+      "seed": 302,
+      "arm": "control",
+      "physical_gpu": 2,
+      "gpu_uuid": "GPU-a867db5d-e391-4ccc-825a-8443e68b59a3",
+      "train_config": "outputs/projection-pilot/control_s302/train.yaml",
+      "eval_config": "outputs/projection-pilot/control_s302/eval.yaml",
+      "train_sha256": "8aa750975a66f51c18e31048c6161f17662a46f88efbd836892d0a694af8860f",
+      "eval_sha256": "665896bd4df7817917151e329a318649ad284bc2c5d2513ebbdf68175d27da2b",
+      "service": "spectralfm-projection-control-s302"
+    },
+    "projected_s302": {
+      "seed": 302,
+      "arm": "projected",
+      "physical_gpu": 4,
+      "gpu_uuid": "GPU-acdb7bbc-75c8-fe29-0597-7db4eaefb248",
+      "train_config": "outputs/projection-pilot/projected_s302/train.yaml",
+      "eval_config": "outputs/projection-pilot/projected_s302/eval.yaml",
+      "train_sha256": "9fcb757f48a311f4c1192fa5797a94e4201387486642296bcdb3ac2d4a05db04",
+      "eval_sha256": "6ca01b0730ccc2e40fec1a261008576163601adcb83f3ea889b31b28450f8fea",
+      "service": "spectralfm-projection-projected-s302"
+    }
+  },
+  "steps": 49799,
+  "primary_readout": "layer2/flat",
+  "secondary_readout": "layer6/flat",
+  "research_preference": {
+    "min_gain_vs_control_each_seed": 0.005,
+    "min_raw_wins": 7,
+    "repeated_material_regression_limit": -0.02
+  },
+  "status": "exploratory; original export and qualification unchanged"
+}

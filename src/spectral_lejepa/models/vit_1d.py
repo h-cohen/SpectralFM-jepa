@@ -70,7 +70,8 @@ class Predictor(nn.Module):
 class LeJEPA(nn.Module):
     def __init__(self, sequence_length, num_patches, dim, depth, heads, mlp_dim, dropout,
                  predictor_dim, predictor_depth, predictor_heads, predictor_mlp_dim,
-                 projector="none", projector_hidden_dim=1024, projector_dim=128):
+                 projector="none", projector_hidden_dim=1024, projector_dim=128,
+                 sigreg_projector="none", sigreg_projector_hidden_dim=512, sigreg_projector_dim=128):
         super().__init__()
         self.tokenizer = PatchTokenizer(sequence_length, num_patches, dim)
         self.encoder = Encoder(dim, depth, heads, mlp_dim, dropout)
@@ -84,6 +85,14 @@ class LeJEPA(nn.Module):
             self.projector = LeJEPAProjectionHead(dim, projector_hidden_dim, projector_dim)
         else:
             raise ValueError(f"unknown projector {projector!r}; use 'none' or 'mlp'")
+        if sigreg_projector not in ('none', 'control', 'mlp'):
+            raise ValueError(f'unknown sigreg_projector {sigreg_projector!r}')
+        if projector != 'none' and sigreg_projector != 'none':
+            raise ValueError('Prediction projector and regularization projector cannot be combined')
+        self.sigreg_projector_mode = sigreg_projector
+        self.sigreg_projector = None if sigreg_projector == 'none' else nn.Sequential(
+            nn.Linear(dim, sigreg_projector_hidden_dim), nn.GELU(),
+            nn.Linear(sigreg_projector_hidden_dim, sigreg_projector_dim))
 
     def forward(self, x, masked_idx, visible_idx, view_idxs=None):
         tokens = self.tokenizer(x)                                            # [B, T, D]
@@ -99,6 +108,11 @@ class LeJEPA(nn.Module):
         out = {"predicted": predicted, "target": target, "target_masked": gather_tokens(target, masked_idx)}
         if views is not None:
             out["views"] = views
+        if self.sigreg_projector_mode == 'mlp':
+            with torch.autocast(device_type=target.device.type, enabled=False):
+                out['sigreg_target'] = self.sigreg_projector(target.float())
+                if views is not None:
+                    out['sigreg_views'] = self.sigreg_projector(views.float())
         return out
 
     def _project(self, predicted, target):
@@ -126,4 +140,6 @@ def build_model(model_cfg: dict, sequence_length: int) -> LeJEPA:
     keys = ("num_patches", "dim", "depth", "heads", "mlp_dim", "dropout", "predictor_dim",
             "predictor_depth", "predictor_heads", "predictor_mlp_dim", "projector",
             "projector_hidden_dim", "projector_dim")
-    return LeJEPA(sequence_length=sequence_length, **{k: model_cfg[k] for k in keys})
+    optional = {k: model_cfg[k] for k in ('sigreg_projector', 'sigreg_projector_hidden_dim',
+                                         'sigreg_projector_dim') if k in model_cfg}
+    return LeJEPA(sequence_length=sequence_length, **{k: model_cfg[k] for k in keys}, **optional)
