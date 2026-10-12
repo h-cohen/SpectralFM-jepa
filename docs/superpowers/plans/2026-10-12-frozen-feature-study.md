@@ -32,3 +32,11 @@
 - Independentlighterreview foundno methodology/path/leakage/gate-mutationblocker. Sequentialslot0queueconfirmed. SecondaryRBFheadsrequire substantialCPUworkon4716rows;OMP/OpenBLAS/MKLcaps4. HostGPUavailabilityverifiedallsevenidlebeforelaunch;knownphysical3excluded.
 - Preregistration/codecommit34ffe23precedeslaunch. Seven`spectralfm-frozen-feature-slot0..6`servicesactive;allsevenfirstcheckpointjobscompleted0055withfiniteJSONoutputs andcachechecks;baseline101also completed0106. Low203queued behindprior0 onslot0;noGPUoversubscription.
 - W&Bprior0`t1mlyvqp`,prior1`hu9k300m`,prior2`z1oil93q`,baseline101`7bra67dc`,control202`wtk3pwk2`,control203`dxxnyjnp`,low202`hihc5um7`. Reporttracksprogressandwilladdfullmeasuredplotspercompletedjob. Projectorpilot awaitsfullfrozenresults;originalexport/gateunchanged.
+
+## Completed analysis
+
+- All8pipelines completed:64linear+64head datasetoutputs. Everycheckpoint'stopfixedreadoutbyrawwins/meanΔisblock2-flat;priorseed2remains7/8,+.089366. Allothernewlateflat/pre-normfamiliesfailedtoreplaceit. LNchangesmixedacrossseeds/readouts.
+- Secondaryheadswin4–6/8againstsame-headraw. Standardized-onlyrawisnotprimaryraw:LD.7625vs.8301;seed101trained.9588both. Primaryandsecondaryrawreferencesnowbothplotted. Noencoderimprovementinferredfromweakenedrawbaseline.
+- Menu selector replay uses fixed-arminnerchoices and pairedOOFs,notoutertestlabels. Exactbaseline101reproductionverified. Prior0/1/2menu7/6/6wins;nosingle8/8winner. Saved`menu_replication.json`,`results_summary.json/.csv`understudyoutputs.
+- Independentlighterreviewconfirmedallcompletedcounts,block2dominance,LNmixedresultsandrawbaselinecaveat. Nextprojection-spacepilotdesignsaved`docs/superpowers/specs/2026-10-12-projection-space-pilot.md`;no automatictraining/exportpromotion. Originalgateunchanged.
+- Expandedheadunion replayretainsprimaryrecipesandsameinnerfoldselectionforallarms;5–6/8wins,priorseed2trainedmean−.009939versusprimaryfixed. Verifiedall8checkpointSHA256s and128resultsourcehashes,sharedrandomfixed2rowidentical;13focusedtests passed. Summary W&B`md2at1yc`;offlineHTMLhascompleteprimary/secondary/unionR²±SDmatrices andeight-checkpointflatdepthplot.

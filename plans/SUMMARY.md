@@ -304,3 +304,10 @@ Evidence investigator, focused builder and independent reviewer all use lighter 
 - Fullflat/mean/seg4states0–6andexplicitpre-finalLayerNorm6features. Existingfamiliesonlyreusedafterfreshfeature/raw+block2OOFchecks;newlinearnested12-recipecontrolsunchanged. Secondaryfixed2Ridge/PLS/RBFheadsforraw/trained/random,same2×5outer/5innerfolds,learnedtransformsnested;primaryscoresunchanged.
 -23focusedchecks plusrealprior2/0055smoke passed (cachedblock2R².6619529858059501reproduced). Checkpoint/configsourcesregistered,states/JSON/OOFs/W&Bfigureslocal;offlineHTMLnewchaptershowsprogressandfullresultswhenready. Spec/plan`docs/superpowers/*/2026-10-12-frozen-feature-study.md`;outputs`outputs/frozen-feature-study/`.
 - No newpretraining/export/gatemutation. Projectorpilot awaitsfrozenevidence. Headphase isCPU-heavyon4716rows;nofirmfinishestimateyet. Fullstudyresultsremainpending.
+
+## Completed frozen-feature study
+
+- All8jobs completed64linear+64head datasetoutputs. Everycheckpoint'sbestfixedfamily remainsblock2-flat;priorseed2leader7/8,+.089366. Fullflatcoverage andpre-finalLNreadouts uncoverednoreplacement;normalizationchangesmixed.
+- Secondarystandardizedheadmenu4–6/8. LDsecondaryraw.7625vsprimaryraw.8301while101trained.9588both;reportshowsbothcomparators. Preservingprimarylinearrecipesinaninner-selectedunionstill5–6/8;priorseed2trainedregresses.00994meanR². No stronger decoder established.
+- Exactcachedfour-readoutselectorreplaymatchesknown101predictions;prior0/1/2menu7/6/6wins. No8/8solution. Machine summaries/CSVs/menu+unionOOFs savedunderfrozenoutputs. Originalexport/gateunchanged.
+- Nextprojection-spacepilotdesignsaved`docs/superpowers/specs/2026-10-12-projection-space-pilot.md`;regularization-onlyhead,preservebackboneMSE/invariance,matched301/302seedsand49,799stepproposedbudget. No newtraining launched.
