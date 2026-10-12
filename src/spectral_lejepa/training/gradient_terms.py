@@ -1,6 +1,7 @@
 """Per-term encoder gradient measurements with preserved weights, gradients and RNG."""
 import hashlib
 import torch
+from ..data.perturb import perturb
 from ..models.masking import make_mask, random_mask
 
 SEED = 4000
@@ -15,7 +16,7 @@ def _hash_tensors(values):
     return h.hexdigest()
 def _vector(grads, params):
     return torch.cat([(torch.zeros_like(p) if g is None else g).detach().reshape(-1) for p, g in zip(params, grads)])
-def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, device="cpu"):
+def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, device="cpu", robust_cfg=None, stats=None):
     if model.training:
         raise ValueError("model must be in eval mode for the frozen gradient audit")
     if objective.regularizer != "sigreg":
@@ -35,9 +36,11 @@ def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, devi
         masked, visible = make_mask(masking_cfg, len(x), num_patches, generator, device)
         views = [random_mask(len(x), num_patches, 1 - global_cfg["keep"], generator, device)[1]
                  for _ in range(global_cfg["views"])]
-        output = model(x, masked, visible, views)
+        robust_x = perturb(x, robust_cfg, stats, generator) if robust_cfg else None
+        output = model(x, masked, visible, views, robust_x, (robust_cfg or {}).get("block", 2))
         losses = objective(output["predicted"], output["target_masked"], output["target"], output["views"],
-                           reg_target=output.get('sigreg_target'),reg_views=output.get('sigreg_views'))
+                           reg_target=output.get('sigreg_target'),reg_views=output.get('sigreg_views'),
+                           robust=output.get("robust"))
         lam, weight = objective.lambda_sigreg, objective.global_weight
         terms = {
             "mse": losses["mse_loss"],
@@ -45,8 +48,12 @@ def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, devi
             "global_invariance": weight * (1 - lam) * losses["global_inv_loss"],
             "global_sigreg": weight * lam * losses["global_sigreg_loss"],
         }
+        extra = {}
+        if robust_cfg:   # weighted term enters the sum check; unweighted norm calibrates the weight
+            terms["robustness"] = objective.robust_weight * losses["robust_loss"]
+            extra["robustness_unweighted"] = losses["robust_loss"]
         vectors = {}
-        for name, term in terms.items():
+        for name, term in {**terms, **extra}.items():
             grads = torch.autograd.grad(term, flat_params, retain_graph=True, allow_unused=True)
             vectors[name] = {g: _vector(grads[o:o + len(ps)], ps) for g, ps, o in (
                 ("block2", params["block2"], 0), ("block6", params["block6"], len(params["block2"]))) }
@@ -56,7 +63,7 @@ def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, devi
             prediction = grads["mse"]
             other = sum(grads[name] for name in terms if name != "mse")
             denom = prediction.norm() * other.norm()
-            block_metrics[group] = {"gradient_norms": {n: float(v.norm().item()) for n, v in grads.items()},
+            block_metrics[group] = {"gradient_norms": {n: float(vectors[n][group].norm().item()) for n in (*terms, *extra)},
                 "gradient_norm_total": float(sum(grads.values()).norm().item()),
                 "cosine_prediction_vs_other": float(torch.dot(prediction, other).item() / denom.item()) if denom else 0.0}
         term_values = {name: float(value.detach().item()) for name, value in terms.items()}

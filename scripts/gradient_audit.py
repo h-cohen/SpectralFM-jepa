@@ -37,10 +37,12 @@ def run_audit(checkpoint, device="cuda", seed=SEED):
     inputs = torch.cat(batches).numpy()
     model.to(device).eval()
     objective = LeJEPAObjective(*(train_cfg[k] for k in ("lambda_sigreg", "sigreg_num_slices", "sigreg_knots",
-        "sigreg_t_max", "global_weight", "regularizer", "visreg_slices", "visreg_lambda"))).to(device).eval()
+        "sigreg_t_max", "global_weight", "regularizer", "visreg_slices", "visreg_lambda")),
+        (train_cfg.get("robust") or {}).get("weight", 0.0)).to(device).eval()
     masking_cfg = cfg["masking"]
     global_cfg = {"views": train_cfg["global_views"], "keep": train_cfg["global_keep"]}
-    per_batch = [audit_batch(model, objective, x, masking_cfg, global_cfg, seed=seed + i, device=device)
+    robust = {"robust_cfg": train_cfg.get("robust"), "stats": {"mean": stats["mean"], "std": stats["std"]}}
+    per_batch = [audit_batch(model, objective, x, masking_cfg, global_cfg, seed=seed + i, device=device, **robust)
                  for i, x in enumerate(batches)]
     means = {"terms": {k: float(np.mean([b["terms"][k] for b in per_batch])) for k in per_batch[0]["terms"]},
              "total_loss": float(np.mean([b["total_loss"] for b in per_batch])), "blocks": {}}

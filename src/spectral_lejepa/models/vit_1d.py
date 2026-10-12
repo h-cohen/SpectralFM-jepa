@@ -38,6 +38,12 @@ class Encoder(nn.Module):
         out = self.norm(x)
         return (out, hidden) if return_all else out
 
+    def prefix(self, tokens, k):
+        """State after the first k blocks (no final norm): the block-k readout."""
+        for block in self.blocks[:k]:
+            tokens = block(tokens)
+        return tokens
+
 
 class Predictor(nn.Module):
     """Predicts encoder embeddings at masked positions from the context embeddings.
@@ -94,11 +100,15 @@ class LeJEPA(nn.Module):
             nn.Linear(dim, sigreg_projector_hidden_dim), nn.GELU(),
             nn.Linear(sigreg_projector_hidden_dim, sigreg_projector_dim))
 
-    def forward(self, x, masked_idx, visible_idx, view_idxs=None):
+    def forward(self, x, masked_idx, visible_idx, view_idxs=None, robust_x=None, robust_block=2):
         tokens = self.tokenizer(x)                                            # [B, T, D]
         context = self.encoder(gather_tokens(tokens, visible_idx))            # [B, n_vis, D]
         predicted = self.predictor(context, visible_idx, masked_idx)          # [B, n_mask, D]
-        target = self.encoder(tokens)                                         # [B, T, D]
+        if robust_x is None:
+            target = self.encoder(tokens)                                     # [B, T, D]
+        else:   # block-k states of clean and perturbed full sequences, [B, T, D] each
+            target, hidden = self.encoder(tokens, return_all=True)
+            robust = (hidden[robust_block - 1], self.encoder.prefix(self.tokenizer(robust_x), robust_block))
         views = None
         if view_idxs is not None:   # pooled encoder outputs (before any projector): full view, then subsets
             views = torch.stack([target.mean(1)] + [self.encoder(gather_tokens(tokens, idx)).mean(1)
@@ -108,6 +118,8 @@ class LeJEPA(nn.Module):
         out = {"predicted": predicted, "target": target, "target_masked": gather_tokens(target, masked_idx)}
         if views is not None:
             out["views"] = views
+        if robust_x is not None:
+            out["robust"] = robust
         if self.sigreg_projector_mode == 'mlp':
             with torch.autocast(device_type=target.device.type, enabled=False):
                 out['sigreg_target'] = self.sigreg_projector(target.float())

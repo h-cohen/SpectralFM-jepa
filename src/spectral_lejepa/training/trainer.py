@@ -17,6 +17,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset, make_loader,
                            manifest_fingerprint, packed_train_rows, read_manifest, source_mass,
                            source_row_probs, subsample, valid_subset)
+from ..data.perturb import check_config, perturb
 from ..models.masking import make_mask, random_mask
 from ..models.vit_1d import build_model
 from ..utils import wandb as wb
@@ -75,26 +76,32 @@ def draw_views(global_cfg, batch_size, num_patches, generator, device):
 
 
 @torch.no_grad()
-def validation_losses(model, objective, signals, num_patches, masking_cfg, batch_size, seed, device, amp, global_cfg=None):
+def validation_losses(model, objective, signals, num_patches, masking_cfg, batch_size, seed, device, amp, global_cfg=None,
+                      robust_cfg=None, stats=None):
     """Mean losses over full batches of the fixed valid set; the mask seed is fixed so values
     are comparable across steps."""
     model.eval()
     generator = torch.Generator().manual_seed(seed)
+    robust_generator = torch.Generator().manual_seed(seed + 4)
     batch_size = min(batch_size, len(signals))
     totals = {"loss": 0.0, "mse_loss": 0.0, "sigreg_loss": 0.0}
     if global_cfg:
         totals.update(global_inv_loss=0.0, global_sigreg_loss=0.0, global_loss=0.0)
     if objective.regularizer == "visreg":
         totals.update(reg_center=0.0, reg_scale=0.0, reg_shape=0.0)
+    if robust_cfg:
+        totals["robust_loss"] = 0.0
     n_batches = 0
     for i in range(0, len(signals) - batch_size + 1, batch_size):
         x = signals[i:i + batch_size].to(device)
         masked_idx, visible_idx = make_mask(masking_cfg, len(x), num_patches, generator, device)
         view_idxs = draw_views(global_cfg, len(x), num_patches, generator, device)
+        robust_x = perturb(x, robust_cfg, stats, robust_generator) if robust_cfg else None
         with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-            out = model(x, masked_idx, visible_idx, view_idxs)
+            out = model(x, masked_idx, visible_idx, view_idxs, robust_x, (robust_cfg or {}).get("block", 2))
         losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
-                           reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'))
+                           reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'),
+                           robust=out.get("robust"))
         for k in totals:
             totals[k] += losses[k].item()
         n_batches += 1
@@ -217,6 +224,11 @@ def train(cfg: dict) -> dict:
             raise ValueError(f"training.global_keep={tcfg['global_keep']} must be in (0, 1] and keep at "
                              f"least one of {mcfg['num_patches']} patches")
         global_cfg = {"views": tcfg["global_views"], "keep": tcfg["global_keep"]}
+    robust_cfg = tcfg.get("robust")   # optional block-k perturbation invariance; absent = legacy objective
+    if robust_cfg:
+        check_config(robust_cfg)
+        if dcfg["normalization"] != "global":
+            raise ValueError("training.robust perturbs raw values and needs global normalization")
     seed = ecfg["seed"]
     set_seed(seed)
     device = resolve_device(tcfg["device"])
@@ -292,11 +304,14 @@ def train(cfg: dict) -> dict:
     model = model.to(device)
     objective = LeJEPAObjective(tcfg["lambda_sigreg"], tcfg["sigreg_num_slices"],
                                 tcfg["sigreg_knots"], tcfg["sigreg_t_max"], tcfg["global_weight"],
-                                tcfg["regularizer"], tcfg["visreg_slices"], tcfg["visreg_lambda"]).to(device)
+                                tcfg["regularizer"], tcfg["visreg_slices"], tcfg["visreg_lambda"],
+                                (robust_cfg or {}).get("weight", 0.0)).to(device)
     optimizer = torch.optim.AdamW(param_groups(model, tcfg["weight_decay"]), lr=tcfg["learning_rate"])
     scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
     scaler = torch.amp.GradScaler(device.type, enabled=amp)
     mask_generator = torch.Generator().manual_seed(seed + 1)
+    robust_generator = torch.Generator().manual_seed(seed + 5)   # separate stream: masking sequence unchanged
+    robust_block = (robust_cfg or {}).get("block", 2)
     if resume:
         restore_optimization(resume["ckpt"], optimizer, scheduler, scaler)
     num_patches = mcfg["num_patches"]
@@ -317,6 +332,7 @@ def train(cfg: dict) -> dict:
                             epoch=epoch, config=resolved, metadata=metadata, metrics=dict(latest), scheduler=scheduler,
                             rng_state={"torch": torch.get_rng_state(), "numpy": np.random.get_state(),
                                        "python": random.getstate(), "mask": mask_generator.get_state(),
+                                       **({"robust": robust_generator.get_state()} if robust_cfg else {}),
                                        "cuda": torch.cuda.get_rng_state_all() if device.type == "cuda" else None})
         if run is not None and cfg["wandb"].get("log_checkpoints", False):
             wb.log_checkpoint(run, path, f"lejepa-{run.id}", ["latest", f"step-{step}"], meta)
@@ -329,6 +345,8 @@ def train(cfg: dict) -> dict:
             np.random.set_state(rng["numpy"])
             random.setstate(rng["python"])
             mask_generator.set_state(rng["mask"])
+            if robust_cfg:
+                robust_generator.set_state(rng["robust"])
             if device.type == "cuda" and rng.get("cuda"):
                 torch.cuda.set_rng_state_all(rng["cuda"])
         else:
@@ -346,10 +364,12 @@ def train(cfg: dict) -> dict:
             x = x.to(device, non_blocking=True)
             masked_idx, visible_idx = make_mask(kcfg, len(x), num_patches, mask_generator, device)
             view_idxs = draw_views(global_cfg, len(x), num_patches, mask_generator, device)
+            robust_x = perturb(x, robust_cfg, global_stats, robust_generator) if robust_cfg else None
             with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                out = model(x, masked_idx, visible_idx, view_idxs)
+                out = model(x, masked_idx, visible_idx, view_idxs, robust_x, robust_block)
             losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
-                               reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'))
+                               reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'),
+                               robust=out.get("robust"))
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(losses["loss"]).backward()
             scaler.unscale_(optimizer)
@@ -379,7 +399,8 @@ def train(cfg: dict) -> dict:
                 wb.log(run, record, step=step)
             if step % tcfg["val_every"] == 0 or last:
                 valid = validation_losses(model, objective, valid_signals, num_patches, kcfg,
-                                          batch_size, seed + 2, device, amp, global_cfg)
+                                          batch_size, seed + 2, device, amp, global_cfg,
+                                          robust_cfg, data_derived.get("global_stats"))
                 latest.update(valid)
                 wb.log(run, valid, step=step)
             if step % tcfg["diag_every"] == 0 or last:

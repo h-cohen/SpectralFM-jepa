@@ -12,8 +12,9 @@ from spectral_lejepa.training.visreg import VISReg
 class LeJEPAObjective(nn.Module):
     def __init__(self, lambda_sigreg: float, num_slices: int = 1024, knots: int = 17, t_max: float = 3.0,
                  global_weight: float = 0.0, regularizer: str = "sigreg", visreg_slices: int = 4096,
-                 visreg_lambda: float = 0.6):
+                 visreg_lambda: float = 0.6, robust_weight: float = 0.0):
         super().__init__()
+        self.robust_weight = robust_weight
         self.lambda_sigreg = lambda_sigreg
         self.global_weight = global_weight
         if regularizer not in ("sigreg", "visreg"):
@@ -25,7 +26,8 @@ class LeJEPAObjective(nn.Module):
         else:
             self.visreg = VISReg(num_slices=visreg_slices)
 
-    def forward(self, predicted, target_masked, target, views=None, reg_target=None, reg_views=None) -> dict:
+    def forward(self, predicted, target_masked, target, views=None, reg_target=None, reg_views=None,
+                robust=None) -> dict:
         if (reg_target is not None or reg_views is not None) and self.regularizer != 'sigreg':
             raise ValueError('Projected regularization inputs require SIGReg')
         if reg_target is not None and reg_target.shape[:-1] != target.shape[:-1]:
@@ -55,4 +57,9 @@ class LeJEPAObjective(nn.Module):
                 global_loss = (1 - lam) * inv + lam * greg
                 loss = loss + self.global_weight * global_loss
                 out.update(global_inv_loss=inv, global_sigreg_loss=greg, global_loss=global_loss)
+            if robust is not None:   # clean vs perturbed block-k tokens, scale-free via detached batch variance
+                clean, perturbed = (h.float() for h in robust)
+                rob = (perturbed - clean).pow(2).mean() / clean.detach().var(0).mean().clamp_min(1e-8)
+                loss = loss + self.robust_weight * rob
+                out["robust_loss"] = rob
         return {"loss": loss, **out}
