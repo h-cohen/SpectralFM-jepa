@@ -21,7 +21,7 @@
 - [x] Implement/testsmallnestedheadmenu withouter-labelperturbationregression (lighteragent).
 - [x] Integratesupplementalblock/normalization/headfigures intoofflineHTML;pendingresultsstaypending.
 - [x] Focusedtests,realcheckpoint/smallsetsmoke,read-onlyreview;commitregistrationbeforelaunch.
-- [ ] LaunchdurablesevenGPUqueues/eightcheckpointjobs;verifyactualprogress,W&BIDs,finitevalues;recordstatus.
+- [x] LaunchdurablesevenGPUqueues/eightcheckpointjobs;verifyactualprogress,W&BIDs,finitevalues;recordstatus.
 
 ## Ledger
 
@@ -30,3 +30,5 @@
 - RealGPU priorseed2/0055 smoke passed:24fixedarms,block2R².6619529858059501exactlymatchescachedresult. Pre/postnormgains andheadmenu finite. SecondaryrawheadR².69227versustrained.70412/random.66396;this isasmoketest,n25,notapromotionresult. Alloldraw/block2OOFs pairedwithnewcalculation.
 - Registeredsource/checkpointhashes andsevenhealthyGPUUUIDs in`docs/superpowers/registrations/2026-10-12-frozen-feature-study.json`. Slot0queuesprior0thenlow203;othersrunonecheckpoint. Reporttracksqueued/completedsetsandseparatesnewlinearreadoutsfromsecondaryheads.
 - Independentlighterreview foundno methodology/path/leakage/gate-mutationblocker. Sequentialslot0queueconfirmed. SecondaryRBFheadsrequire substantialCPUworkon4716rows;OMP/OpenBLAS/MKLcaps4. HostGPUavailabilityverifiedallsevenidlebeforelaunch;knownphysical3excluded.
+- Preregistration/codecommit34ffe23precedeslaunch. Seven`spectralfm-frozen-feature-slot0..6`servicesactive;allsevenfirstcheckpointjobscompleted0055withfiniteJSONoutputs andcachechecks;baseline101also completed0106. Low203queued behindprior0 onslot0;noGPUoversubscription.
+- W&Bprior0`t1mlyvqp`,prior1`hu9k300m`,prior2`z1oil93q`,baseline101`7bra67dc`,control202`wtk3pwk2`,control203`dxxnyjnp`,low202`hihc5um7`. Reporttracksprogressandwilladdfullmeasuredplotspercompletedjob. Projectorpilot awaitsfullfrozenresults;originalexport/gateunchanged.
