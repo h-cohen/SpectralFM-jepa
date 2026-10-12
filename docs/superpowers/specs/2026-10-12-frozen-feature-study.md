@@ -1,0 +1,12 @@
+# Frozen feature and downstream head study
+
+User approved planning and running the next tests. Run frozen-model experiments before any further pretraining. No automatic export replacement, qualification override or projector training launch.
+
+- Checkpoints:earlier48pseeds0/1/2,final101,andcontrol/low-SIGRegcontinuationseeds202/203. CheckpointSHA256sregisteredbeforelaunch.
+- Extract mean/seg4/flat at tokenizer andblocks1–6. Existingblock6means the output after finalLayerNorm;addexplicit`layer6_pre_norm`mean/seg4/flat from the input to thatsameLayerNorm. No weight updates or normalizer refit on evaluation rows.
+- Use the existing per-checkpoint banks'raw245spectra andparameter_0labels in exactlytheir savedorder. Confirm overlapfeaturesagainstoldbanks;verifyrawandblock2OOFsagainstoldresults. Reuse alreadymeasuredfixedfamilies onlyafterthosechecks;newfamiliesgettheexistinglinear12-recipe2×5outer/5innerCVseed42andmatchedrandom-initseed0controls.
+- Missingflatreadoutsandpre/postLayerNormdiagnosticsarefixedfamilycomparisons,notanexpandedproductionselector. Preserve oldfour-readoutmenu. Plotallsevenoutputs andexplicitpre/postnormalizationpairedgainswithbootstrapSD.
+- Secondaryproductheadtest onfixedblock2-flat only:standardizedRidgeCV,PLS(2/8/16components),RBFkernelridge withsmallpredeclaredalpha/gammagrid. Raw andrandomblock2getidenticalheadmenus. FitstandardizationandPLSusinginnertrainingrowsonly;selecthead/hyperparametersinside5innerfolds;2×5outerseed42. RetainprimarylinearrawandmodelOOFsasreference;do notoverwriteprimarybenchmarkorclaimgainfromgivingonlyFMstrongerheads.
+- All resultsshouldincludeR²±bootstrapSD,pairedraw/random/referencegains,sourcehashes,choseninnerrecipes,rowsandfolds. Smallsetuncertaintyandretrospectivebenchmarkreuseexplicit;separate labels/groupsstillrequiredforreleasevalidation.
+- Outputsunder`outputs/frozen-feature-study/`,W&Bgroup`frozen-feature-study`,localTMP,OMP4,singleGPUlinearprobeworker. EightjobsqueuedonsevenhealthyGPUUUIDs,excludingphysical3;mutableperjobstatesandserializedreportbuilds.
+- Decideprojectorpilotaftercompletedfrozenchecks. If no repeatable fixed/readout/head benefit appears,reportthatanddesigna matchedprojection-space experiment;do notlaunchitautomaticallyfromlowerpredictionloss.

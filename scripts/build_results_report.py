@@ -128,6 +128,8 @@ def collect_report_data(repo_root):
     analysis = collect_analysis(root)
     from scripts.continuation_report import collect_study
     continuation = collect_study(root)
+    from scripts.frozen_feature_report import collect_frozen
+    frozen = collect_frozen(root)
     candidate_path = root / 'outputs/final-model/manifest.json'
     candidate = json.loads(candidate_path.read_text()) if candidate_path.exists() else None
     if candidate and candidate.get('run_id'):
@@ -177,6 +179,7 @@ def collect_report_data(repo_root):
         'final_candidate': candidate,
         'production_analysis': analysis,
         'continuation_study': continuation,
+        'frozen_feature_study': frozen,
         'evaluation': {
             'protocol': 'Nested cross-validation: 2 outer repeats × 5 folds, with 5-fold inner selection.',
             'win_rule': 'A dataset is a win when pretrained model R² − raw R² > 0; strong win is ≥ +0.05.',
@@ -200,6 +203,8 @@ def render_html(data, export_dir=None):
     analysis_html = render_analysis(data.get('production_analysis'), export_dir)
     from scripts.continuation_report import render_study
     analysis_html += render_study(data.get('continuation_study'), export_dir)
+    from scripts.frozen_feature_report import render_frozen
+    analysis_html += render_frozen(data.get('frozen_feature_study'), export_dir)
     flow_html = '<section class="section" id="tensorDataflow"><h2>Architecture and tensor dataflow</h2><p class="sub">Full six-block training objective; fixed two-block production inference. B=256 during training and B=1 for a single spectrum.</p><div class="card">' + render_dataflow() + '</div></section>'
     candidate = data.get('final_candidate')
     candidate_html = ''
