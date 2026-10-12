@@ -1,6 +1,6 @@
 # Production recommendation — 2026-10-12
 
-Keep the existing export unchanged. For production validation, prioritize the earlier 48-patch seed2 checkpoint with SIGReg λ=0.05 and block-2 flat features: it remains the strongest measured fixed candidate under the primary linear benchmark. No continuation, normalization change or broader decoder menu has established a replacement. Do not spend on another duration-only full run from these findings.
+Keep the existing export unchanged. For production validation, prioritize the earlier 48-patch seed2 checkpoint with SIGReg λ=0.05 and block-2 flat features: it remains the strongest measured fixed candidate under the primary linear benchmark. No continuation, normalization change, broader decoder menu or tested projection-space recipe has established a replacement. Do not spend on another duration-only full run from these findings.
 
 This recommendation compares the approved seed101 candidate with its four continuations; it is not a claim that seed101 is the highest-scoring historical fixed embedding. Earlier 48-patch seed2 with block2-flat scores 7/8 wins and mean raw gain +0.08937, versus seed101's 5/8 and +0.08008. It is the strongest fixed candidate within the earlier 48-patch block2 shortlist and deserves locked independent validation alongside seed101. Choosing it now from observed benchmark scores is retrospective selection. The current verified export is seed101, whose qualification remains failed; neither benchmark leadership nor an existing export establishes production readiness.
 
@@ -35,4 +35,29 @@ Replaying the predeclared four-readout menu from saved inner scores and paired p
 
 An exploratory union replay retains the original linear recipes alongside the new heads for raw, trained and random features, selecting each branch by saved inner-fold R². It still wins only 5–6/8 against its union raw comparator; seed2 trained predictions regress by 0.00994 mean R² versus its primary fixed2 score. Extra decoder choices are not a dependable upgrade.
 
-Retain 48p/block2-flat/SIGReg 0.05 as the production architecture shortlist. Seed2 remains the strongest measured primary-linear fixed candidate; the current seed101 export remains unchanged and unqualified. The next training hypothesis is a matched regularization-only projection-space pilot, specified in `docs/superpowers/specs/2026-10-12-projection-space-pilot.md`; it has not been launched.
+Retain 48p/block2-flat/SIGReg 0.05 as the production architecture shortlist. Seed2 remains the strongest measured primary-linear fixed candidate; the current seed101 export remains unchanged and unqualified. The matched regularization-only projection-space pilot is now complete; see the final findings below.
+
+
+## Completed projection-space pilot
+
+All four training/evaluation pipelines completed from the earlier seed2 checkpoint, with registered configs/source hashes verified and all 21 block/readout families measured on all eight datasets. One additional epoch, seeds301/302; only token/pooled SIGReg moved through the training-only256→512→128 MLP. Masked prediction and pooled invariance remained in the backbone.
+
+| Arm / seed | Fixed2 wins | Mean ΔR² vs raw | Fixed2 change vs matched control | Flat6 wins | Flat6 mean ΔR² vs raw |
+|---|---:|---:|---:|---:|---:|
+| Starting seed2 |7/8|+.08937|—|—|—|
+| Control301 |7/8|+.08648|—|1/8|−.14777|
+| Projected301 |7/8|+.08145|−.00503|3/8|−.08032|
+| Control302 |7/8|+.08351|—|0/8|−.19656|
+| Projected302 |7/8|+.08133|−.00218|3/8|−.02568|
+
+**Stop this tested projector recipe.** The primary criterion (at least+.005meanR² vs control on both seeds) fails. All four retain 7/8 wins and lose0106; none improves starting fixed2 mean performance. Block2-flat remains the strongest fixed family in every new run. The declared menu wins7/6for controls and6/6for projected runs, so it does not provide a consistent alternative.
+
+The secondary result is real: final block6-flat gains+.06745/+.17088meanR² over its matched controls and reaches3/8raw wins on both seeds. This is late-layer recovery, not a better fixed production embedding. At0113, projected fixed2 loses−.02054±.00837 and−.01921±.01008vs control (paired row-bootstrap SD), a repeatable concern even though the second seed narrowly misses the predeclared−.02material-regression cutoff.
+
+Prediction validation MSE improves about32% (.00793/.00803 vs .01169/.01178), while backbone pooled effective rank decreases (~128–130 vs145). Final FP32 audit tokenSIG/prediction gradient ratios rise to39–44× versus15–16×, so this head does not demonstrate reduced late regularization pressure. The control head is unused; its geometry is not a trained comparator. Total losses differ in regularization space and should not choose a winner. No claim that projector isotropy helps downstream performance is supported here.
+
+Keep the earlier seed2 fixed2 checkpoint as the retrospective candidate for locked independent validation; keep the existing seed101 export unchanged. Do not extend this projector or start another full-duration run from these results. Next practical work is source/group-disjoint development and release evaluation, including0106and the original0120canary issue. If further research is authorized, a short, separately registered experiment could investigate gradient balance while preserving the primary interface; these findings do not identify a proven replacement recipe.
+
+Machine analysis and paired uncertainties: `outputs/projection-pilot/results_analysis.json`; rerun `.venv/bin/python -m scripts.projection_pilot_analysis`. The report includes the starting reference, R²±bootstrapSD, primary paired-gain plot, every block/readout depth plot, geometry/prediction histories and the research stop decision. Bootstrap SD reflects row sampling under the reused benchmark, not uncertainty on unseen populations or seed selection.
+
+Final paired summary and six measured figures published to W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/e72aiwt3.

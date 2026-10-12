@@ -27,14 +27,14 @@
 - Authorizedfrozenfollowupactive:`docs/superpowers/plans/2026-10-12-frozen-feature-study.md`. Eightcheckpointjobs/sevenhealthyGPUUUIDqueues,outputs`outputs/frozen-feature-study`,W&Bgroup`frozen-feature-study`. Fullflat0–6+pre/postfinalLayerNorm;reuseoldfixedscoresonlyafterfeature/OOFproof. Secondaryfixed2Ridge/PLS/RBFmenuappliedequallyraw/model/randomwithnestedtransforms.23tests/realsmoke passed,allseveninitialjobsprogressing;low203queued. Projectorpilotconditional,no newpretraining/releasepromotion.
 - Frozenfollowupcompleted:8×8linear/headsets. Bestfixedfamilyblock2-flatforall8;priorseed2still7/8+.089366. LNablationmixed;secondaryheads4–6/8andsometimesweakenrawnormalizationbaseline. Bothrawreferencesexplicit;unionwithprimaryrecipes5–6/8,seed2regresses.00994meanR². Four-readoutmenuprior0/1/2replay7/6/6wins. No8/8winner/exportchange. Projection-spacepilotdesign`docs/superpowers/specs/2026-10-12-projection-space-pilot.md`approved and launched; see current pilot status below.
 
-## Active projection pilot (2026-10-12)
+## Completed projection pilot (2026-10-12)
 
 - User authorized launch. Registration/code commit `b38accf`; plan `docs/superpowers/plans/2026-10-12-projection-space-pilot.md` and hashed registration under `docs/superpowers/registrations/`.
 - Four matched runs from prior48pseed2: seeds301/302 × control/projected,49,799 additional steps, fresh AdamW,1000 warmup,LR5e-5→5e-7. SIGReg .05; only its token/pooled inputs move through256→512→128 MLP. Backbone prediction/invariance, full eligible samples and source/masking/batch recipe preserved.
 - Durable services `spectralfm-projection-{control,projected}-s{301,302}`, pinned to healthy physicalGPUs0/1/2/4 by UUID. W&B control301 `3be6orej`, projected301 `pft83led`, control302 `15o7a28q`, projected302 `49r2flsr`; group `projection-pilot`.
 - Automatic final gradient audit → all-block/raw/random evaluation → fixed-menu comparisons → report refresh. Outputs `outputs/projection-pilot/`. Fixed2 primary,flat6 secondary; no automatic export/gate replacement. Independent release validation still absent.
 - Verification:64 regression checks plus8 final report/config checks; real-source GPU smoke and50-step projected AMP calibration finite, one early scaler reduction. Online geometry, weighted per-term block2/6 gradients and AMP skipped-update counters logged.
-- Live launch verification:all four active,650–700steps,finite losses/gradient norms; initial AMP skips3–5 logged. Training estimate2–3hours from initial throughput, followed by evaluation. Resolved training rows12,748,642; source mass .5/.5.
+- All four completed49,799steps,all8sets and21readouts; hashes verified. Projectedfixed2meanΔraw+.081446/+.081329 vscontrol+.086476/+.083507;7/8winsall,loss0106. Startingprior2+.089366 remains stronger. Stoptestedprojector; no newtraining/promotion. Flat6secondaryrecovers3/8projectedvs1/0controls; no primaryimprovement. Report/recommendationupdated; pairedmachineanalysis`outputs/projection-pilot/results_analysis.json`.
 
 ## Repository map
 
@@ -55,3 +55,5 @@
 - Never write under `/mnt5/noy` or modify the parent evaluation repository.
 - Commit on `main` as `Hadar <hal.nls@gmail.com>`. Push when the user requests it.
 - Preserve checkpoint/RNG resume behavior, input normalization, loss weights and W&B axes during cleanup. Keep useful shape/numerical comments; avoid prose that repeats code.
+
+Final paired summary and six measured figures published to W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/e72aiwt3.

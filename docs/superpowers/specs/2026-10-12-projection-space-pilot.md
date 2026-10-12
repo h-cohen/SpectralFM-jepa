@@ -1,6 +1,6 @@
 # Next research design: regularization in projection space
 
-Status: proposed after the completed frozen study; no training launched.
+Status: user-approved pilot completed. Primary criterion failed on both seeds; stop this tested recipe. See `docs/PRODUCTION_RECOMMENDATION.md`.
 
 The frozen tests found no better fixed readout than block2-flat, no consistent final-LayerNorm fix, and no robust decoder replacement. The next training hypothesis is that a separate training representation can absorb SIGReg constraints while preserving useful backbone features. Lower total SIGReg weight has already failed to improve consistently.
 

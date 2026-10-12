@@ -32,3 +32,12 @@
 
 - Launched four systemd services on the registered UUIDs after commit `b38accf`. W&B control301 `3be6orej`, projected301 `pft83led`, control302 `15o7a28q`, projected302 `49r2flsr`. All active with88–94% GPU utilization and~8.9GB memory; W&B verified650–700steps with finite loss/gradient norms. Early AMP skips3–5 are logged, not hidden; scales adjusted to2048–8192. Estimated training2–3hours from initial throughput, final evaluation follows separately.
 - Resolved configs verify12,748,642training rows,49,799steps,1000warmup,source mass .5/.5 and exact registered source hash for all four jobs.
+
+## Completion
+
+- [x] Verify four final checkpoint/config hashes, all8dataset outputs/run and all21readouts; final training step49,799.
+- [x] Apply preregistered primary criterion and analyze secondary all-block outcomes; paired row-bootstrap uncertainty from matched OOFs.
+- [x] Compile report and recommendation:stopthisrecipe. Projectedfixed2 gains vscontrol−.005030/−.002178,all7/8raw wins; startingprior2meanΔraw+.089366remainsbestfixedshortlist. Secondaryflat6recoversto3/8bothprojectedbutdoesnotreplacefixed2.
+- [x] Preserve existingexport/gate; no newtraining/promotions. Independentgroup-labelledvalidationrequired before shipping.
+
+Final paired summary and six measured figures published to W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/e72aiwt3. Specific payload/destination approved by user after automatic review initially rejected the upload.

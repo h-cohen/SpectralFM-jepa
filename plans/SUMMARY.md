@@ -320,3 +320,13 @@ Evidence investigator, focused builder and independent reviewer all use lighter 
 - Automatic final gradient audit → all-block/raw/random evaluation → fixed-menu comparisons → report refresh. Outputs `outputs/projection-pilot/`. Fixed2 primary,flat6 secondary; no automatic export/gate replacement. Independent release validation still absent.
 - Verification:64 regression checks plus8 final report/config checks; real-source GPU smoke and50-step projected AMP calibration finite, one early scaler reduction. Online geometry, weighted per-term block2/6 gradients and AMP skipped-update counters logged.
 - Live launch verification:all four active,650–700steps,finite losses/gradient norms; initial AMP skips3–5 logged. Training estimate2–3hours from initial throughput, followed by evaluation. Resolved training rows12,748,642; source mass .5/.5.
+
+## Projection pilot final analysis
+
+- All four pipelines completed; source/config/final checkpoint hashes and 32 dataset evaluations verified. All21fixedreadouts measured for every run. Training49,799steps; AMP skips20/22/22/22logged, final loss/gradient finite.
+- Fixed2 means vsraw:controls301/302+.086476/+.083507;projected+.081446/+.081329. Pairedproject-control−.005030/−.002178;primary+.005both criterionfails. All7/8wins,loss0106. Startingprior2+.089366 remains fixedshortlist; noexport/gatechange.
+- Secondaryflat6recovers3/8bothprojectedvscontrol1/8and0/8,mean gains+.067447/+.170884. Block2 remains strongestfixedfamilyeveryrun. Menucontrol7/6wins/projected6/6;notrobustreplacement.
+- PredictionMSE~32%lowerprojectedbutbodypooledrank128–130vs145;finalblock6tokenSIG/MSEgradientratio39–44vs15–16. Noevidenceheadabsorbsregularizationpressure orimprovesisotropy. Paired0113regression−.020542±.008374/−.019208±.010080;secondnarrowlyabove materialcutoff,primaryfailsregardless.
+- Recommendationstopthisrecipe/noextraepochs;priorseed2fixed2requireslockedindependentgroupvalidation. Originalseed101export/gateunchanged. OfflineHTMLpairedgains/fullblockplots/scorematrix/historiesupdated. Reproducibleanalysis`scripts/projection_pilot_analysis.py`;machineJSONunderpilotoutputs.
+
+Final paired summary and six measured figures published to W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/e72aiwt3.
