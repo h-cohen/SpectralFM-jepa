@@ -311,3 +311,12 @@ Evidence investigator, focused builder and independent reviewer all use lighter 
 - Secondarystandardizedheadmenu4–6/8. LDsecondaryraw.7625vsprimaryraw.8301while101trained.9588both;reportshowsbothcomparators. Preservingprimarylinearrecipesinaninner-selectedunionstill5–6/8;priorseed2trainedregresses.00994meanR². No stronger decoder established.
 - Exactcachedfour-readoutselectorreplaymatchesknown101predictions;prior0/1/2menu7/6/6wins. No8/8solution. Machine summaries/CSVs/menu+unionOOFs savedunderfrozenoutputs. Originalexport/gateunchanged.
 - Nextprojection-spacepilotdesignsaved`docs/superpowers/specs/2026-10-12-projection-space-pilot.md`;regularization-onlyhead,preservebackboneMSE/invariance,matched301/302seedsand49,799stepproposedbudget. No newtraining launched.
+
+## Active projection pilot (2026-10-12)
+
+- User authorized launch. Registration/code commit `b38accf`; plan `docs/superpowers/plans/2026-10-12-projection-space-pilot.md` and hashed registration under `docs/superpowers/registrations/`.
+- Four matched runs from prior48pseed2: seeds301/302 × control/projected,49,799 additional steps, fresh AdamW,1000 warmup,LR5e-5→5e-7. SIGReg .05; only its token/pooled inputs move through256→512→128 MLP. Backbone prediction/invariance, full eligible samples and source/masking/batch recipe preserved.
+- Durable services `spectralfm-projection-{control,projected}-s{301,302}`, pinned to healthy physicalGPUs0/1/2/4 by UUID. W&B control301 `3be6orej`, projected301 `pft83led`, control302 `15o7a28q`, projected302 `49r2flsr`; group `projection-pilot`.
+- Automatic final gradient audit → all-block/raw/random evaluation → fixed-menu comparisons → report refresh. Outputs `outputs/projection-pilot/`. Fixed2 primary,flat6 secondary; no automatic export/gate replacement. Independent release validation still absent.
+- Verification:64 regression checks plus8 final report/config checks; real-source GPU smoke and50-step projected AMP calibration finite, one early scaler reduction. Online geometry, weighted per-term block2/6 gradients and AMP skipped-update counters logged.
+- Live launch verification:all four active,650–700steps,finite losses/gradient norms; initial AMP skips3–5 logged. Training estimate2–3hours from initial throughput, followed by evaluation. Resolved training rows12,748,642; source mass .5/.5.
