@@ -36,6 +36,11 @@
 - Verification:64 regression checks plus8 final report/config checks; real-source GPU smoke and50-step projected AMP calibration finite, one early scaler reduction. Online geometry, weighted per-term block2/6 gradients and AMP skipped-update counters logged.
 - All four completed49,799steps,all8sets and21readouts; hashes verified. Projectedfixed2meanΔraw+.081446/+.081329 vscontrol+.086476/+.083507;7/8winsall,loss0106. Startingprior2+.089366 remains stronger. Stoptestedprojector; no newtraining/promotion. Flat6secondaryrecovers3/8projectedvs1/0controls; no primaryimprovement. Report/recommendationupdated; pairedmachineanalysis`outputs/projection-pilot/results_analysis.json`.
 
+## Production validation and robustness continuation (2026-10-13)
+
+- No-training analyses: `docs/superpowers/specs/2026-10-13-robust-production-roadmap.md`, outputs `outputs/production-validation/`. The seed-ensemble (48p seeds 0/1/2/101, block2-flat, equal-weight predictions) passed its registered criteria: 7/8 wins, +.0858 mean Δraw. It is the preferred holdout candidate beside seed101/seed2. Pooled gain over random features is only +.0037±.0012. Trained features amplify input noise ~20× (drift tracks source type, not memorization). 0106 has no identified cause.
+- Robustness continuation (user-approved, launched): design `docs/superpowers/specs/2026-10-13-robustness-continuation.md`, registration `docs/superpowers/registrations/2026-10-13-robustness-continuation.json`. From prior48pseed2, seeds 401/402 × control/robust, 49,799 steps; robust arm adds block-2 token invariance to data-calibrated perturbations (`training.robust`, weight 0.1 chosen by the registered calibration rule). Services `spectralfm-robust-{control,robust}-s{401,402}`, physical GPUs 0/1/2/4; W&B group `robustness-continuation` (control401 `c3g6saaz`, robust401 `bqw877zh`, control402 `dwph9kqj`, robust402 `d2fqocp5`). Pipeline: train → gradient audit → all-block eval → policies → `scripts/robustness_eval.py`. Outputs `outputs/robustness-continuation/`; starting-checkpoint perturbation reference `start_perturbation.json`. No export or gate change.
+
 ## Repository map
 
 - `src/spectral_lejepa/models/`: tokenizer, masking, shared encoder, predictor.
