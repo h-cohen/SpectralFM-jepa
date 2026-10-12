@@ -52,6 +52,7 @@ def depth_figure(data, patches):
     colors = {'mean': '#3976b8', 'seg4': '#087e83', 'flat': '#d18a25'}
     fig, axes = plt.subplots(2, 4, figsize=(15, 8), squeeze=False)
     for ax, dataset in zip(axes.flat, DATASETS):
+        final_counts = []
         raw = next((r['cells'][dataset]['r2'] for r in data['raw_rows']
                     if r['patches'] == patches and dataset in r['cells']), None)
         if raw is not None:
@@ -66,16 +67,26 @@ def depth_figure(data, patches):
                 values = [r['cells'][dataset]['r2'] for r in candidates]
                 stages.append(stage); means.append(statistics.mean(values)); deviations.append(statistics.stdev(values))
                 ax.scatter([stage] * 3, values, s=9, color=colors[readout], alpha=.35)
+                if stage == 6 and raw is not None:
+                    winning = [v for v in values if v > raw]
+                    final_counts.append(f'{readout} {len(winning)}/3')
+                    if winning:
+                        ax.scatter([6] * len(winning), winning, marker='*', s=110,
+                                   color=colors[readout], edgecolor='#087e43', linewidth=1.2, zorder=5)
             if stages:
                 mean, sd = np.array(means), np.array(deviations)
                 ax.plot(stages, mean, 'o-', color=colors[readout], ms=4,
                         label=f'{readout} ({256 if readout == "mean" else 1024 if readout == "seg4" else patches * 256}d)')
                 ax.fill_between(stages, mean - sd, mean + sd, color=colors[readout], alpha=.12)
         ax.axvspan(5.75, 6.25, color='#d18a25', alpha=.09)
+        if final_counts:
+            ax.text(.97, .04, 'Block6 seed wins vs raw\n' + ', '.join(final_counts) + '\nFlat not measured',
+                    transform=ax.transAxes, ha='right', va='bottom', fontsize=7,
+                    bbox={'facecolor': 'white', 'edgecolor': '#ddd', 'alpha': .9})
         ax.set_xticks(range(7), ['0\ntokens', '1', '2', '3', '4', '5', '6\nfinal'])
         ax.set(title=DATASET_LABELS[dataset], xlabel='Encoder block', ylabel='Nested-CV R²')
         ax.grid(alpha=.15)
-    axes[0, 0].legend(fontsize=8)
+    axes[0, 0].legend(fontsize=7, loc='lower left')
     fig.suptitle(f'Where the signal lives · {patches} patches\nMean R² ± sample SD across three seeds · fixed readout at each block', fontsize=14)
     return fig
 

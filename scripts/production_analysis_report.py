@@ -64,14 +64,16 @@ def gradient_figure(data):
     return fig
 
 
-def depth_figure(depth, title='Where the signal lives · original seed101 · all blocks/readouts'):
+def depth_figure(depth, title='Where the signal lives · frozen seed101 candidate · before continuations'):
     fig, axes = plt.subplots(2, 4, figsize=(15, 8))
     for ax, ds in zip(axes.flat, DATASETS):
         if ds not in depth:
             ax.set_title(DATASET_LABELS[ds]); ax.text(.5, .5, 'Pending', ha='center', transform=ax.transAxes)
             ax.set_axis_off(); continue
         point = depth[ds]
-        ax.axhline(point['summary']['raw_r2'], color='#596b74', ls='--', label='Raw')
+        raw = point['summary']['raw_r2']
+        ax.axhline(raw, color='#596b74', ls='--', label='Raw')
+        wins = []
         for pool, suffix, color in [('mean', '', '#3976b8'), ('seg4', '/seg4', '#087e83'), ('flat', '/flat', '#d18a25')]:
             stages = np.arange(7)
             families = [point['families'].get(f'layer{s}{suffix}') for s in stages]
@@ -80,11 +82,19 @@ def depth_figure(depth, title='Where the signal lives · original seed101 · all
             ax.plot(stages, values, 'o-', ms=4, color=color,
                     label=f'{pool} ({256 if pool == "mean" else 1024 if pool == "seg4" else 12288:,}d)')
             ax.fill_between(stages, values-sd, values+sd, alpha=.12, color=color)
+            if np.isfinite(values[6]) and values[6] > raw:
+                wins.append(f'{pool} +{values[6]-raw:.6f}')
+                ax.scatter([6], [values[6]], marker='*', s=145, color=color,
+                           edgecolor='#087e43', linewidth=1.4, zorder=5)
+        note = 'Block6 wins vs raw\n' + '\n'.join(wins) if wins else 'Block6: no raw wins'
+        ax.text(.97, .04, note, ha='right', va='bottom', transform=ax.transAxes,
+                fontsize=8, color='#087e43' if wins else '#596b74',
+                bbox={'facecolor': 'white', 'edgecolor': '#b6d9c7' if wins else '#ddd', 'alpha': .9})
         ax.axvspan(5.75, 6.25, color='#d18a25', alpha=.09)
         ax.set_xticks(range(7), ['0\ntokens', '1', '2', '3', '4', '5', '6\nfinal'])
         ax.set(title=DATASET_LABELS[ds], xlabel='Encoder block', ylabel='Nested-CV R²'); ax.grid(alpha=.15)
     if DATASETS[0] in depth:
-        axes[0, 0].legend(fontsize=8)
+        axes[0, 0].legend(fontsize=7, loc='lower left')
     else:
         next((ax for ax, ds in zip(axes.flat, DATASETS) if ds in depth), axes[0, 0]).legend(fontsize=8)
     fig.suptitle(title + '\nBands: bootstrap SD · missing measurements leave gaps')
