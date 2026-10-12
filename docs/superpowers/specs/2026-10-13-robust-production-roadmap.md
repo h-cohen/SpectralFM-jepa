@@ -48,6 +48,19 @@ All A analyses reuse the frozen-feature-study banks and the primary protocol: se
 - A5 0106 diagnosis: label-free statistics only; labels may be used only to report already-computed scores.
 - A6 robustness: probes fit on clean training folds with the inner-selected recipe, then scored on perturbed test rows. Perturbations and magnitudes are fixed in the script before scoring. Raw, random and trained arms receive identical perturbations.
 
+### A results (2026-10-13)
+
+Scripts: `scripts/seed_ensemble.py`, `chemometric_baselines.py`, `diagnose_0106.py`, `robustness_perturbations.py`, `memorization_check.py`. Outputs: `outputs/production-validation/`.
+
+- **A1 seed ensemble: passed.** 7/8 raw wins, mean Δraw +.0858 (bar .0776), no set below its worst seed. Δrandom +.0780, 6/8. 0106 still −.093±.035. The ensemble is now the preferred holdout candidate, beside the seed101 export and seed2.
+- **A3/A4 pooled.** Inverse-variance pooled Δraw +.017±.001, Δrandom +.0037±.0012. labeled_data and 0114 dominate the weights because their SD is smallest. Pretraining's pooled gain over random features is small.
+- **A2 chemometrics.** RBF kernel ridge is the strongest classical arm and beats contract raw on 7/8. Seed2 block2-flat beats the inner-selected chemometric union on labeled_data (+.18), 0112 (+.15), 0113 (+.18) and 0120 (+.08); 0055/0109 within noise; 0114 tie; 0106 −.12. On labeled_data, PLS (.600) and KRR (.782) score below linear raw (.830), so their grids likely underfit n=4716.
+- **A5 0106: no cause found.** Ruled out: out-of-distribution inputs, rarity (0106 gets 16.7% of sampling mass, ~43× per row), tokenization or peak width, amplitude, and information loss (CKA .974, input PCs recovered R² .97). Weak lead: 0106 has effective rank 2.8 and n=64, raw and random already reach .70, and flat features spread signal and add probe variance. Each seed's loss is ~1.5 SD alone; the evidence is cross-seed consistency.
+- **A6 robustness: trained features amplify noise.** Block2-flat relative drift under 1% noise is .11 (raw .005, random .0015). A fixed standardize+RidgeCV probe, which is also the production recipe on labeled_data, does not remove it. At 3% noise the trained arm falls below raw on 0055, 0106, 0109 and 0114. labeled_data collapses for every arm under noise; likely near-constant columns amplified by standardization, not verified. Offset, slope and scale give no trained advantage over raw.
+- **Memorization: not supported.** Drift is lower on the oversampled `labeled_regression` rows (.042) than on `single_channel_all` (.223) and `multi_channel` (.177). Non-oversampled `labeled_data` matches the oversampled rows (.051). Masked-prediction error follows the same source pattern. Fragility tracks source type, not repetition: the encoder generalizes poorly to perturbed and single-channel spectra.
+
+Consequence for C: a robustness objective is now the leading training candidate. Use noise, shift and baseline views in the invariance branch, gated by a matched control and a prespecified drift and noisy-R² criterion. 0106 has no specific fix.
+
 ### B. Data (release blocker)
 
 Independent 245-value spectra with `parameter_0` and source/simulation/batch IDs. Lock group-disjoint development splits and a reserved release holdout before any scoring. Evaluate the seed101 export, seed2 and the seed ensemble once on the holdout. Also request ≥ 200 labelled rows for any small set that matters for deployment; n=25 cannot separate models.
