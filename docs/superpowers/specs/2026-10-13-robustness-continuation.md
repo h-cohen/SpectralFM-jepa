@@ -93,3 +93,20 @@ Interpretation:
 - Invariance to baseline shifts did not transfer. Smaller drift with lower R² means the remaining feature change lines up with directions the probe uses.
 
 Decision under the registration: stop this recipe. Nothing is promoted or exported, and the 8-job ensemble extension is not proposed. A follow-up would need a new registration. Candidates are noise-only augmentation at a much smaller σ_max (≤ .03, the range evaluated), with no baseline terms, and a weight below 0.1. The calibration grid should go below 0.1.
+
+## Contract re-read (user direction, after results)
+
+After the registered analysis, the user stated the goal: win on a majority of the eight sets, not win by large margins, so matching raw on some sets is acceptable. The registered clean non-inferiority criterion (mean Δraw within .005 of control) was stricter than the project contract. The registered verdict above stays on record as FAIL. This section scores the same runs against the contract and the existing gate without changing either.
+
+Contract/gate metrics, block2-flat, paired against raw and the seed2 random-weight control (raw OOFs checked identical to the frozen-feature study):
+
+| Job | Raw wins (>2 SD) | Random wins | Mean Δraw | Mean Δrandom |
+|---|---|---|---|---|
+| control_s401 | 7 (3) | 6 | +.0846 | +.0769 |
+| robust_s401 | 7 (2) | 8 | +.0436 | +.0358 |
+| control_s402 | 7 (3) | 6 | +.0871 | +.0793 |
+| robust_s402 | 8 (3) | 8 | +.0469 | +.0391 |
+
+Shuffled-label canary on block2-flat (single seed-42 shuffle, existing .020 limit; `outputs/robustness-continuation/canary_layer2_flat.json`): controls fail 0120 (.065/.052). Robust arms fail 0106 (.096/.100) and 0120 (.026/.025). The adaptive best-block canary in the eval summaries passes all eight sets for both robust arms. A 100-permutation audit (`permutation_0106_0120.json`) gives real R² above every permutation for every arm on 0106 and 0120. For the robust arms the block-2 null maximum is .006 on 0106 and .042 on 0120, while raw's own null exceeds .02 in 7% (0106) and 3% (0120) of permutations. The single-shuffle canary is therefore a noisy test at these sample sizes. Its limit stays unchanged, and under it no arm here is benchmark-qualified, the same status as seed101.
+
+Reading under the contract: both robust arms meet the majority-win rule and beat the random control on every set, which the controls do not. They are also far more stable under noise. Their wins on 0112, 0114 and 0120 are small (+.00 to +.02), so on new data those sets may come out level or as losses. The robust recipe is a contract-level candidate, and no longer a stopped recipe, but it was chosen retrospectively and is not promoted. Its export and qualification still depend on the independent holdout.
