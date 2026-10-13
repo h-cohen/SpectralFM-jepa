@@ -27,3 +27,32 @@ def test_stack_similarity_feeds_the_given_embeddings_in_row_order():
     out = stack_similarity(sim, z, stack, emb, k=5)
     assert out['embedding_stack_match_rate'] == pytest.approx(1.0)
     assert 0 <= out['input_stack_match_rate'] < .5
+
+
+def test_evaluate_suite_flag_dispatches_without_a_checkpoint(monkeypatch):
+    from spectral_lejepa.evaluation import embedding_eval, run
+    seen = {}
+    monkeypatch.setattr(embedding_eval, 'run_suite', lambda cfg: seen.setdefault('name', cfg['experiment']['name']))
+    run.main(['--suite', 'embedding', '--config', 'configs/eval_embedding.yaml'])
+    assert seen['name'] == 'embedding_eval'
+
+
+def test_probe_suite_still_requires_a_checkpoint():
+    from spectral_lejepa.evaluation import run
+    with pytest.raises(SystemExit):
+        run.main(['--config', 'configs/eval.yaml'])
+
+
+def test_evaluate_model_on_synthetic_data():
+    from spectral_lejepa.evaluation.embedding_eval import evaluate_model
+
+    class Legacy:   # minimal stand-in with the legacy attribute
+        NOISE_CONFIGS = {'gaussian_std': lambda z: z + np.random.normal(0, .01, size=z.shape)}
+
+    rng = np.random.default_rng(0)
+    data = {'noise_sets': {'toy': rng.normal(2, 1, (6, 245)).astype(np.float32)}, 'stack_sets': {}, 'panel': None}
+    cfg = {'evaluation': {'device': 'cpu', 'batch_size': 4, 'k': 5, 'noise_seed': 0}}
+    ck = {'data': {'normalization': 'global'}, 'derived': {'global_stats': {'mean': 2.0, 'std': 1.0}}}
+    out = evaluate_model(build_model(MODEL, 245), ck, data, cfg, {'noise': Legacy, 'sim': None})
+    for r in ('block2_mean', 'block2_flat'):
+        assert 0.9 < out['noise']['toy'][r]['gaussian_std'] <= 1.0

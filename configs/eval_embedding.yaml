@@ -1,0 +1,32 @@
+# Previous-project cosine similarity and noise robustness on block-2 readouts (spec 2026-10-14).
+experiment:
+  name: embedding_eval
+  seed: 42
+  output_dir: outputs/embedding-eval
+data:
+  nova_data_dir: /mnt5/noy/SpectralFM/fairseq/data/nova_data
+  stack_sets:            # alias: [dataset dir, split, n]  (previous runner DATASET_SPECS)
+    sanity: [single_channel_1k, train, 100]
+    in_dist: [single_channel_10k, valid, 500]
+    multi_ch: [multi_channel, valid, 1000]
+    samples: [sampled_data, valid, 1000]
+  similarity_sets: [sanity, in_dist]
+  label_sets:
+    labeled_data: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_data]
+    dataset0055: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0055]
+    dataset0106: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0106]
+    dataset0109: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0109]
+    dataset0112: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0112]
+    dataset0113: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0113]
+    dataset0114: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0114]
+    dataset0120: [/mnt5/noy/SpectralFM/fairseq/data/nova_data/labeled_regression/dataset0120]
+evaluation:
+  device: cuda
+  batch_size: 64
+  k: 5
+  noise_seed: 0
+models:
+  robust_s401: outputs/robustness-continuation/training/robust_robust_s401_20261013-020629/checkpoint_last.pt
+  robust_p0: outputs/robust-ensemble/training/robust_p0_20261013-172822/checkpoint_last.pt
+  robust_p1: outputs/robust-ensemble/training/robust_p1_20261013-172821/checkpoint_last.pt
+  robust_s101: outputs/robust-ensemble/training/robust_s101_20261013-172822/checkpoint_last.pt

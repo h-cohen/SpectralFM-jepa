@@ -78,10 +78,17 @@ def scorecard(sets, key):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--checkpoint", required=True, help="local .pt checkpoint path")
+    ap.add_argument("--checkpoint", help="local .pt checkpoint path (probe suite)")
+    ap.add_argument("--suite", choices=("probe", "embedding"), default="probe",
+                    help="probe: nested-CV label probes; embedding: previous-project similarity and noise metrics")
     ap.add_argument("--config", default="configs/eval.yaml")
     ap.add_argument("overrides", nargs="*")
     a = ap.parse_args(argv)
+    if a.suite == "embedding":
+        from spectral_lejepa.evaluation.embedding_eval import run_suite
+        return run_suite(load_config(a.config, a.overrides))
+    if not a.checkpoint:
+        ap.error("--checkpoint is required for --suite probe")
     cfg = load_config(a.config, a.overrides)
     ecfg, vcfg, bcfg = cfg["experiment"], cfg["evaluation"], cfg["baseline"]
     seed = ecfg["seed"]
