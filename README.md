@@ -2,7 +2,7 @@
 
 SpectralFM learns frozen features from unlabeled 245-point spectra with masked joint-embedding prediction. A linear probe evaluates those features against raw spectra on eight labeled sets. Labels are excluded from pretraining; spectra from the evaluation corpus are eligible, so evaluation is transductive with respect to the input distribution.
 
-Status, candidates and the release blocker: [`docs/PRODUCTION_RECOMMENDATION.md`](docs/PRODUCTION_RECOMMENDATION.md). Corpus details: [`docs/DATASETS.md`](docs/DATASETS.md).
+Status, candidates and the release blocker: [`docs/PRODUCTION_RECOMMENDATION.md`](docs/PRODUCTION_RECOMMENDATION.md). Corpus details: [`docs/DATASETS.md`](docs/DATASETS.md). Training recipe, diagrams and results: [`docs/TRAINING_REPORT.md`](docs/TRAINING_REPORT.md).
 
 ## Architecture and data flow
 

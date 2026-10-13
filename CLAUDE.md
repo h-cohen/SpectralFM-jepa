@@ -52,7 +52,8 @@ Each study has a spec or plan under `docs/superpowers/`, outputs under `outputs/
 - Audits: `gradient_audit.py`, `permutation_audit.py`.
 - 2026-10-13 studies: `seed_ensemble.py`, `chemometric_baselines.py`, `diagnose_0106.py`, `robustness_perturbations.py`, `memorization_check.py`, `noise_calibration.py`, `robustness_continuation*.py`, `robustness_eval.py`, `robust_ensemble.py`.
 - Report: `scripts/build_results_report.py` and its `*_report.py`, `results_matrix.py`, `readout_variants.py`, `report_story.py` section modules. These build offline HTML, CSV and SVG from saved outputs.
-- `scripts/training_progress.py`: W&B presentation watcher (service `spectralfm-presentation`).
+- `scripts/training_progress.py`: W&B presentation watcher (service `spectralfm-presentation`, stopped 2026-10-13).
+- Training report: `docs/TRAINING_REPORT.md`; figures in `docs/figures/training-report/` from `python -m scripts.training_report` (`fetch` first, via `bash -ic`).
 - Data packing: `pack_pickles.py`, `pack_spectra.py`. Corpus details: `docs/DATASETS.md`.
 - Retired options (`model.projector`, `model.sigreg_projector`, `training.regularizer=visreg`) remain in saved configs; the code accepts only their disabled values.
 
