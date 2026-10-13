@@ -16,6 +16,7 @@ dependencies = [
     "pyyaml",
     "wandb",
     "lightly==1.5.26",
+    "pandas==2.2.3",
 ]
 
 [dependency-groups]
