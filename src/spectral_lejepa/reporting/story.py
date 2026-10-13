@@ -74,14 +74,14 @@ def render_story(data, export_dir=None):
     depth_html = ''
     variants = data.get('variants') or {}
     if variants.get('rows'):
-        from scripts.readout_variants import depth_figure
+        from spectral_lejepa.reporting.readouts import depth_figure
         for patches in (24, 48):
             if any(r['patches'] == patches for r in variants['rows']):
                 plots[f'depth{patches}'] = _image(depth_figure(variants, patches), f'signal_by_block_{patches}patches', export_dir)
         production_depth = data.get('production_analysis', {}).get('depth')
         current = ''
         if production_depth:
-            from scripts.production_analysis_report import depth_figure as production_depth_figure
+            from spectral_lejepa.reporting.sections.production_analysis import depth_figure as production_depth_figure
             current = '<h3>Frozen seed101 candidate · before continuations · all seven outputs</h3><img class="story-plot" src="' + _image(production_depth_figure(production_depth), 'signal_by_block_production_seed101', export_dir) + '" alt="Frozen seed101 candidate: flat, mean and seg4 at every block zero through six"><p class="note">Every point is a measured fixed-block nested-CV score. Flat, mean and seg4 are evaluated at every state 0–6; bands here are bootstrap SD for one checkpoint. Green-edged stars mark block6 point-estimate wins, and each panel lists their exact gains over raw, including tiny gains hidden by the axis scale. For seed101, block6 wins0055 for all three readouts and0114 for seg4/flat; it does not lose every dataset. A positive point estimate is a win under the declared rule, not evidence of statistical significance. Block0 is the tokenizer; blocks1–5 are intermediate outputs; block6 includes final LayerNorm. Flat preserves all 48×256 token features (12,288d), mean gives256d, seg4 gives1,024d. Continuation block plots and their explicit flat coverage appear in the matched-continuation chapter below.</p>'
         depth_html = '<section class="section" id="signalDepth"><h2>Where the signal lives</h2><p class="sub">Downstream R² at each encoder block, for each dataset and readout.</p><p class="note"><strong>Production shortlist:</strong> among the earlier fixed-readout candidates, 48-patch seed2 / block2-flat leads with7/8 raw wins and mean ΔR²+.08937. The current seed101 fixed export scores5/8 (+.08008); its inner-selected four-readout menu scores7/8 (+.09325). A menu is a task-specific procedure, not one embedding. Keep benchmark leadership separate from release qualification: seed2 is retrospectively shortlisted, and the current export still has an unresolved canary failure.</p>' + current + '<h3>Earlier paired models · seeds0/1/2</h3><p class="note">These curves average three models. An individual model can beat raw at block6 while the three-seed mean does not. Green-edged stars mark individual block6 wins; panel notes count winning seeds for each measured readout. They do not mark the mean curve as a win.</p><div class="card">' + ''.join(
             f'<img class="story-plot" src="{plots[key]}" alt="R squared by encoder block for {key.removeprefix("depth")} patches across eight datasets">' for key in ('depth24', 'depth48') if key in plots) + '<p class="note">Lines are three-seed means; bands are sample SD across training seeds, not bootstrap uncertainty. Faint dots are individual seeds. Compare depth within the same readout first: mean and seg4 are measured through block6; flat only through block2. Readout dimensions differ, so a higher flat score does not isolate a depth effect. For these prior paired seeds, block6 includes final LayerNorm and its flattened output was not measured. The separate seed101 production analysis now tests every flattened block.</p><p>The fixed block2-flat 48-patch readout beat raw on7/8 datasets in each prior paired seed0/1/2;0106 remained a loss. The fresh seed101 fixed-interface result is5/8 and is reported separately. This motivates testing a fixed intermediate representation. It does not prove that final token features contain less information: these results concern linear recoverability under the tested readouts and probe protocol, not all possible decoders. The production choice is retrospective and needs a predeclared follow-up.</p></div></section>'
@@ -89,7 +89,7 @@ def render_story(data, export_dir=None):
         return f'<img class="story-plot" src="{plots[key]}" alt="{alt}">' if key in plots else ''
     history_note = ''
     if histories:
-        from scripts.local_wandb import timestamp_text
+        from spectral_lejepa.reporting.local_wandb import timestamp_text
         stamps = [r['latest_timestamp'] for r in histories if r.get('latest_timestamp')]
         if stamps:
             history_note = f'<p class="small">Local history snapshot through {html.escape(timestamp_text(max(stamps)))}. Dots are measurements; connecting lines do not represent additional observations.</p>'

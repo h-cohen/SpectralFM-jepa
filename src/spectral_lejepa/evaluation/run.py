@@ -1,7 +1,7 @@
 """Evaluate a LeJEPA checkpoint with the clean-eval nested-CV label probe and pair it with the
 data2vec baseline (ref_feb25) on identical rows and folds.
 
-  uv run python -m scripts.evaluate --checkpoint outputs/<run>/checkpoint_last.pt
+  uv run python -m spectral_lejepa.evaluation.run --checkpoint outputs/<run>/checkpoint_last.pt
 
 Readouts and the random-init control come from `evaluation.readouts` and `evaluation.random_control`; W&B gets metrics, a scorecard table and a Δ plot, and never artifacts.
 """
@@ -21,7 +21,7 @@ from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_fo
 from spectral_lejepa.models.vit_1d import EvalBackbone, build_model
 from spectral_lejepa.training.checkpoint import load_model, sha256_file
 from spectral_lejepa.utils import wandb as wb
-from scripts.scorecard_figures import dataset_comparison_figure, paired_gains_figure
+from spectral_lejepa.reporting.scorecard import dataset_comparison_figure, paired_gains_figure
 
 
 def flat_metrics(prefix, d):

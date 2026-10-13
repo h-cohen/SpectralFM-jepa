@@ -1,8 +1,8 @@
 """Pack every spectrum into one float32 memmap [N, 245] with a row index, drop mask, global stats and hold-out.
 
-  uv run python -m scripts.pack_spectra --out /mnt5/home/hadar/nova/data/spectra_all [--sources NAME=MANIFEST_DIR ...] [--workers 16]
+  uv run python -m spectral_lejepa.data.pack_spectra --out /mnt5/home/hadar/nova/data/spectra_all [--sources NAME=MANIFEST_DIR ...] [--workers 16]
 
-Two environments: unconverted pickles are first flattened by scripts/pack_pickles.py in the parent environment
+Two environments: unconverted pickles are first flattened by src/spectral_lejepa/data/pack_pickles.py in the parent environment
 (pandas), giving DIR/pickle_rows.npy + pickle_names.tsv; this script (project environment) packs the WAVs of each
 source (deduplicated union of train.tsv and valid.tsv, train first), then appends the pickle rows last.
 

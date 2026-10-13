@@ -2,7 +2,7 @@ import numpy as np
 
 import json
 
-from scripts.permutation_audit import summarize_null, permutation_audit, write_result
+from spectral_lejepa.evaluation.permutation import summarize_null, permutation_audit, write_result
 
 
 def test_empirical_null_uses_plus_one_and_strict_threshold_count():

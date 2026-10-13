@@ -11,7 +11,7 @@ import re
 import statistics
 from pathlib import Path
 
-from scripts.build_results_report import DATASETS, DATASET_LABELS
+from spectral_lejepa.reporting.results import DATASETS, DATASET_LABELS
 
 
 def read_json(path):

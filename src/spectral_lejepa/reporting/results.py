@@ -118,19 +118,19 @@ def collect_report_data(repo_root):
     sensitivity_path = root / 'outputs/screen-1/results.json'
     sensitivity = json.loads(sensitivity_path.read_text()) if sensitivity_path.exists() else []
     sensitivity = [r for r in sensitivity if r.get('arm') in ('control_s0', 'control_s1', 'lambda02')]
-    from scripts.local_wandb import paired_histories, timestamp_text
+    from spectral_lejepa.reporting.local_wandb import paired_histories, timestamp_text
     histories, history_errors = paired_histories(root, study)
-    from scripts.results_matrix import collect_matrix
+    from spectral_lejepa.reporting.matrix import collect_matrix
     matrix = collect_matrix(root)
-    from scripts.readout_variants import collect_variants
+    from spectral_lejepa.reporting.readouts import collect_variants
     variants = collect_variants(root)
-    from scripts.production_analysis_report import collect_analysis
+    from spectral_lejepa.reporting.sections.production_analysis import collect_analysis
     analysis = collect_analysis(root)
-    from scripts.continuation_report import collect_study
+    from spectral_lejepa.reporting.sections.continuation import collect_study
     continuation = collect_study(root)
-    from scripts.frozen_feature_report import collect_frozen
+    from spectral_lejepa.reporting.sections.frozen_features import collect_frozen
     frozen = collect_frozen(root)
-    from scripts.projection_pilot_report import collect_pilot
+    from spectral_lejepa.reporting.sections.projection_pilot import collect_pilot
     pilot = collect_pilot(root)
     candidate_path = root / 'outputs/final-model/manifest.json'
     candidate = json.loads(candidate_path.read_text()) if candidate_path.exists() else None
@@ -195,20 +195,20 @@ def render_html(data, export_dir=None):
     """Render one offline-capable HTML document with inline CSS, data and SVG charts."""
     embedded = json.dumps({k: v for k, v in data.items() if k != 'story'}, ensure_ascii=False, separators=(',', ':'))
     embedded = embedded.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
-    from scripts.report_story import render_story
+    from spectral_lejepa.reporting.story import render_story
     story_html = render_story(data, export_dir=export_dir)
-    from scripts.results_matrix import render_matrix
+    from spectral_lejepa.reporting.matrix import render_matrix
     matrix_html = render_matrix(data['matrix']) if data.get('matrix') else ''
-    from scripts.readout_variants import render_variants
+    from spectral_lejepa.reporting.readouts import render_variants
     variants_html = render_variants(data['variants']) if data.get('variants') else ''
-    from scripts.architecture_diagram import render_dataflow
-    from scripts.production_analysis_report import render_analysis
+    from spectral_lejepa.reporting.architecture import render_dataflow
+    from spectral_lejepa.reporting.sections.production_analysis import render_analysis
     analysis_html = render_analysis(data.get('production_analysis'), export_dir)
-    from scripts.continuation_report import render_study
+    from spectral_lejepa.reporting.sections.continuation import render_study
     analysis_html += render_study(data.get('continuation_study'), export_dir)
-    from scripts.frozen_feature_report import render_frozen
+    from spectral_lejepa.reporting.sections.frozen_features import render_frozen
     analysis_html += render_frozen(data.get('frozen_feature_study'), export_dir)
-    from scripts.projection_pilot_report import render_pilot
+    from spectral_lejepa.reporting.sections.projection_pilot import render_pilot
     analysis_html += render_pilot(data.get('projection_pilot'), export_dir)
     flow_html = '<section class="section" id="tensorDataflow"><h2>Architecture and tensor dataflow</h2><p class="sub">Full six-block training objective; fixed two-block production inference. B=256 during training and B=1 for a single spectrum.</p><div class="card">' + render_dataflow() + '</div></section>'
     candidate = data.get('final_candidate')
@@ -326,12 +326,12 @@ def main(argv=None):
         rendered = rendered.replace('The existing 48-patch point is one seed at three epochs and is not a long-run comparison.', 'Final paired checkpoints are at 497,990 steps; earlier three-epoch points remain historical context.')
         rendered = re.sub(r'<details class="card" style="margin-top:14px"><summary>Next experiment and decision rule</summary>.*?</details>', '<details class="card" style="margin-top:14px"><summary>Registered final decision</summary><p>Both recipes pass the majority rule: positive seed-mean gain on at least five datasets, and at least two of three seeds individually win five or more. The 48-patch recipe passes the architecture preference rule: positive mean paired gain, winning in two of three seed pairs. This is exploratory recipe selection. The all-eight target remains unmet.</p></details>', rendered, flags=re.S)
     output.write_text(rendered)
-    from scripts.results_matrix import matrix_csv
+    from spectral_lejepa.reporting.matrix import matrix_csv
     (output.parent / 'final_results_matrix.csv').write_text(matrix_csv(data['matrix']['final_rows']))
     (output.parent / 'readout_variants.csv').write_text(matrix_csv([*data['variants']['raw_rows'], *data['variants']['rows'], *data['variants']['controls']]))
     archive_rows = [{**r, 'label': f'{e["id"]} · {r["label"]}'} for e in data['matrix']['evaluations'] for r in e['rows']]
     (output.parent / 'all_backbones_results_matrix.csv').write_text(matrix_csv(archive_rows))
-    from scripts.architecture_diagram import render_dataflow
+    from spectral_lejepa.reporting.architecture import render_dataflow
     (output.parent / 'tensor_dataflow.svg').write_text(render_dataflow())
     (output.parent / 'results_matrix.json').write_text(json.dumps(data['matrix'], indent=2, allow_nan=False))
     analysis = data.get('production_analysis', {})

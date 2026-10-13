@@ -1,10 +1,10 @@
 """Flatten unconverted feature pickles into float32 rows (runs in the PARENT environment, which has pandas).
 
-  /mnt5/home/hadar/nova/.venv-labelprobe/bin/python scripts/pack_pickles.py --out DIR a.pkl b.pkl ...
+  /mnt5/home/hadar/nova/.venv-labelprobe/bin/python src/spectral_lejepa/data/pack_pickles.py --out DIR a.pkl b.pkl ...
 
 Components are found with the parent converter's parse_components; every component of every row becomes
 one 245-point spectrum. Writes DIR/pickle_rows.npy [M, 245] and DIR/pickle_names.tsv (`pickle:<stem>\\t<stem>_comp<C>_row<i>`),
-which scripts/pack_spectra.py (project environment) appends to the packed array.
+which src/spectral_lejepa/data/pack_spectra.py (project environment) appends to the packed array.
 """
 import argparse
 import pickle

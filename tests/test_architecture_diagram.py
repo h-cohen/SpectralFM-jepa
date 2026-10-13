@@ -1,6 +1,6 @@
 from xml.etree import ElementTree
 
-from scripts.architecture_diagram import render_dataflow
+from spectral_lejepa.reporting.architecture import render_dataflow
 
 
 def test_dataflow_svg_shows_training_and_production_tensor_shapes():

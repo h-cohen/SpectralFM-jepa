@@ -2,7 +2,7 @@
 
 Probes are fit on CLEAN training rows with the recipe the inner CV already chose, then predict
 PERTURBED test rows. Same outer folds/probe seeds as the primary benchmark.
-Run: PYTHONPATH=src:. .venv/bin/python scripts/robustness_perturbations.py
+Run: PYTHONPATH=src:. .venv/bin/python src/spectral_lejepa/evaluation/perturbation.py
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import KFold
 
-from scripts.evaluate import model_input
+from spectral_lejepa.evaluation.run import model_input
 from spectral_lejepa.evaluation.bank import load_bank
 from spectral_lejepa.evaluation.probe import r2
 from spectral_lejepa.evaluation.probe_torch import recipe_predictions

@@ -1,6 +1,6 @@
 import json
 import pytest
-from scripts.frozen_feature_report import collect_frozen,render_frozen
+from spectral_lejepa.reporting.sections.frozen_features import collect_frozen,render_frozen
 
 
 def test_pending_study_does_not_claim_results_and_rejects_mixed_head_checkpoint(tmp_path):

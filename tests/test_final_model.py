@@ -5,7 +5,7 @@ import subprocess
 import torch
 import yaml
 
-from scripts.export_production import ProductionEncoder
+from spectral_lejepa.models.export import ProductionEncoder
 from spectral_lejepa.models.vit_1d import build_model, EvalBackbone
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,5 +47,5 @@ def test_launcher_dry_run_serializes_fixed_eval_and_exports():
                             cwd=ROOT, capture_output=True, text=True, check=True)
     assert 'configs/final_model.yaml' in result.stdout
     assert 'configs/eval_final_model.yaml' in result.stdout
-    assert 'scripts.export_production' in result.stdout
+    assert 'spectral_lejepa.models.export' in result.stdout
     assert 'flock' in result.stdout

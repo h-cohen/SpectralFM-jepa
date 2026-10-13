@@ -1,8 +1,8 @@
 import json
 import pytest
 
-from scripts.production_analysis_report import collect_analysis
-from scripts.production_analysis_report import depth_figure
+from spectral_lejepa.reporting.sections.production_analysis import collect_analysis
+from spectral_lejepa.reporting.sections.production_analysis import depth_figure
 
 
 def test_depth_plot_keeps_unmeasured_flat_blocks_as_gaps():

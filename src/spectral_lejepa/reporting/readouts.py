@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.build_results_report import DATASETS, DATASET_LABELS
-from scripts.results_matrix import aggregate_seeds, read_json
+from spectral_lejepa.reporting.results import DATASETS, DATASET_LABELS
+from spectral_lejepa.reporting.matrix import aggregate_seeds, read_json
 
 
 def collect_variants(root):

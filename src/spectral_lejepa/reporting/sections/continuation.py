@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.build_results_report import DATASETS, DATASET_LABELS
+from spectral_lejepa.reporting.results import DATASETS, DATASET_LABELS
 
 
 def assess_study(data, baseline):
@@ -111,8 +111,8 @@ def render_study(data, export_dir=None):
                     s = job['results']['scorecard'][policy]
                     body.append(f'<tr><td>{name} / {policy}</td><td>{s["wins"]}/8</td><td>{s["mean_delta"]:+.4f}</td><td>{s["mean_delta"]-baseline[policy]["mean_delta"]:+.4f}</td></tr>')
             body.append('</tbody></table>')
-    from scripts.production_analysis_report import depth_figure
-    from scripts.report_story import _image
+    from spectral_lejepa.reporting.sections.production_analysis import depth_figure
+    from spectral_lejepa.reporting.story import _image
     for name, job in data['jobs'].items():
         if job.get('depth'):
             fig = depth_figure(job['depth'], title=f'Where the signal lives · {name} · λ={job["lambda_sigreg"]}')

@@ -7,8 +7,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scripts.build_results_report import DATASETS, DATASET_LABELS
-from scripts.report_story import _image
+from spectral_lejepa.reporting.results import DATASETS, DATASET_LABELS
+from spectral_lejepa.reporting.story import _image
 
 
 def collect_analysis(root):

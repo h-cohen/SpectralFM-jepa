@@ -6,9 +6,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scripts.build_results_report import DATASETS, DATASET_LABELS
-from scripts.production_analysis_report import depth_figure
-from scripts.report_story import _image
+from spectral_lejepa.reporting.results import DATASETS, DATASET_LABELS
+from spectral_lejepa.reporting.sections.production_analysis import depth_figure
+from spectral_lejepa.reporting.story import _image
 
 
 def collect_frozen(root):

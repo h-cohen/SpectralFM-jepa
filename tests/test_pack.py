@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from scripts import pack_spectra
+from spectral_lejepa.data import pack_spectra
 
 PARENT_PY = "/mnt5/home/hadar/nova/.venv-labelprobe/bin/python"
 
@@ -86,7 +86,7 @@ def _pack_pickles(tmp_path, n_comp, n_cols):
             f"cols=[f'component_{{c}}:{{i}}' for c in range({n_comp}) for i in range({n_cols})]; "
             f"pd.DataFrame(np.random.default_rng(0).normal(size=(2, len(cols))), columns=cols).to_pickle(r'{pkl}')")
     subprocess.run([PARENT_PY, "-c", make], check=True)
-    return subprocess.run([PARENT_PY, "scripts/pack_pickles.py", "--out", str(tmp_path / "o"), str(pkl)],
+    return subprocess.run([PARENT_PY, "src/spectral_lejepa/data/pack_pickles.py", "--out", str(tmp_path / "o"), str(pkl)],
                           capture_output=True, text=True)
 
 

@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from scripts.gradient_audit import audit_batch
+from spectral_lejepa.training.audit import audit_batch
 from spectral_lejepa.models.vit_1d import build_model
 from spectral_lejepa.training.loss import LeJEPAObjective
 

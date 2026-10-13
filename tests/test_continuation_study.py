@@ -1,4 +1,4 @@
-from scripts.continuation_report import assess_study
+from spectral_lejepa.reporting.sections.continuation import assess_study
 
 
 def test_research_preference_requires_both_seeds_and_preserved_fixed_embedding():

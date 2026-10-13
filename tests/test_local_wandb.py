@@ -5,7 +5,7 @@ import zlib
 import pytest
 from wandb.proto import wandb_internal_pb2 as pb
 
-from scripts.local_wandb import read_history
+from spectral_lejepa.reporting.local_wandb import read_history
 
 
 def frame(payload, kind=1):

@@ -2,9 +2,9 @@
 
 Inputs: outputs/training-report/wandb_history.json (W&B history export), the robust-ensemble and
 robustness-continuation outputs. Writes SVGs to docs/figures/training-report/.
-    bash -ic 'python -m scripts.training_report fetch'   # W&B key from the user shell
-    python -m scripts.training_report
-    python -m scripts.training_report_html   # docs/TRAINING_REPORT.html
+    bash -ic 'python -m spectral_lejepa.reporting.training_report fetch'   # W&B key from the user shell
+    python -m spectral_lejepa.reporting.training_report
+    python -m spectral_lejepa.reporting.training_report_html   # docs/TRAINING_REPORT.html
 """
 import json
 from pathlib import Path
@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from spectral_lejepa.evaluation.ensemble import ensemble_predictions, member_oof as job_oof
-from scripts.robustness_perturbations import DATASETS
+from spectral_lejepa.evaluation.perturbation import DATASETS
 from spectral_lejepa.evaluation.nested import r2
 
 ROOT = Path('outputs/robust-ensemble')

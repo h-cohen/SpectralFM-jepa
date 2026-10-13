@@ -1,10 +1,10 @@
 """Registered perturbation evaluation for one robustness-continuation job (or the starting checkpoint).
 
-Fixed before any study result: A6 perturbations (scripts/robustness_perturbations.py, same seeds) plus
+Fixed before any study result: A6 perturbations (src/spectral_lejepa/evaluation/perturbation.py, same seeds) plus
 the held-out family below. Probe: standardize + RidgeCV(logspace(-3, 6, 19)) fit on CLEAN training rows
 of the primary outer folds (seed42, 2 x 5), scored on perturbed test rows. Drift summary: per-row relative
 block2-flat drift, median within each dataset, then median of the eight dataset medians.
-Usage: python -m scripts.robustness_eval {job|start}
+Usage: python -m spectral_lejepa.evaluation.perturbation_eval {job|start}
 """
 import argparse
 import json
@@ -17,8 +17,8 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from spectral_lejepa.utils.io import write_json
-from scripts.evaluate import model_input
-from scripts.robustness_perturbations import DATASETS, PERTURBATIONS, block2_flat, perturb
+from spectral_lejepa.evaluation.run import model_input
+from spectral_lejepa.evaluation.perturbation import DATASETS, PERTURBATIONS, block2_flat, perturb
 from spectral_lejepa.evaluation.probe import r2
 from spectral_lejepa.training.checkpoint import load_model
 

@@ -1,5 +1,5 @@
-from scripts.final_model_gate import assess
-from scripts.build_results_report import DATASETS
+from spectral_lejepa.evaluation.gate import assess
+from spectral_lejepa.reporting.results import DATASETS
 
 
 def test_gate_requires_all_eight_sets_and_does_not_claim_deployment_release():

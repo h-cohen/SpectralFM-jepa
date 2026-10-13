@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scripts.build_results_report import collect_report_data, render_html
+from spectral_lejepa.reporting.results import collect_report_data, render_html
 
 
 DATASETS = [
@@ -127,7 +127,7 @@ def test_completed_candidate_assessment_renders_failed_gate(tmp_path):
 
 
 def test_score_normalization_computes_missing_deltas():
-    from scripts.build_results_report import _normalized_set
+    from spectral_lejepa.reporting.results import _normalized_set
     point = _normalized_set({'embedding_r2': .8, 'raw_r2': .6,
                              'random_control': {'embedding_r2': .7}})
     assert point['delta_vs_raw'] == pytest.approx(.2)

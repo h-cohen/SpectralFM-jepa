@@ -7,7 +7,7 @@ import math
 import statistics
 from pathlib import Path
 
-from scripts.build_results_report import DATASETS
+from spectral_lejepa.reporting.results import DATASETS
 
 
 def assess(summary):

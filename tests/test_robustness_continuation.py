@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from scripts.gradient_audit import audit_batch
+from spectral_lejepa.training.audit import audit_batch
 from spectral_lejepa.config import load_config
 from spectral_lejepa.data.perturb import perturb, shift_one
 from spectral_lejepa.models.vit_1d import build_model

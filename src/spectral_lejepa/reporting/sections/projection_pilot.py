@@ -6,9 +6,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scripts.local_wandb import read_history
-from scripts.report_story import _image
-from scripts.build_results_report import DATASETS,DATASET_LABELS
+from spectral_lejepa.reporting.local_wandb import read_history
+from spectral_lejepa.reporting.story import _image
+from spectral_lejepa.reporting.results import DATASETS,DATASET_LABELS
 
 
 def assess_pilot(data):
@@ -148,7 +148,7 @@ def render_pilot(data,export_dir=None):
         body.append(f'<img class="story-plot" src="{_image(comparison_figure(data),"projection_pilot_comparison",export_dir)}" alt="Paired primary gains with uncertainty and all-block flat gain curves">')
     finished={n:j for n,j in data['jobs'].items() if 'results' in j}
     if finished:
-        from scripts.frozen_feature_report import result_table
+        from spectral_lejepa.reporting.sections.frozen_features import result_table
         first=next(iter(finished.values()))['results']['sets']
         raw={d:{'r2_mean':p['policies']['raw']['r2'],'bootstrap_sd':p['policies']['raw']['sd']} for d,p in first.items()}
         counts={d:p['n'] for d,p in first.items()};rows=[('Primary raw',raw,raw)]
@@ -164,7 +164,7 @@ def render_pilot(data,export_dir=None):
         body.append('<h3>Completed final fixed2 comparisons</h3>'+result_table(rows,counts))
     body.append('<p>Predeclared research assessment: '+data.get('assessment',{'status':'pending'})['status']+'. Original production export and gate unchanged.</p>')
     if analysis:
-        from scripts.production_analysis_report import depth_figure
+        from spectral_lejepa.reporting.sections.production_analysis import depth_figure
         for name,job in finished.items():
             body.append(f'<details><summary>Where the signal lives · {name} · every block and readout</summary><img class="story-plot" src="{_image(depth_figure(job["depth"],"Where the signal lives · projection pilot · "+name),"projection_depth_"+name,export_dir)}" alt="All seven states, mean, segmented and flat R² with raw references and winning final outputs"></details>')
     if any(j['history'] for j in data['jobs'].values()):

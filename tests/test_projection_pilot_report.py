@@ -1,8 +1,8 @@
-from scripts.projection_pilot_report import assess_pilot
-from scripts.build_results_report import DATASETS
+from spectral_lejepa.reporting.sections.projection_pilot import assess_pilot
+from spectral_lejepa.reporting.results import DATASETS
 import json
 import pytest
-from scripts.projection_pilot_report import collect_pilot
+from spectral_lejepa.reporting.sections.projection_pilot import collect_pilot
 
 
 def test_pilot_cannot_advance_from_one_good_seed_or_incomplete_results():

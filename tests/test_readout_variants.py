@@ -1,6 +1,6 @@
 import json
 
-from scripts.readout_variants import collect_variants, render_variants
+from spectral_lejepa.reporting.readouts import collect_variants, render_variants
 
 
 def test_fixed_readouts_use_nested_family_uncertainty_and_leave_missing_layers_absent(tmp_path):

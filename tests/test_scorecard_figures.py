@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from scripts.scorecard_figures import dataset_comparison_figure, paired_gains_figure
+from spectral_lejepa.reporting.scorecard import dataset_comparison_figure, paired_gains_figure
 
 
 def test_dataset_comparison_figure_shows_r2_context_and_missing_random_control():

@@ -2,7 +2,7 @@
 
 Handles the Markdown subset the report uses: headings, paragraphs, nested bullet/numbered lists,
 pipe tables, fenced code (```mermaid becomes a diagram), images, bold, inline code and links.
-    python -m scripts.training_report_html
+    python -m spectral_lejepa.reporting.training_report_html
 """
 import base64
 import html

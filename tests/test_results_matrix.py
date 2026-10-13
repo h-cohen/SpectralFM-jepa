@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from scripts.results_matrix import collect_matrix, render_matrix
+from spectral_lejepa.reporting.matrix import collect_matrix, render_matrix
 
 
 def test_matrix_keeps_dataset_columns_and_recovers_random_uncertainty(tmp_path):
@@ -28,7 +28,7 @@ def test_matrix_keeps_dataset_columns_and_recovers_random_uncertainty(tmp_path):
 
 
 def test_seed_aggregation_uses_sample_sd_and_does_not_invent_missing_sd(tmp_path):
-    from scripts.results_matrix import aggregate_seeds
+    from spectral_lejepa.reporting.matrix import aggregate_seeds
     rows = [{'seed': i, 'cells': {'dataset0055': {'r2': x, 'sd': None, 'n': 25}}}
             for i, x in enumerate([.5, .6, .7])]
     result = aggregate_seeds(rows, 24)
@@ -38,7 +38,7 @@ def test_seed_aggregation_uses_sample_sd_and_does_not_invent_missing_sd(tmp_path
 
 
 def test_six_final_runs_are_complete_with_deduplicated_controls(tmp_path):
-    from scripts.build_results_report import DATASETS
+    from spectral_lejepa.reporting.results import DATASETS
     for patches in (24, 48):
         for seed in range(3):
             folder = tmp_path / f'outputs/long-1/eval/p{patches}_s{seed}_run_step497990'

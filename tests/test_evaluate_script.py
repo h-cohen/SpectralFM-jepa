@@ -6,7 +6,7 @@ import pytest
 import soundfile as sf
 import yaml
 
-from scripts import evaluate
+from spectral_lejepa.evaluation import run as evaluate
 from spectral_lejepa.config import load_config
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
 from spectral_lejepa.evaluation.nested import run_nested, write_json
