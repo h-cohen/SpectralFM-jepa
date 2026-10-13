@@ -18,14 +18,32 @@ COMMANDS = {
     'training-report-html': 'spectral_lejepa.reporting.training_report_html',
 }
 
+# Commands whose main() parses no options, with the positional words each accepts. Help is answered
+# here so that `--help` never starts the job.
+NO_OPTIONS = {'training-report': ('fetch',), 'training-report-html': (), 'noise-calibration': (), 'perturbation': ()}
+USAGE = 'usage: python -m spectral_lejepa {' + ','.join(COMMANDS) + '} [args]\n'
+HELP = ('-h', '--help')
+
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] and argv[0] in HELP:
+        sys.stdout.write(USAGE)
+        sys.exit(0)
     if not argv or argv[0] not in COMMANDS:
-        sys.stderr.write('usage: python -m spectral_lejepa {' + ','.join(COMMANDS) + '} [args]\n')
+        sys.stderr.write(USAGE)
         sys.exit(2)
-    sys.argv = [f'spectral_lejepa {argv[0]}', *argv[1:]]   # modules parse sys.argv themselves
-    importlib.import_module(COMMANDS[argv[0]]).main()
+    name, rest = argv[0], argv[1:]
+    if name in NO_OPTIONS:
+        if any(a in HELP for a in rest):
+            sys.stdout.write(f'usage: python -m spectral_lejepa {name} {" | ".join(NO_OPTIONS[name])}\n\n'
+                             + (importlib.import_module(COMMANDS[name]).__doc__ or '').strip() + '\n')
+            sys.exit(0)
+        if any(a not in NO_OPTIONS[name] for a in rest):
+            sys.stderr.write(f'spectral_lejepa {name}: unexpected arguments {rest}\n')
+            sys.exit(2)
+    sys.argv = [f'spectral_lejepa {name}', *rest]   # modules parse sys.argv themselves
+    importlib.import_module(COMMANDS[name]).main()
 
 
 if __name__ == '__main__':
