@@ -11,14 +11,12 @@ Near-duplicates: per group, nearest neighbour (per-row z-scored Euclidean) withi
 top 1% closest NN pairs; fit x_j ~ a*x_i + b + c*t, t=linspace(-.5,.5).
 """
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 from scipy.signal import savgol_filter
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from spectral_lejepa.data.loader import packed_train_rows, source_mass, _source_groups  # noqa: E402
+from spectral_lejepa.data.loader import packed_train_rows, source_mass, _source_groups
 
 PACKED = "/mnt5/home/hadar/nova/data/spectra_all"
 SW = {"labeled_regression": 0.5, "default": 0.5}

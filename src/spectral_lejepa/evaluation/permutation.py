@@ -15,8 +15,9 @@ from threadpoolctl import threadpool_limits
 from spectral_lejepa.evaluation import nested
 from spectral_lejepa.evaluation.bank import load_bank
 from spectral_lejepa.evaluation.probe import r2
+from spectral_lejepa.utils.io import REPO_ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = REPO_ROOT
 DEFAULT_BANK = ROOT / "outputs/final-model/eval/production_p48_s101_20261010-024928_step497990/dataset0120/bank.npz"
 DEFAULT_OUTPUT = ROOT / "outputs/production-analysis/permutation_audit.json"
 CANARY_REFERENCE = 0.020445631812812892

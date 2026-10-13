@@ -18,7 +18,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+from spectral_lejepa.utils.io import REPO_ROOT
+
+PROJECT_ROOT = REPO_ROOT
 
 
 def git_info(repo_dir=None) -> dict:

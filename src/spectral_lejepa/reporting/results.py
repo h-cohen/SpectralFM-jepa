@@ -8,6 +8,8 @@ import math
 import re
 from pathlib import Path
 
+from spectral_lejepa.utils.io import REPO_ROOT
+
 
 DATASETS = [
     'labeled_data', 'dataset0055', 'dataset0106', 'dataset0109',
@@ -311,7 +313,7 @@ options('recordSelect');options('deltaSelect');$('recordSelect').value=String(Ma
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--repo-root', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--repo-root', type=Path, default=REPO_ROOT)
     parser.add_argument('--output', type=Path, default=Path('outputs/training-progress/results_report.html'))
     args = parser.parse_args(argv)
     output = args.output if args.output.is_absolute() else args.repo_root / args.output

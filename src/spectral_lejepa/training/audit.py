@@ -14,8 +14,9 @@ from spectral_lejepa.data.loader import PackedSpectra, valid_subset
 from spectral_lejepa.training.gradient_terms import audit_batch
 from spectral_lejepa.training.checkpoint import load_model, sha256_file
 from spectral_lejepa.training.loss import LeJEPAObjective
+from spectral_lejepa.utils.io import REPO_ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = REPO_ROOT
 MANIFEST = ROOT / "outputs/final-model/manifest.json"
 DEFAULT_OUTPUT = ROOT / "outputs/production-analysis/gradient_audit.json"
 SEED = 4000

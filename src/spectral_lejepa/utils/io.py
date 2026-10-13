@@ -1,5 +1,8 @@
-"""Atomic JSON output for study manifests and results."""
+"""Repository root and atomic JSON output for study manifests and results."""
 import json
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]   # src/spectral_lejepa/utils/io.py -> checkout
 
 
 def write_json(path, data):
