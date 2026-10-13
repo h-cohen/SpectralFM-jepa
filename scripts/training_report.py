@@ -4,6 +4,7 @@ Inputs: outputs/training-report/wandb_history.json (W&B history export), the rob
 robustness-continuation outputs. Writes SVGs to docs/figures/training-report/.
     bash -ic 'python -m scripts.training_report fetch'   # W&B key from the user shell
     python -m scripts.training_report
+    python -m scripts.training_report_html   # docs/TRAINING_REPORT.html
 """
 import json
 from pathlib import Path
