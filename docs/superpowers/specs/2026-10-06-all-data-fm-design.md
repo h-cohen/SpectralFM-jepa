@@ -1,7 +1,7 @@
 # All-data LeJEPA foundation model (sub-project B)
 
 Date: 2026-10-06
-Status: proceeding under the user's `/goal`: "win the label regression for the majority (or all) datasets vs the raw data with equal normalization… training allowed on ALL datasets… squeeze out every possible thing… make decisions according to this goal".
+Status (2026-10-13): completed; all-data pretraining is the standing policy. Historical record; current state is in CLAUDE.md.
 
 ## 1. Goal and success criterion
 The scorecard from `2026-10-05-fm-evaluation-design.md` (nested-CV R² Δ ≥ +0.05 over raw per set; ceiling sets reported separately). Target: wins on a majority (ideally all) of the 8 eligible sets, and beating the random-init control.

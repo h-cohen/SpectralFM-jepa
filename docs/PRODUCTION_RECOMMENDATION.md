@@ -1,4 +1,19 @@
-# Production recommendation — 2026-10-12
+# Production recommendation
+
+## Current status (2026-10-13)
+
+- **Contract.** Winning means beating raw spectra on a majority (at least 5/8) of the eight datasets. Any positive gain counts. The user clarified that the goal is winning a majority, not large margins.
+- **Export.** The exported model is seed101 block2-flat: 5/8 wins, mean ΔR² +.0801. It is not gate-qualified: the 0120 single-shuffle canary scored .0204, above the .020 limit.
+- **Holdout candidates.** All are retrospective selections and none is gate-qualified.
+  - Prior 48-patch seed2 block2-flat: 7/8 wins, mean ΔR² +.0894.
+  - Four-seed ensemble (seeds 0/1/2/101, equal-weight predictions): 7/8 wins, mean ΔR² +.0858. It passed its registered criteria.
+- **Robustness continuation from seed2 (seeds 401/402).** The registered primary criteria failed on clean mean non-inferiority: mean Δraw fell from .085 to .044. Under the majority contract the robust arms win 7/8 and 8/8 against raw, and 8/8 against random features. Feature drift under 1% input noise is about 6× lower. 0106 becomes a win; the 0112 gain is lost. Details: `docs/superpowers/specs/2026-10-13-robustness-continuation.md`.
+- **Robust four-seed ensemble.** Running, built from robust_p0, robust_p1, robust_s101 and robust_s401. Spec: `docs/superpowers/specs/2026-10-13-robust-ensemble.md`.
+- **Release blocker.** Independent labelled data with group IDs is still missing. Once it exists, score seed101, seed2, the ensemble (and the robust ensemble if it passes) once each.
+
+## Record of 2026-10-12
+
+The sections below are the 2026-10-12 recommendation, kept as written apart from spacing fixes.
 
 Keep the existing export unchanged. For production validation, prioritize the earlier 48-patch seed2 checkpoint with SIGReg λ=0.05 and block-2 flat features: it remains the strongest measured fixed candidate under the primary linear benchmark. No continuation, normalization change, broader decoder menu or tested projection-space recipe has established a replacement. Do not spend on another duration-only full run from these findings.
 
@@ -23,11 +38,11 @@ Lower SIGReg improves final validation prediction MSE (~0.00737 vs ~0.01201 for 
 - Next required data: separate 245-value spectra and `parameter_0` labels with source/simulation/batch IDs, group-disjoint development splits and a reserved release holdout. Use these to verify readout selection stability and regressions; benchmark labels already informed this research.
 - Resolve the original 0120 shuffle-42 qualification failure with a documented prospective validation protocol. It remains failed; the 100-permutation diagnostic never overwrites that result. No continuation has been promoted or exported to production.
 
-All four pipelines completed. Full R²±bootstrapSD, matched random controls and continuation-seed SD are in `outputs/training-progress/results_report.html`. Preregistered preference remains fixedblock2=`duration_only`,menu=`inconclusive`; practical recommendation is to retain the original until independent evidence warrants replacement.
+All four pipelines completed. Full R² ± bootstrap SD, matched random controls and continuation-seed SD are in `outputs/training-progress/results_report.html`. Preregistered preference remains fixed block2 = `duration_only`, menu = `inconclusive`; practical recommendation is to retain the original until independent evidence warrants replacement.
 
 ## Completed frozen-feature follow-up
 
-All eight checkpoints now have mean, seg4 and flat outputs at every block (0–6), plus block6 before LayerNorm. Block2-flat ranks first by raw-win count and mean gain in every checkpoint; later flat readouts did not replace it. Final LayerNorm effects vary by checkpoint/readout, so removing it is not a reliable fix.
+All eight checkpoints now have mean, seg4 and flat outputs at every block (0–6), plus block 6 before LayerNorm. Block2-flat ranks first by raw-win count and mean gain in every checkpoint; later flat readouts did not replace it. Final LayerNorm effects vary by checkpoint/readout, so removing it is not a reliable fix.
 
 The secondary standardized Ridge/PLS/RBF menu wins 4–6/8 against its same-head raw branch. That branch differs from the primary linear raw benchmark: on labeled_data it scores 0.7625 versus primary raw 0.8301, while seed101 trained scores 0.9588 under both procedures. Keep both raw references visible; this is not a new encoder gain. Seed2's secondary-head mean R² is 0.00567 below its primary fixed embedding score.
 
@@ -40,7 +55,7 @@ Retain 48p/block2-flat/SIGReg 0.05 as the production architecture shortlist. See
 
 ## Completed projection-space pilot
 
-All four training/evaluation pipelines completed from the earlier seed2 checkpoint, with registered configs/source hashes verified and all 21 block/readout families measured on all eight datasets. One additional epoch, seeds301/302; only token/pooled SIGReg moved through the training-only256→512→128 MLP. Masked prediction and pooled invariance remained in the backbone.
+All four training/evaluation pipelines completed from the earlier seed2 checkpoint, with registered configs/source hashes verified and all 21 block/readout families measured on all eight datasets. One additional epoch, seeds 301/302; only token/pooled SIGReg moved through the training-only 256→512→128 MLP. Masked prediction and pooled invariance remained in the backbone.
 
 | Arm / seed | Fixed2 wins | Mean ΔR² vs raw | Fixed2 change vs matched control | Flat6 wins | Flat6 mean ΔR² vs raw |
 |---|---:|---:|---:|---:|---:|
@@ -50,14 +65,14 @@ All four training/evaluation pipelines completed from the earlier seed2 checkpoi
 | Control302 |7/8|+.08351|—|0/8|−.19656|
 | Projected302 |7/8|+.08133|−.00218|3/8|−.02568|
 
-**Stop this tested projector recipe.** The primary criterion (at least+.005meanR² vs control on both seeds) fails. All four retain 7/8 wins and lose0106; none improves starting fixed2 mean performance. Block2-flat remains the strongest fixed family in every new run. The declared menu wins7/6for controls and6/6for projected runs, so it does not provide a consistent alternative.
+**Stop this tested projector recipe.** The primary criterion (at least +.005 mean R² vs control on both seeds) fails. All four retain 7/8 wins and lose 0106; none improves starting fixed2 mean performance. Block2-flat remains the strongest fixed family in every new run. The declared menu wins 7/6 for controls and 6/6 for projected runs, so it does not provide a consistent alternative.
 
-The secondary result is real: final block6-flat gains+.06745/+.17088meanR² over its matched controls and reaches3/8raw wins on both seeds. This is late-layer recovery, not a better fixed production embedding. At0113, projected fixed2 loses−.02054±.00837 and−.01921±.01008vs control (paired row-bootstrap SD), a repeatable concern even though the second seed narrowly misses the predeclared−.02material-regression cutoff.
+The secondary result is real: final block6-flat gains +.06745/+.17088 mean R² over its matched controls and reaches 3/8 raw wins on both seeds. This is late-layer recovery, not a better fixed production embedding. At 0113, projected fixed2 loses −.02054±.00837 and −.01921±.01008 vs control (paired row-bootstrap SD), a repeatable concern even though the second seed narrowly misses the predeclared −.02 material-regression cutoff.
 
-Prediction validation MSE improves about32% (.00793/.00803 vs .01169/.01178), while backbone pooled effective rank decreases (~128–130 vs145). Final FP32 audit tokenSIG/prediction gradient ratios rise to39–44× versus15–16×, so this head does not demonstrate reduced late regularization pressure. The control head is unused; its geometry is not a trained comparator. Total losses differ in regularization space and should not choose a winner. No claim that projector isotropy helps downstream performance is supported here.
+Prediction validation MSE improves about 32% (.00793/.00803 vs .01169/.01178), while backbone pooled effective rank decreases (~128–130 vs 145). Final FP32 audit token SIG/prediction gradient ratios rise to 39–44× versus 15–16×, so this head does not demonstrate reduced late regularization pressure. The control head is unused; its geometry is not a trained comparator. Total losses differ in regularization space and should not choose a winner. No claim that projector isotropy helps downstream performance is supported here.
 
-Keep the earlier seed2 fixed2 checkpoint as the retrospective candidate for locked independent validation; keep the existing seed101 export unchanged. Do not extend this projector or start another full-duration run from these results. Next practical work is source/group-disjoint development and release evaluation, including0106and the original0120canary issue. If further research is authorized, a short, separately registered experiment could investigate gradient balance while preserving the primary interface; these findings do not identify a proven replacement recipe.
+Keep the earlier seed2 fixed2 checkpoint as the retrospective candidate for locked independent validation; keep the existing seed101 export unchanged. Do not extend this projector or start another full-duration run from these results. Next practical work is source/group-disjoint development and release evaluation, including 0106 and the original 0120 canary issue. If further research is authorized, a short, separately registered experiment could investigate gradient balance while preserving the primary interface; these findings do not identify a proven replacement recipe.
 
-Machine analysis and paired uncertainties: `outputs/projection-pilot/results_analysis.json`; rerun `.venv/bin/python -m scripts.projection_pilot_analysis`. The report includes the starting reference, R²±bootstrapSD, primary paired-gain plot, every block/readout depth plot, geometry/prediction histories and the research stop decision. Bootstrap SD reflects row sampling under the reused benchmark, not uncertainty on unseen populations or seed selection.
+Machine analysis and paired uncertainties: `outputs/projection-pilot/results_analysis.json`. The analysis script that produced it was retired in the cleanup, so the saved JSON is the record. The report includes the starting reference, R² ± bootstrap SD, primary paired-gain plot, every block/readout depth plot, geometry/prediction histories and the research stop decision. Bootstrap SD reflects row sampling under the reused benchmark, not uncertainty on unseen populations or seed selection.
 
 Final paired summary and six measured figures published to W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/e72aiwt3.

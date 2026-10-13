@@ -1,5 +1,7 @@
 # Screen 8 and Final Training Direction Implementation Plan
 
+Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
+
 > **For agentic workers:** Use superpowers:executing-plans. Focused subagents use gpt-6-luna and Cavecrew.
 
 **Goal:** Continue experiments toward a single frozen model beating raw spectra on a majority, ideally all eight datasets, while deciding the final full training recipe from repeated measured effects.

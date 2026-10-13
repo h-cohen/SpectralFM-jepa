@@ -1,5 +1,7 @@
 # Long-1 Resume Implementation Plan
 
+Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
+
 > **For agentic workers:** Use superpowers:executing-plans to implement task-by-task.
 
 **Goal:** Continue the approved 50% mix seeds from 200k to 497,990 steps, aiming for a frozen FM beating raw on a majority, ideally all eight sets.

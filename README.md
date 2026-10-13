@@ -2,6 +2,8 @@
 
 SpectralFM learns frozen features from unlabeled 245-point spectra with masked joint-embedding prediction. A linear probe evaluates those features against raw spectra on eight labeled sets. Labels are excluded from pretraining; spectra from the evaluation corpus are eligible, so evaluation is transductive with respect to the input distribution.
 
+Status, candidates and the release blocker: [`docs/PRODUCTION_RECOMMENDATION.md`](docs/PRODUCTION_RECOMMENDATION.md). Corpus details: [`docs/DATASETS.md`](docs/DATASETS.md).
+
 ## Architecture and data flow
 
 The final recipe uses 48 contiguous patches and a six-block shared encoder. Training uses every encoder block; production inference uses the first two blocks and returns their raw token features before the final encoder normalization.
@@ -55,6 +57,8 @@ total loss  = token loss + pooled loss
 
 The training plan predeclares seed `101`, ten epochs (`497,990` steps), and expected source weights of 50/50 for regression-source spectra and the remaining packed corpus. These are sampling weights, not guaranteed per-batch proportions. Labels are never loaded by pretraining. The fixed global normalization statistics come from the packed-corpus metadata and are recorded in the run's `config.yaml`.
 
+Optional robustness term (`training.robust`, off unless configured): each batch also gets a perturbed copy (noise, offset, slope, scale, ±1-bin shift, drawn in raw units and renormalized; `src/spectral_lejepa/data/perturb.py`). The loss adds `weight × mean((h₂(x′) − h₂(x))²) / var(h₂(x))` on block-2 tokens. The draws use a separate RNG stream, so masking is unchanged. It was used only for the 2026-10-13 continuation studies.
+
 ## Production inference
 
 The export in [`outputs/final-model/production`](outputs/final-model/production) accepts raw `float32` spectra shaped `(B, 245)` and applies the training-time global affine normalization. It returns the flattened output after encoder blocks 1 and 2, before the final normalization used after block 6 during training. For one spectrum, the output shape is `(1, 12288)` (12,288 features).
@@ -79,6 +83,8 @@ uv run python -m scripts.export_production \
   --checkpoint "$CHECKPOINT" \
   --output outputs/final-model/production
 ```
+
+Plain pretraining: `uv run python -m scripts.pretrain --config configs/pretrain.yaml section.key=value ...`.
 
 The launcher uses [`configs/final_model.yaml`](configs/final_model.yaml). Evaluation uses [`configs/eval_final_model.yaml`](configs/eval_final_model.yaml). Pretraining and evaluation may require `WANDB_API_KEY`; keep the key in the shell environment, never in the repository.
 

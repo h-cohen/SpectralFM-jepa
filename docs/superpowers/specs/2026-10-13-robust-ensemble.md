@@ -1,5 +1,7 @@
 # Robust four-seed ensemble — registered 2026-10-13
 
+Status (2026-10-13): registered and launched; the three jobs are running.
+
 User direction: the goal is winning on a majority of the eight sets, not winning by large margins. Under that contract the seed2 robust continuations won 7/8 and 8/8 and beat the random control on 8/8 (see the contract re-read in `2026-10-13-robustness-continuation.md`). This study gives the other 48p seeds the same treatment so the seed ensemble can be rebuilt from robust members. The user approved launching it.
 
 ## Jobs

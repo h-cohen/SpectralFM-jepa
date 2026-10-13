@@ -1,5 +1,7 @@
 # Training Progress Presentation Implementation Plan
 
+Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
+
 > **For agentic workers:** Use superpowers:executing-plans.
 
 **Goal:** Make W&B show the training procedure and measured progress toward majority/all-eight frozen-probe wins.

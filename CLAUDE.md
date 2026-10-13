@@ -2,66 +2,68 @@
 
 ## Contract
 
-- Train a frozen encoder whose nested-CV `parameter_0` R² exceeds raw spectra on a majority of eight datasets: labeled_data, 0055, 0106, 0109, 0112, 0113, 0114, 0120.
-- Any positive ΔR² is a win; ≥ +0.05 is a strong win. Keep raw and architecture/readout-matched random controls. Do not change the scoring rule.
+- Train a frozen encoder whose nested-CV `parameter_0` R² beats raw spectra on a majority (≥ 5) of eight datasets: labeled_data, 0055, 0106, 0109, 0112, 0113, 0114, 0120.
+- Any positive ΔR² is a win; ≥ +0.05 is a strong win. The goal is a majority of wins, not large margins: matching raw on some sets is acceptable. Do not register criteria that require keeping a control's mean margin.
+- Keep raw and architecture/readout-matched random-weight controls. Do not change the scoring rule. Every results table shows raw R².
 - Labels never enter pretraining. All eligible spectra may be used, including evaluation spectra; evaluation is transductive.
-- Select probe recipes inside inner CV. Distinguish adaptive layer/readout scores from fixed embeddings. Do not select a production checkpoint using outer-test scores.
+- Select probe recipes inside inner CV. Do not select a production checkpoint using outer-test scores. Register criteria before results.
 
-## Current candidate
+## Current state (2026-10-13)
 
-- Plan: `docs/superpowers/plans/2026-10-09-final-production-candidate.md`.
-- Configs: `configs/final_model.yaml`, `configs/eval_final_model.yaml`.
-- 48 patches, d256, 6 blocks; global normalization; 75% random masking; batch 256; SIGReg 0.05; pooled weight 1; expected 50/50 source sampling. AdamW 5e-4, ten epochs / 497,990 steps, seed 101.
-- Export candidate: block-2 flat, 12,288 features; all six blocks train. Other blocks remain available in the full checkpoint for analysis.
-- Service: `spectralfm-final-model-s101-recovery`; W&B run `ylymmcnn`, group `final-model-fixed-block2`.
-- Output: `outputs/final-model/`. Pipeline: training → TorchScript export → fixed-readout evaluation → benchmark gate → report.
-- Gate: eight finite sets, at least five raw wins, positive mean gains versus raw/random, all canaries passing. Passing is benchmark qualification; deployment-domain validation remains separate.
-- Seed101 completed: 5/8 wins, mean ΔR² +0.080077 vs raw / +0.072296 vs random. Export verified at 497,990 steps. Not qualified: 0120 shuffled-label R² 0.0204456 exceeds the existing 0.020 limit. Threshold unchanged; final report refresh repaired.
-- Prior 48-patch block-2 flat features win 7/8 in each of three seeds; 0106 loses. This retrospective readout nomination is not an architectural requirement; the fresh seed101 replication wins 5/8.
-- Production analysis: `docs/superpowers/plans/2026-10-11-production-analysis.md`. Service `spectralfm-production-readouts` evaluates all21readouts, then controlled policies and refreshes the report. Output `outputs/production-analysis/`; W&B group `production-analysis`. Original qualification unchanged.
-- Gradient/permutation audits completed: block2prediction/SIGReg gradient norms are comparable; block6SIGReg norms are~18×prediction. Real-label R² exceeds100new permutations for raw/block2-flat; original shuffle42failure repeats and remains unresolved. Separate labelled development/deployment data requested before selecting further training; no new training launched.
-- All-block/policy analysis finished successfully. Four-readout menu wins7/8 (+.093253mean raw gain),fixed2flat5/8;rawfallback/multiscale do not improve aggregate menu. New0106/0114wins are small relative to uncertainty;0109still loses. Final6flat wins2/8. Proposed matched continuation tests duration versuslowerSIGReg;independentdevelopmentcriterion missing,no launch/promotion. Policy W&B`hcwixghf`;report updated with conclusions.
-- User authorized continuation experiments:fourdurablejobs,seeds202/203×lambda.05/.01,99598steps,freshAdamW,samefrozen101weights,LR5e-5→5e-7/1000warmup. HealthyphysicalGPUs0/1/2/4selectedbyUUID. Plan`docs/superpowers/plans/2026-10-11-continuation-study.md`;outputs`outputs/continuation-study`;W&B group`continuation-study`. Pipelineautomaticallyauditsgradients,evaluatesdepth/fixed/menu+raw/random,andrefreshesreport. Originalexport/gateunchanged;independentlabelsabsent,researchonly.
-- Continuationscompleted;recommendation`docs/PRODUCTION_RECOMMENDATION.md`:retainoriginal101/lambda.05/fixedexport,stopduration-onlysweeps. Controlfixedmeanimprovement+.000622only;lowfixedregressesbothseeds;noneimprovesmenureliablyoveroriginal. Literalresearchpreferencefixedduration_only/menuinconclusiveisnotreleaseapproval. Independentgroup-labelledvalidationandoriginalcanaryresolutionstillrequired.
-- Production shortlist across earlier fixed readouts:48pseed2/block2flat wins7/8,meanrawgain+.089366;current101fixed5/8+.080077. Priorrecommendationretain101wasversusitscontinuations,notglobalbenchmarkleadership. Seed2shortlistingisretrospective;lockedindependentvalidationneeded. Updatedsignalplotshows101allreadouts0–6andseparatecontinuationplotswithunmeasuredflatgaps.
-- Authorizedfrozenfollowupactive:`docs/superpowers/plans/2026-10-12-frozen-feature-study.md`. Eightcheckpointjobs/sevenhealthyGPUUUIDqueues,outputs`outputs/frozen-feature-study`,W&Bgroup`frozen-feature-study`. Fullflat0–6+pre/postfinalLayerNorm;reuseoldfixedscoresonlyafterfeature/OOFproof. Secondaryfixed2Ridge/PLS/RBFmenuappliedequallyraw/model/randomwithnestedtransforms.23tests/realsmoke passed,allseveninitialjobsprogressing;low203queued. Projectorpilotconditional,no newpretraining/releasepromotion.
-- Frozenfollowupcompleted:8×8linear/headsets. Bestfixedfamilyblock2-flatforall8;priorseed2still7/8+.089366. LNablationmixed;secondaryheads4–6/8andsometimesweakenrawnormalizationbaseline. Bothrawreferencesexplicit;unionwithprimaryrecipes5–6/8,seed2regresses.00994meanR². Four-readoutmenuprior0/1/2replay7/6/6wins. No8/8winner/exportchange. Projection-spacepilotdesign`docs/superpowers/specs/2026-10-12-projection-space-pilot.md`approved and launched; see current pilot status below.
+| Model (block2-flat, 12,288 features) | Raw wins | Random wins | Mean ΔR² vs raw | Status |
+|---|---|---|---|---|
+| seed101 final (`outputs/final-model/production`) | 5/8 | 6/8 | +.0801 | Export. Not gate-qualified: 0120 single-shuffle canary .0204 > .020 |
+| prior 48p seed2 | 7/8 | 6/8 | +.0894 | Retrospective holdout candidate |
+| Ensemble of 48p seeds 0/1/2/101 | 7/8 | 6/8 | +.0858 | Passed registered criteria; holdout candidate |
+| robust_s401 / robust_s402 (seed2 + robustness term) | 7/8, 8/8 | 8/8 | +.044, +.047 | Registered criteria failed; majority-contract candidate |
 
-## Completed projection pilot (2026-10-12)
+- 0106 loses for every non-robust model; the robustness term turns it into a small win but erases 0112's +.36 gain.
+- Single-shuffle canaries are noisy at n = 25–125. A 100-permutation audit shows real R² above every null for all arms on 0106 and 0120. The canary limit is unchanged.
+- Release blocker: independent labelled spectra with group IDs. Score the candidates once on a locked group-disjoint holdout. No benchmark result is release approval.
+- Recommendation and history: `docs/PRODUCTION_RECOMMENDATION.md`. Roadmap: `docs/superpowers/specs/2026-10-13-robust-production-roadmap.md`.
 
-- User authorized launch. Registration/code commit `b38accf`; plan `docs/superpowers/plans/2026-10-12-projection-space-pilot.md` and hashed registration under `docs/superpowers/registrations/`.
-- Four matched runs from prior48pseed2: seeds301/302 × control/projected,49,799 additional steps, fresh AdamW,1000 warmup,LR5e-5→5e-7. SIGReg .05; only its token/pooled inputs move through256→512→128 MLP. Backbone prediction/invariance, full eligible samples and source/masking/batch recipe preserved.
-- Durable services `spectralfm-projection-{control,projected}-s{301,302}`, pinned to healthy physicalGPUs0/1/2/4 by UUID. W&B control301 `3be6orej`, projected301 `pft83led`, control302 `15o7a28q`, projected302 `49r2flsr`; group `projection-pilot`.
-- Automatic final gradient audit → all-block/raw/random evaluation → fixed-menu comparisons → report refresh. Outputs `outputs/projection-pilot/`. Fixed2 primary,flat6 secondary; no automatic export/gate replacement. Independent release validation still absent.
-- Verification:64 regression checks plus8 final report/config checks; real-source GPU smoke and50-step projected AMP calibration finite, one early scaler reduction. Online geometry, weighted per-term block2/6 gradients and AMP skipped-update counters logged.
-- All four completed49,799steps,all8sets and21readouts; hashes verified. Projectedfixed2meanΔraw+.081446/+.081329 vscontrol+.086476/+.083507;7/8winsall,loss0106. Startingprior2+.089366 remains stronger. Stoptestedprojector; no newtraining/promotion. Flat6secondaryrecovers3/8projectedvs1/0controls; no primaryimprovement. Report/recommendationupdated; pairedmachineanalysis`outputs/projection-pilot/results_analysis.json`.
+## Active job
 
-## Production validation and robustness continuation (2026-10-13)
+- Robust four-seed ensemble: spec `docs/superpowers/specs/2026-10-13-robust-ensemble.md`, registration `docs/superpowers/registrations/2026-10-13-robust-ensemble.json`.
+- It applies the robust recipe (weight 0.1, 49,799 steps) to prior 48p seed0, seed1 and final seed101, with training seeds 410/411/412. `robust_s401` is the seed2 member.
+- Services `spectralfm-robust-{p0,p1,s101}` on physical GPUs 0/1/2. W&B group `robust-ensemble`: p0 `8nfxzsde`, p1 `ya6s9o5p`, s101 `ok3up62j`.
+- When all three reach `completed` in `outputs/robust-ensemble/*/state.json`, run `python -m scripts.robust_ensemble analyze`.
 
-- No-training analyses: `docs/superpowers/specs/2026-10-13-robust-production-roadmap.md`, outputs `outputs/production-validation/`. The seed-ensemble (48p seeds 0/1/2/101, block2-flat, equal-weight predictions) passed its registered criteria: 7/8 wins, +.0858 mean Δraw. It is the preferred holdout candidate beside seed101/seed2. Pooled gain over random features is only +.0037±.0012. Trained features amplify input noise ~20× (drift tracks source type, not memorization). 0106 has no identified cause.
-- Robustness continuation (user-approved, launched): design `docs/superpowers/specs/2026-10-13-robustness-continuation.md`, registration `docs/superpowers/registrations/2026-10-13-robustness-continuation.json`. From prior48pseed2, seeds 401/402 × control/robust, 49,799 steps; robust arm adds block-2 token invariance to data-calibrated perturbations (`training.robust`, weight 0.1 chosen by the registered calibration rule). Services `spectralfm-robust-{control,robust}-s{401,402}`, physical GPUs 0/1/2/4; W&B group `robustness-continuation` (control401 `c3g6saaz`, robust401 `bqw877zh`, control402 `dwph9kqj`, robust402 `d2fqocp5`). Pipeline: train → gradient audit → all-block eval → policies → `scripts/robustness_eval.py`. Outputs `outputs/robustness-continuation/`; starting-checkpoint perturbation reference `start_perturbation.json`. No export or gate change.
-- Robustness continuation completed; registered primary criteria FAIL (`results_analysis.json`, results section of the design spec). Robust arm cuts 1%-noise drift .080→.012 and raises noisy small-set R² on both seeds, but clean fixed2 mean Δraw falls .085→.044/.087→.047 (0112 +.36→0) with repeated regressions on 0055/0112/0113/0120. 0106 flips to a win (+.12 paired) and s402 is 8/8, a diagnostic hint only. Baseline-type perturbation accuracy got worse. Recipe stopped; nothing promoted; 8-job ensemble extension not proposed.
-- User direction after results: the goal is majority wins, not margin; matching raw on some sets is fine. Under the contract the robust arms qualify on wins (7/8, 8/8; random wins 8/8 vs controls 6/8; mean Δraw +.044/+.047). Single-shuffle block2 canary fails 0106/0120 (controls fail 0120), but 100 permutations show real R² above every null. Canary limit unchanged, so no arm is gate-qualified. The robust recipe is a retrospective contract-level candidate, not promoted. See "Contract re-read" in the design spec.
-- Robust four-seed ensemble (user-approved, launched 2026-10-13): spec `docs/superpowers/specs/2026-10-13-robust-ensemble.md`, registration `docs/superpowers/registrations/2026-10-13-robust-ensemble.json`. Same robust recipe from prior48p seed0/seed1 and final seed101 (training seeds 410/411/412); seed2 member is `robust_s401`. Services `spectralfm-robust-{p0,p1,s101}` on physical GPUs 0/1/2; W&B group `robust-ensemble` (p0 `8nfxzsde`, p1 `ya6s9o5p`, s101 `ok3up62j`). Pipeline train → audit → all-block eval → perturbation eval (job and start); then `python -m scripts.robust_ensemble analyze`. Outputs `outputs/robust-ensemble/`.
+## Completed studies
+
+Each study has a spec or plan under `docs/superpowers/`, outputs under `outputs/<study>/`, and a W&B group of the same name. Orchestration code for studies before 2026-10-13 was removed in the cleanup; git history keeps it.
+
+| Date | Study | Outcome |
+|---|---|---|
+| 10-02 to 10-08 | Screens 1–8, long-1, paired-long (24/48 patches, masking, VISReg, projector) | 48 patches, random 75% masking and SIGReg kept; VISReg gave no gain; the prediction projector was never adopted |
+| 10-09 | Final model seed101 | 5/8, +.0801; gate fails on the 0120 canary |
+| 10-11 | Production analysis; continuation study (seeds 202/203 × λ .05/.01) | Duration-only or lower-SIGReg continuations do not help |
+| 10-12 | Frozen-feature study; projection pilot (seeds 301/302) | Block2-flat is the best fixed family; the SIGReg projector does not help |
+| 10-13 | Production validation (seed ensemble, chemometric baselines, 0106 diagnosis, perturbation drift) | Ensemble passes; trained features amplify input noise about 20×; 0106 cause unknown |
+| 10-13 | Robustness continuation (seed2, 401/402 × control/robust) | See current state above |
 
 ## Repository map
 
 - `src/spectral_lejepa/models/`: tokenizer, masking, shared encoder, predictor.
-- `src/spectral_lejepa/training/`: objective, loop, checkpointing, diagnostics.
-- `src/spectral_lejepa/evaluation/`: feature banks and nested probes.
+- `src/spectral_lejepa/training/`: objective (`loss.py`), loop (`trainer.py`), checkpointing, diagnostics, gradient terms.
+- `src/spectral_lejepa/data/`: corpus loaders; `perturb.py` for the optional robustness term.
+- `src/spectral_lejepa/evaluation/`: feature banks, nested probes, paired bootstrap.
 - `scripts/pretrain.py`, `scripts/evaluate.py`: CLI entry points.
-- `scripts/launch_final_model.sh`, `scripts/export_production.py`, `scripts/final_model_gate.py`: final pipeline.
-- `scripts/build_results_report.py`: offline HTML, CSV and SVG exports.
-- `README.md`: architecture, tensor shapes, commands. `docs/DATASETS.md`: corpus details. Historical decisions stay in `docs/superpowers/plans/`; local status in ignored `plans/SUMMARY.md`.
+- Final pipeline: `scripts/launch_final_model.sh`, `export_production.py`, `final_model_gate.py`.
+- Audits: `gradient_audit.py`, `permutation_audit.py`.
+- 2026-10-13 studies: `seed_ensemble.py`, `chemometric_baselines.py`, `diagnose_0106.py`, `robustness_perturbations.py`, `memorization_check.py`, `noise_calibration.py`, `robustness_continuation*.py`, `robustness_eval.py`, `robust_ensemble.py`.
+- Report: `scripts/build_results_report.py` and its `*_report.py`, `results_matrix.py`, `readout_variants.py`, `report_story.py` section modules. These build offline HTML, CSV and SVG from saved outputs.
+- `scripts/training_progress.py`: W&B presentation watcher (service `spectralfm-presentation`).
+- Data packing: `pack_pickles.py`, `pack_spectra.py`. Corpus details: `docs/DATASETS.md`.
+- Retired options (`model.projector`, `model.sigreg_projector`, `training.regularizer=visreg`) remain in saved configs; the code accepts only their disabled values.
 
 ## Execution rules
 
-- W&B credentials come from the user shell; launch jobs with `bash -ic`. Never print or store keys. Log metrics/figures, not checkpoint artifacts.
-- Keep long jobs in user systemd services. Do not overwrite an active launcher or restart training for documentation changes.
-- Physical GPU3 is broken. With `CUDA_DEVICE_ORDER=PCI_BUS_ID`, logical CUDA 0–2 map directly; 3–6 map to physical 4–7. Final training uses CUDA 0, evaluation CUDA 6.
+- W&B credentials come from the user shell; launch jobs with `bash -ic`. Never print or store keys. Log metrics and figures, not checkpoint artifacts.
+- Keep long jobs in user systemd services. Do not overwrite an active launcher, and do not edit code that a running pipeline imports later. Do not restart training for documentation changes.
+- Physical GPU3 is broken. With `CUDA_DEVICE_ORDER=PCI_BUS_ID`, logical CUDA 0–2 map directly; 3–6 map to physical 4–7. Pin study jobs by GPU UUID.
 - Set `OMP_NUM_THREADS=4`, `JOBLIB_TEMP_FOLDER=/dev/shm`, writable `MPLCONFIGDIR`.
 - Never write under `/mnt5/noy` or modify the parent evaluation repository.
-- Commit on `main` as `Hadar <hal.nls@gmail.com>`. Push when the user requests it.
-- Preserve checkpoint/RNG resume behavior, input normalization, loss weights and W&B axes during cleanup. Keep useful shape/numerical comments; avoid prose that repeats code.
-
-Final paired summary and six measured figures published to W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/e72aiwt3.
+- Commit on `main` as `Hadar <hal.nls@gmail.com>`. The user authorized pushing completed work.
+- Preserve checkpoint/RNG resume behavior, input normalization, loss weights and W&B axes during cleanup. Keep useful shape and numerical comments; avoid prose that repeats code.
+- `plans/SUMMARY.md` is a tracked historical log. `plans/AGENT_HANDOFF.md` is local and ignored.

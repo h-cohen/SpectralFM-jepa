@@ -1,5 +1,7 @@
 # All-data LeJEPA Foundation Model Implementation Plan
 
+Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** Pretrain LeJEPA on every available spectrum, about 14M from all sources, with an amplitude-preserving ("equal") input normalization. Then screen normalization and capacity, and run the winner long. The aim is to beat raw input on most label sets.

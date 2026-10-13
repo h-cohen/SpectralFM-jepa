@@ -1,7 +1,7 @@
 # Foundation-model evaluation: readout families, random-init control, "beats raw" scorecard
 
 Date: 2026-10-05
-Status: approved in brainstorming, pending written-spec review
+Status (2026-10-13): implemented; the nested-CV protocol is in use. Historical record; current state is in CLAUDE.md.
 Sub-project A of the foundation-model effort (sub-project B = all-data LeJEPA pretraining, separate spec).
 
 ## 1. Goal and success criterion

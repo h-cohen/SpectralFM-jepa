@@ -1,5 +1,7 @@
 # Informative Evaluation Figures Implementation Plan
 
+Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
+
 > **For agentic workers:** Use superpowers:executing-plans.
 
 **Goal:** Make each W&B evaluation and the live progress view explain per-dataset model performance and paired gains clearly.

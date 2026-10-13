@@ -1,5 +1,7 @@
 # Foundation-Model Evaluation Implementation Plan
 
+Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Score every model by whether its frozen embedding beats raw input by at least +0.05 R² on each labeled set. Add position-preserving readouts, a random-init control and a scorecard. W&B gets results and plots only.

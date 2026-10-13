@@ -10,10 +10,11 @@ Sample: one mono float32 WAV, exactly 245 points (the 16 kHz rate is nominal). M
 | sampled_data | `sampled_data/` (dataset0024) | 22,428 | 28 | – |
 | labeled_data | `labeled_data/` (dataset0022) | 66,024 ¹ | 14 | `parameter_0` |
 | labeled_regression | `labeled_regression/dataset{0055,0106–0120}/` | 147,784 | varies | `parameter_0` ² |
-| **Total** | | **12,758,642** | | |
+| **Total** | | **12,758,642** ³ | | |
 
 ¹ `valid.tsv` lists all 66,024 files (a superset of `train.tsv`): use the union.
 ² `labels.tsv` (`filename<TAB>parameter_0`). There are no labels for 0107, 0108 and 0119 (their spectra are still usable). 0111 has an empty labels file. 0110 and 0116 contain no data.
+³ Packed corpus (`/mnt5/home/hadar/nova/data/spectra_all`, `scripts/pack_spectra.py`): 12,758,642 rows, none dropped. 10,000 rows (`valid_rows.npy`) are held out for validation losses, which leaves 12,748,642 training rows.
 
 **Missing:** about **1.2M single-channel spectra (≈373k + ≈825k) have no WAV files.** They are in `/mnt5/noy/nova_samples/full_chnl/spectra0000_batch9.pkl` and `batch10.pkl`, but both files are **truncated** (0.74 GB and 1.63 GB against 1.98 GB for a full batch; `pickle.load` fails with "pickle data was truncated"), and no other copy exists. They can't be used unless the original source data is regenerated.
 

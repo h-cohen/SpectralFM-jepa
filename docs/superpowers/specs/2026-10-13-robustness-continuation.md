@@ -1,6 +1,6 @@
 # Robustness continuation — design for approval, 2026-10-13
 
-Status: proposal. Not approved, not launched. The seed101 export, its gate and the seed-ensemble holdout candidate stay unchanged.
+Status (2026-10-13): approved, launched and completed. Registered primary criteria failed; see Results and the contract re-read at the end. The seed101 export, its gate and the holdout candidates are unchanged.
 
 ## Motivation
 

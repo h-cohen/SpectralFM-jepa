@@ -1,6 +1,6 @@
 # Robust production roadmap — proposal, 2026-10-13
 
-Status: section A authorized and registered 2026-10-13, before any A result was computed. Sections B and C are proposals only. The seed101 export, its failed gate and all thresholds stay unchanged.
+Status (2026-10-13): section A done (results below). Section C ran as the robustness continuation (completed) and the robust four-seed ensemble (running); see their specs. Section B, independent labelled data, is still missing.
 
 ## Evidence review
 

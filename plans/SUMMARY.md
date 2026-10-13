@@ -1,6 +1,6 @@
-# SpectralFM-LeJEPA — experiment summary (2026-10-07)
+# SpectralFM-LeJEPA — experiment summary
 
-Local working document (gitignored). Code is at `main` (`beabdf3` and later); Resume implementation committed on main as da18751; user handles pushing.
+Historical working log (2026-10-02 to 2026-10-12). Tracked in git. Current status lives in CLAUDE.md and docs/PRODUCTION_RECOMMENDATION.md.
 
 ## 1. Goal and criterion
 
@@ -17,7 +17,7 @@ Local working document (gitignored). Code is at `main` (`beabdf3` and later); Re
 - **Pretraining data.** All 12,758,642 spectra, including the evaluation spectra and every component; labels are never used. The client approved this.
 - **Control.** Every model is also scored against a random-init copy (same architecture and input normalization).
 
-## 2. Fixed setup
+## 2. Fixed setup (historical 24-patch screen setup; the final model uses 48 patches)
 
 - **Model.** 1-D ViT, 24 patches (5×11 + 19×10 samples), d = 256, 6 pre-LN blocks, 8 heads.
   - Predictor: d = 192, 4 blocks.
@@ -118,7 +118,7 @@ old worktree `../SpectralFM-jepa-wt/outputs`.
 - **Consistent wins:** labeled_data, 0112, 0113 and 0114. The fifth win varies by model (0055, 0106 or 0120).
 - **"All 8" not reached:** 0109 is lost by every pretrained model with the mix, and random init beats raw there (0.944).
 
-## 5. Run state when stopped (2026-10-07 17:20)
+## 5. Run state when stopped (2026-10-07 17:20) — historical
 
 - **long-1** (`configs/long1.yaml`; 10 epochs = 497,990 steps): lr50_s0, lr50_s1 and lr80_s0, stopped at step 200k (4 epochs) on the user's instruction.
   - Checkpoints every 50k: `outputs/long-1/<run>/checkpoint_step{50000..200000}.pt`.
@@ -126,7 +126,7 @@ old worktree `../SpectralFM-jepa-wt/outputs`.
 - **screen-7** `lr50_s2` (third seed of the s6 winner): stopped at 25k; not usable.
 - **W&B project** `spectralfm-lejepa` holds metrics, tables and figures only (free tier, no artifacts).
 
-## 6. What can be tested next (priority order)
+## 6. What can be tested next (priority order) — historical, as of 2026-10-07
 
 1. **True resume of long-1 lr50 (seeds 0 and 1) to 10 epochs.**
    - Checkpoints already hold the optimizer and scaler state; add `training.resume=<ckpt>` that restores the step, optimizer, scaler and LR schedule.
@@ -187,21 +187,21 @@ old worktree `../SpectralFM-jepa-wt/outputs`.
 
 ### Correction to prior run-state claims
 
-The earlier training/presentation execution sessions did not survive. Logs end at222250/221750; no training processes remained and all healthy GPUs were idle. No checkpoint beyond200k existed. Therefore roughly22k logged steps per seed were lost; they were never scored. Exact termination cause is unknown. Training now runs under independent systemd user services, verified by PID/cgroup and subsequent live telemetry. Checkpoints are every10k instead of50k.
+The earlier training/presentation execution sessions did not survive. Logs end at 222250/221750; no training processes remained and all healthy GPUs were idle. No checkpoint beyond 200k existed. Therefore roughly 22k logged steps per seed were lost; they were never scored. Exact termination cause is unknown. Training now runs under independent systemd user services, verified by PID/cgroup and subsequent live telemetry. Checkpoints are every10k instead of50k.
 
 ### Running experiments
 
-- `spectralfm-long1-s0` / `spectralfm-long1-s1`: original ten-epoch recipe from200k, target497990. Directories `outputs/long-1/lr50_s0_resume_20261007-235742` and `...lr50_s1_resume_20261007-235743`. W&B https://wandb.ai/hcohen/spectralfm-lejepa/runs/8zrttyj7 and https://wandb.ai/hcohen/spectralfm-lejepa/runs/3cj18b2q . Original logs are appended, preserving failed attempts.
-- `spectralfm-screen8`: six matched15k continuations (`configs/screen8.yaml`), fresh optimizer/schedule identically in every arm, varying only random75/random50/block75 within each seed. Four workers CUDA2/3/4/5, max two evaluations. Model/data/seed-specific initial checkpoints held fixed. First four arms confirmed via remote loss metrics; block arms queued. Log `outputs/screen-8.log`. Controller https://wandb.ai/hcohen/spectralfm-lejepa/runs/u4k2kge9 .
-- `spectralfm-long1-milestones`: serial probes at250k/350k on CUDA6; waits for exact checkpoints and verifies main service remains active. Final evaluations belong to the original resume launchers, preventing duplicate writers. Log `outputs/long-1/milestones.log`.
+- `spectralfm-long1-s0` / `spectralfm-long1-s1`: original ten-epoch recipe from 200k, target 497990. Directories `outputs/long-1/lr50_s0_resume_20261007-235742` and `...lr50_s1_resume_20261007-235743`. W&B https://wandb.ai/hcohen/spectralfm-lejepa/runs/8zrttyj7 and https://wandb.ai/hcohen/spectralfm-lejepa/runs/3cj18b2q . Original logs are appended, preserving failed attempts.
+- `spectralfm-screen8`: six matched 15k continuations (`configs/screen8.yaml`), fresh optimizer/schedule identically in every arm, varying only random75/random50/block75 within each seed. Four workers CUDA2/3/4/5, max two evaluations. Model/data/seed-specific initial checkpoints held fixed. First four arms confirmed via remote loss metrics; block arms queued. Log `outputs/screen-8.log`. Controller https://wandb.ai/hcohen/spectralfm-lejepa/runs/u4k2kge9 .
+- `spectralfm-long1-milestones`: serial probes at 250k/350k on CUDA6; waits for exact checkpoints and verifies main service remains active. Final evaluations belong to the original resume launchers, preventing duplicate writers. Log `outputs/long-1/milestones.log`.
 - `spectralfm-presentation`: live W&B view https://wandb.ai/hcohen/spectralfm-lejepa/runs/u2b9gssq ; source manifest follows new resumed IDs and ignores the lost trajectories. Completed scorecards from screen8 automatically enter the presentation.
 - Registered design/gates: https://wandb.ai/hcohen/spectralfm-lejepa/runs/fjbztblr ; plan `docs/superpowers/plans/2026-10-07-screen8-final-direction.md`. All science, configuration, source lineage and measured terms are logged; no model/checkpoint artifacts or credentials are stored. W&B-managed tables use SDK metadata artifacts.
 
 ### Why this direction
 
-Both200k seeds lose0109 against raw and their random controls; 0106 gains are only+.001–.003 and0120 remains slightly below raw. More context or structured masking can test detail retention without changing architecture. 48 patches already helps0120 but does not solve0106/0109, so it is reserved rather than promoted from one seed. Complete the cosine tail separately to test labeled_data recovery.
+Both 200k seeds lose 0109 against raw and their random controls; 0106 gains are only +.001–.003 and 0120 remains slightly below raw. More context or structured masking can test detail retention without changing architecture. 48 patches already helps 0120 but does not solve 0106/0109, so it is reserved rather than promoted from one seed. Complete the cosine tail separately to test labeled_data recovery.
 
-Promotion gates: at least5/8 raw wins in each seed, hard-set mean gain over matched continuation positive in both seeds, positive overall mean gain, seed-mean LD regression no worse than.01 and stable-set regression no worse than.05. These are exploratory recipe-selection guards, not new win thresholds or confidence claims. A null15k screen is inconclusive for longer training.
+Promotion gates: at least 5/8 raw wins in each seed, hard-set mean gain over matched continuation positive in both seeds, positive overall mean gain, seed-mean LD regression no worse than .01 and stable-set regression no worse than .05. These are exploratory recipe-selection guards, not new win thresholds or confidence claims. A null 15k screen is inconclusive for longer training.
 
 Provisional final recipe stays24 patches/mask75/global weight1/50% mix/10 epochs. Choose a replacement only after repeated masking gains and longer confirmation; otherwise investigate repeated48-patch long training before reconstruction/teacher changes. Final claims need three seeds and per-set raw/FM/random means and seed SD. One frozen model must meet the goal; dataset-specific model selection is excluded.
 
@@ -209,7 +209,7 @@ Provisional final recipe stays24 patches/mask75/global weight1/50% mix/10 epochs
 
 Evidence investigator, focused builder and independent reviewer all use lighter gpt-6-luna with Cavecrew. No external Caveman telemetry is available/claimed. Current experiment decisions rely on source evidence and predefined gates.
 
-- Final code verification for this continuation:174fast tests passed,8deselected, one sandbox NVML warning. Registered runtime results remain pending; no masking arm has been promoted.
+- Final code verification for this continuation: 174 fast tests passed, 8 deselected, one sandbox NVML warning. Registered runtime results remain pending; no masking arm has been promoted.
 
 ## 11. Informative W&B scorecard figures (2026-10-08)
 
@@ -221,9 +221,9 @@ Evidence investigator, focused builder and independent reviewer all use lighter 
 - The live presentation `u2b9gssq` now reports 35 complete scorecards and refreshes current training telemetry; the latest evaluated long-run probe checkpoint is 250,000, not the live weight step.
 - The active presentation watcher was restarted on the same W&B run. It persists per-source W&B history `_step` in `outputs/training-progress/cursors.json` and records optimizer and history coordinates in status to avoid replay or gaps on later restart.
 - Local figure exports: `outputs/training-progress/latest_per_dataset_r2.png`, `outputs/training-progress/latest_paired_gains.png`, `outputs/screen-8/per_dataset_r2.png`, `outputs/screen-8/paired_gains.png`.
-- Full verification:182passed,8deselected, one expected sandbox NVML warning. Cavecrew review caught and guided a cursor fallback fix; regression passed.
+- Full verification: 182 passed, 8 deselected, one expected sandbox NVML warning. Cavecrew review caught and guided a cursor fallback fix; regression passed.
 
-## 12. Current operational check (2026-10-08 05:08 IDT)
+## 12. Operational check, 2026-10-08 05:08 IDT
 
 - **Active:** `spectralfm-long1-s0`, `spectralfm-long1-s1`, `spectralfm-long1-milestones`, and `spectralfm-presentation` each reported active in the user systemd manager. Both long runs are progressing with finite losses at approximately 345.6k/345.7k of 497,990 steps. Screen8 is absent from the active-service list because its controller completed successfully.
 - **Long1 results:** the two 250k scorecards each beat raw on 6/8 datasets. Mean ΔR² is +0.0812 for seed0 and +0.0385 for seed1. These are intermediate checkpoint results; final recipe claims await the completed schedule and further seeds.
@@ -237,96 +237,96 @@ Evidence investigator, focused builder and independent reviewer all use lighter 
 - The previous 24-patch ten-epoch runs completed: seed0 5/8 raw wins (mean ΔR² +0.0442), seed1 3/8 (+0.0105). The only prior 48-patch measurement is seed0 at149,397 steps/3 epochs, with5/8 wins; it is exploratory. Screen8 promoted neither masking variant.
 - A fresh paired 24-vs48-patch experiment is now running from scratch on seeds0/1/2, 10 epochs each, all12,758,642 packed spectra eligible, same50/50 source mix/global norm/mask/objective/schedule, with matching raw and random-init controls.
 - Six durable services started at16:14 IDT under user systemd. CUDA0/1/2 map to24-patch seeds0/1/2; CUDA3/4/5 map to48-patch seeds0/1/2. CUDA6 (physical GPU7) is reserved for final evaluation; an exclusive `flock` serializes nested-CV probes. Physical GPU3 remains excluded.
-- W&B runs (group `paired-long-confirmatory`): 24p seeds0/1/2 = `tsf3hftz`, `zdir34g7`, `7ghobw5h`; 48p seeds0/1/2 = `kknz92e3`, `m1p2atdu`, `ceanfxq1`. Each run has separate loss/progress/validation/representation metrics and local log under `outputs/paired-long/`.
+- W&B runs (group `paired-long-confirmatory`): 24p seeds 0/1/2 = `tsf3hftz`, `zdir34g7`, `7ghobw5h`; 48p seeds 0/1/2 = `kknz92e3`, `m1p2atdu`, `ceanfxq1`. Each run has separate loss/progress/validation/representation metrics and local log under `outputs/paired-long/`.
 - The first W&B audit at16:20 showed steps1,800–2,350; every run was active and had finite loss and gradient norm. The one-time scheduler-before-optimizer warning appeared for the 24p seed starts; subsequent metrics are advancing. No CUDA OOM or non-finite losses observed.
 - `outputs/paired-long/manifest.json` stores the report's active-run snapshot. Rebuild the self-contained report with `.venv/bin/python -m scripts.build_results_report`; artifact is `outputs/training-progress/results_report.html`. It presents final historical scorecards, dataset-level raw/FM/random comparisons, checkpoint trajectories, screen8 gates, and clickable W&B run links with the current progress snapshot.
-- Code/config/report tests:6passed; full repo suite before the last report snapshot enhancement:187passed,8deselected, one expected sandbox NVML warning. The report-specific and launcher-specific suite after that enhancement:6passed.
+- Code/config/report tests: 6 passed; full repo suite before the last report snapshot enhancement: 187 passed, 8 deselected, one expected sandbox NVML warning. The report-specific and launcher-specific suite after that enhancement: 6 passed.
 - Nothing is waiting on a launch. The six full runs and their final evaluations are in progress; the next scientific decision follows the paired final scorecards. Intermediate downstream probes will not choose checkpoints.
 
 ## Completed paired study and compiled report (2026-10-09)
 
-- All six fresh paired jobs have final497,990-step eight-set evaluations under `outputs/long-1/eval/p{24,48}_s*_step497990/`.
--24p seed wins[6,5,4];48p[5,4,7]. Both seed-mean profiles beat raw5/8. Mean ΔR²24p+.046065;48p+.067132. Paired architecture gains[+.027441,−.005270,+.041031], mean+.021067:48p passes the pre-launch exploratory preference rule. All-eight remains unmet.
-- Report: `outputs/training-progress/results_report.html`. Final9backbone×8dataset matrix includes raw,6trained,2random-init controls; all72cells have R²±measured bootstrap SD. Separate architecture means show three-seed sample SD. Complete historical matrix covers46evaluation scorecards and125model/raw/random rows; absent historical datasets remain blank.
+- All six fresh paired jobs have final 497,990-step eight-set evaluations under `outputs/long-1/eval/p{24,48}_s*_step497990/`.
+- 24p seed wins [6,5,4]; 48p [5,4,7]. Both seed-mean profiles beat raw 5/8. Mean ΔR² 24p +.046065; 48p +.067132. Paired architecture gains [+.027441,−.005270,+.041031], mean +.021067: 48p passes the pre-launch exploratory preference rule. All-eight remains unmet.
+- Report: `outputs/training-progress/results_report.html`. Final 9 backbone × 8 dataset matrix includes raw, 6 trained, 2 random-init controls; all 72 cells have R² ± measured bootstrap SD. Separate architecture means show three-seed sample SD. Complete historical matrix covers 46 evaluation scorecards and 125 model/raw/random rows; absent historical datasets remain blank.
 - Full-precision CSVs: `final_results_matrix.csv` and `all_backbones_results_matrix.csv`; structured provenance/data: `results_matrix.json`, in the same report directory. No separate whitening material is displayed; SIGReg conceptual illustration and measured final histories are retained. Fresh finals are not joined onto legacy continuation trajectories.
-- Validation:17focused tests passed; source uncertainty coverage and complete six-seed roster checked; independent lighter-model review confirmed arithmetic and uncertainty extraction. Pre-launch registration independently verified in commit `ae25377`. `git diff --check` clean.
+- Validation: 17 focused tests passed; source uncertainty coverage and complete six-seed roster checked; independent lighter-model review confirmed arithmetic and uncertainty extraction. Pre-launch registration independently verified in commit `ae25377`. `git diff --check` clean.
 
 ## Approved final fixed-interface run (2026-10-09)
 
-- User approved48patches,predeclaredseed101,unchanged10epoch schedule,andfixedblock2-flat12,288dembedding. Durable service`spectralfm-final-model-s101` launched11:58:30UTC−4; W&B https://wandb.ai/hcohen/spectralfm-lejepa/runs/ibdymf53 . CUDA0training;CUDA6/physical7finalevaluation.
-- Pipeline/configs:`scripts/launch_final_model.sh`,`configs/final_model.yaml`,`configs/eval_final_model.yaml`. Automatic final TorchScript export→fixed-readout8set raw/random evaluation→predeclared qualification gate→report refresh. Export includes normalization andfirst2blocks,rawFP32(B,245)→(B,12288). No layer/seed/checkpoint selection or schedule extension.
-- Resolved497,990steps,49,799warmupsteps,12,748,642eligibletrainingrows,2,048diagnosticvalidationspectra;source masses50/50. Qualify only with8finite sets,>=5raw wins,positive mean raw/random gains,andallcanaries. Benchmarkqualificationdoesnotreplaceindependentdeploymentvalidation.
-- CUDA2step smoke andreal-checkpoint export succeeded. Scripted B1/B3 parity and24focused tests passed. Final serviceactive;GPU0~74%utilization/6,546MiB;localW&Bstep4,000loss.8420grad18.04finite. Recent.150s/step impliesroughly21hoursremainingtraining,then evaluation.
-- README now88lines,architecture/algorithm/commands-focused. Inline SVGtensorflow added toHTMLreport andexported as`outputs/training-progress/tensor_dataflow.svg`;B1single-input/outputsizesandtraininglossbranchesincluded. Reportshowsfinalcandidateprogressandwillincludeitsfixed-readoutscoretableafterevaluation. Filehashmanifestandfullplan:`outputs/final-model/manifest.json`,`docs/superpowers/plans/2026-10-09-final-production-candidate.md`.
+- User approved 48 patches, predeclared seed101, unchanged 10-epoch schedule, and fixed block2-flat 12,288-d embedding. Durable service `spectralfm-final-model-s101` launched 11:58:30 UTC−4; W&B https://wandb.ai/hcohen/spectralfm-lejepa/runs/ibdymf53 . CUDA0 training; CUDA6/physical 7 final evaluation.
+- Pipeline/configs: `scripts/launch_final_model.sh`, `configs/final_model.yaml`, `configs/eval_final_model.yaml`. Automatic final TorchScript export → fixed-readout 8-set raw/random evaluation → predeclared qualification gate → report refresh. Export includes normalization and first 2 blocks, raw FP32 (B,245)→(B,12288). No layer/seed/checkpoint selection or schedule extension.
+- Resolved 497,990 steps, 49,799 warmup steps, 12,748,642 eligible training rows, 2,048 diagnostic validation spectra; source masses 50/50. Qualify only with 8 finite sets, >=5 raw wins, positive mean raw/random gains, and all canaries. Benchmark qualification does not replace independent deployment validation.
+- CUDA2 step smoke and real-checkpoint export succeeded. Scripted B1/B3 parity and 24 focused tests passed. Final service active; GPU0 ~74% utilization/6,546MiB; local W&B step 4,000 loss .8420 grad 18.04 finite. Recent .150 s/step implies roughly 21 hours remaining training, then evaluation.
+- README now 88 lines, architecture/algorithm/commands-focused. Inline SVG tensor flow added to HTML report and exported as `outputs/training-progress/tensor_dataflow.svg`; B1 single-input/output sizes and training loss branches included. Report shows final candidate progress and will include its fixed-readout score table after evaluation. File hash manifest and full plan: `outputs/final-model/manifest.json`, `docs/superpowers/plans/2026-10-09-final-production-candidate.md`.
 
 ## 14. Offline story report (2026-10-08 18:43 IDT)
 
 - User approved report chapters: training objective → SIGReg evidence → anisotropy/isotropy → downstream whitening → final scorecards. Offline HTML: `outputs/training-progress/results_report.html`; 19 slide-ready SVG/PNG pairs: `outputs/training-progress/figures/`.
-- New CPU diagnostics use saved legacy final seed0/1 banks at step497,990; fixed final-block mean (`layer6`, 256 dims). Geometry shows covariance spectra, normalized covariance-entropy rank and before/after PCA-whitening scatter; whitening fit excludes held-out rows.
-- Full eight-dataset whitening-policy diagnostic uses identical nested folds (2×5 outer,5 inner), inner-selected whitening variants/probes versus none/standardize/probes. Only3/16 dataset–seed comparisons improve; mean ΔR²−0.071562. This is distinct from the main adaptive layer/readout scorecard and does not isolate whitening rescaling from truncation.
+- New CPU diagnostics use saved legacy final seed0/1 banks at step 497,990; fixed final-block mean (`layer6`, 256 dims). Geometry shows covariance spectra, normalized covariance-entropy rank and before/after PCA-whitening scatter; whitening fit excludes held-out rows.
+- Full eight-dataset whitening-policy diagnostic uses identical nested folds (2×5 outer, 5 inner), inner-selected whitening variants/probes versus none/standardize/probes. Only 3/16 dataset–seed comparisons improve; mean ΔR² −0.071562. This is distinct from the main adaptive layer/readout scorecard and does not isolate whitening rescaling from truncation.
 - SIGReg sensitivity plot uses screen1 λ=.02 versus .05 controls; geometry/downstream association is suggestive, one earlier-regime dataset, no matched SIGReg-off causal evidence. Ongoing six-run validation/rank histories are recovered from local CRC-validated W&B records; source runs are read-only.
 - Rebuild evidence: `.venv/bin/python -m scripts.report_evidence`; rebuild HTML/figures: `.venv/bin/python -m scripts.build_results_report`. Evidence is cached and CPU-only, one BLAS thread. No training changes.
-- Verified14 focused tests, no leakage/provenance blockers in lighter-model independent review; exported figures visually inspected; HTML has no remote runtime dependencies. Latest observations:24p71,800–72,750;48p60,100–60,200 steps. Service/GPU status inaccessible in this sandbox, so local observations are not mislabeled as verified live lifecycle state.
+- Verified 14 focused tests, no leakage/provenance blockers in lighter-model independent review; exported figures visually inspected; HTML has no remote runtime dependencies. Latest observations: 24p 71,800–72,750; 48p 60,100–60,200 steps. Service/GPU status inaccessible in this sandbox, so local observations are not mislabeled as verified live lifecycle state.
 
-## Production follow-up analysis (2026-10-11; current status)
+## Production follow-up analysis (status on 2026-10-11)
 
-- Seed101 training and fixed-block2 evaluation finished:5/8 raw wins,mean delta R²+.08008. The original qualification remains false because the0120 shuffled-label canary exceeded.020; diagnostics never overwrite that gate.
-- Frozen checkpoint SHA25630486b3e78c354596d7bb5f09ebf351805309b0e9505c88d7ed698145df7fbbe. Durable service`spectralfm-production-readouts` evaluates all7states×3readouts,then a predeclared small menu,raw-inclusive menu and multiscale policy with matched random controls. Seven small sets completed;4716-row labeled_data is running. W&B`m507ncw7`.
--100-permutation audit completed (`y4cftohx`):both real scores exceed all100 null scores; original failed shuffle42 reproduced; no exact duplicates or conflicting labels. This is diagnostic evidence,not a qualification override or proof against all leakage.
-- Gradient audit completed (`dwelzk1b`):prediction and each SIGReg gradient are comparable atblock2;each SIGReg term is roughly18times prediction atblock6. Measurements support investigating late objective balance,not automatically lowering regularization everywhere or extending training.
-- Offline report includes measured audit figures and partial depth curves,with pending results explicitly marked. Queue adds final policy tables/paired-gain plots and rebuilds it.32focused tests passed; independent lighter-model review checked selection/provenance and unchanged gate.
-- Plan:`docs/superpowers/plans/2026-10-11-production-analysis.md`. Next training decision awaits controlled-policy results and an independent labelled development criterion; none supplied yet. Benchmark follow-up is exploratory.
-- Completed follow-up:all21readouts and policies finished with exit0. Four-arm menu7/8meanrawgain+.093253;fixed2flat5/8+.080077;menu+raw7/8+.086825;multiscale5/8+.080146. Small0106/0114wins uncertain;0109loses. Final6flat2/8;largestdatasetblock2.95885→block6.67643. Offline report now includes completed analyses and recommendations. No new training/promotion;proposed paired continuation separates extra duration fromlowerSIGReg,with independent development labels still needed. Original gate unchanged.
+- Seed101 training and fixed-block2 evaluation finished: 5/8 raw wins, mean delta R² +.08008. The original qualification remains false because the 0120 shuffled-label canary exceeded .020; diagnostics never overwrite that gate.
+- Frozen checkpoint SHA256 30486b3e78c354596d7bb5f09ebf351805309b0e9505c88d7ed698145df7fbbe. Durable service `spectralfm-production-readouts` evaluates all 7 states × 3 readouts, then a predeclared small menu, raw-inclusive menu and multiscale policy with matched random controls. Seven small sets completed; 4716-row labeled_data is running. W&B `m507ncw7`.
+- 100-permutation audit completed (`y4cftohx`): both real scores exceed all 100 null scores; original failed shuffle42 reproduced; no exact duplicates or conflicting labels. This is diagnostic evidence, not a qualification override or proof against all leakage.
+- Gradient audit completed (`dwelzk1b`): prediction and each SIGReg gradient are comparable at block2; each SIGReg term is roughly 18 times prediction at block6. Measurements support investigating late objective balance, not automatically lowering regularization everywhere or extending training.
+- Offline report includes measured audit figures and partial depth curves, with pending results explicitly marked. Queue adds final policy tables/paired-gain plots and rebuilds it. 32 focused tests passed; independent lighter-model review checked selection/provenance and unchanged gate.
+- Plan: `docs/superpowers/plans/2026-10-11-production-analysis.md`. Next training decision awaits controlled-policy results and an independent labelled development criterion; none supplied yet. Benchmark follow-up is exploratory.
+- Completed follow-up: all 21 readouts and policies finished with exit 0. Four-arm menu 7/8 mean raw gain +.093253; fixed2 flat 5/8 +.080077; menu+raw 7/8 +.086825; multiscale 5/8 +.080146. Small 0106/0114 wins uncertain; 0109 loses. Final6 flat 2/8; largest dataset block2 .95885 → block6 .67643. Offline report now includes completed analyses and recommendations. No new training/promotion; proposed paired continuation separates extra duration from lower SIGReg, with independent development labels still needed. Original gate unchanged.
 
 ## Authorized continuation study (2026-10-11)
 
-- Four paired continuations launched as user systemd services:`spectralfm-continuation-{control,low-sigreg}-s{202,203}`. Same frozen101checkpoint,freshAdamW,99598additionalsteps,1000warmup,LR5e-5→5e-7,lambda.05/.01,alltrainingrows andunchangedsource/masking/batchrecipe. PhysicalGPUs0/1/2/4confirmedidlebeforelaunch,thenactive~6.5GB/92–93%utilization;UUIDpinned.
-- W&Bcontrol202`otcgb58r`,low202`8604lchm`,control203`rl1j6ygp`,low203`pqh525md`;groupcontinuation-study.14focusedtests andrealcheckpoint2stepsmoke passedwithfinitevalidationmetrics. Registrationcommittedbeforelaunchin82aa681.
-- Finalpipelinegradientaudit→allmean/seg4+flat2/6evaluation→fixed/menu/raw/randompolicycomparison→serializedreportrefresh. Predeclaredresearchcriterionrequiresconsistentbenefitonbothseedsandblock2preservation. Finalscoresremainpending;noautomaticdeploymentpromotionororiginalgatechange.
+- Four paired continuations launched as user systemd services: `spectralfm-continuation-{control,low-sigreg}-s{202,203}`. Same frozen 101 checkpoint, fresh AdamW, 99598 additional steps, 1000 warmup, LR 5e-5→5e-7, lambda .05/.01, all training rows and unchanged source/masking/batch recipe. Physical GPUs 0/1/2/4 confirmed idle before launch, then active ~6.5GB/92–93% utilization; UUID pinned.
+- W&B control202 `otcgb58r`, low202 `8604lchm`, control203 `rl1j6ygp`, low203 `pqh525md`; group continuation-study. 14 focused tests and real checkpoint 2-step smoke passed with finite validation metrics. Registration committed before launch in 82aa681.
+- Final pipeline: gradient audit → all mean/seg4 + flat2/6 evaluation → fixed/menu/raw/random policy comparison → serialized report refresh. Predeclared research criterion requires consistent benefit on both seeds and block2 preservation. Final scores remain pending; no automatic deployment promotion or original gate change.
 
 ## Final continuation recommendation (2026-10-12)
 
 - All four pipelines completed; config/checkpoint hashes and all eight policy datasets verified. Nine focused checks passed. Recommendation: retain original seed101, SIGReg .05, existing fixed block2 export; stop duration-only sweeps.
-- Fixed mean raw gain: baseline+.080077; control202/203+.081188/+.080210; low202/203+.079042/+.078723. Controls average only+.000622abovebaseline. Menu gains: baseline+.093253; controls+.084609/+.088908; low+.093238/+.089280. No new menu improves both seeds over baseline.
-- Predeclared research rule remains fixedduration_only/menuinconclusive; tiny duration gains do not justify automatic promotion. Final6flat winscontrol1/8each,low1/8and0/8. Lowerpredictionloss is not a downstream improvement. Original failed gate/export unchanged; independent group-disjoint labels still needed.
+- Fixed mean raw gain: baseline +.080077; control202/203 +.081188/+.080210; low202/203 +.079042/+.078723. Controls average only +.000622 above baseline. Menu gains: baseline +.093253; controls +.084609/+.088908; low +.093238/+.089280. No new menu improves both seeds over baseline.
+- Predeclared research rule remains fixed duration_only / menu inconclusive; tiny duration gains do not justify automatic promotion. Final6 flat wins control 1/8 each, low 1/8 and 0/8. Lower prediction loss is not a downstream improvement. Original failed gate/export unchanged; independent group-disjoint labels still needed.
 - Compiled recommendation: `docs/PRODUCTION_RECOMMENDATION.md`; offline report updated with the completed-study conclusion. No further experiments or deployment launched.
 
 ## Block-output plot and full production shortlist
 
-- Main “Where the signal lives” chapter now leads with seed101 flat/mean/seg4 at every state0–6; priorthree-seed plots explicitlyhistorical. Fourcontinuationdepthplots showmean/seg4allblocksandflat2/6withNaNgaps,neverinterpolatedunmeasuredscores. Twelvefocusedtests passed,includinggapregressionobservedRED→GREEN;originalfigurevisuallychecked.
-- Earlier48pseed2/block2flat isstrongesthistoricalfixedshortlist:7/8rawwins,meanΔ+.089366,remainingloss0106. Checkpoint`outputs/paired-long/p48_s2_20261008-161508/checkpoint_last.pt`. Current101menu7/8+.093253isadaptiveper-taskprocedure,notonefixedembedding. Current101export5/8+.080077 remainsunchangedandfailedqualification;nohistoricalcandidateautomaticallypromoted.
-- Plot win-visibility correction:seed101block6wins0055formean/seg4/flat (+.027498/+.161598/+.031408) and0114forseg4/flat (+.001785/+.000036). Previous axis scales obscured tiny0114gains;scorevaluesunchanged. Addedgreen-edgedwinningstars/exactperpaneldeltaannotations,explicitfrozenseed101cohorttitle,earlierpairedmodelsremainseparate. TinypositivewinregressionobservedRED→GREEN;13focusedchecks passed;renderedfigurevisuallyverified.
-- Earlierpaired24/48plotsalsohighlightindividualblock6winningseedswithstars/counts:three-seedmeanlinescanlosewhilesomeseedswin. Notesexplicitlyseparateindividualwinsfrommeanwins;flat6unmeasuredinthosepriorcohorts. No source scores changed.
+- Main "Where the signal lives" chapter now leads with seed101 flat/mean/seg4 at every state 0–6; prior three-seed plots explicitly historical. Four continuation depth plots show mean/seg4 all blocks and flat 2/6 with NaN gaps, never interpolated unmeasured scores. Twelve focused tests passed, including gap regression observed RED→GREEN; original figure visually checked.
+- Earlier 48p seed2/block2 flat is strongest historical fixed shortlist: 7/8 raw wins, mean Δ +.089366, remaining loss 0106. Checkpoint `outputs/paired-long/p48_s2_20261008-161508/checkpoint_last.pt`. Current 101 menu 7/8 +.093253 is adaptive per-task procedure, not one fixed embedding. Current 101 export 5/8 +.080077 remains unchanged and failed qualification; no historical candidate automatically promoted.
+- Plot win-visibility correction: seed101 block6 wins 0055 for mean/seg4/flat (+.027498/+.161598/+.031408) and 0114 for seg4/flat (+.001785/+.000036). Previous axis scales obscured tiny 0114 gains; score values unchanged. Added green-edged winning stars/exact per-panel delta annotations, explicit frozen seed101 cohort title, earlier paired models remain separate. Tiny positive win regression observed RED→GREEN; 13 focused checks passed; rendered figure visually verified.
+- Earlier paired 24/48 plots also highlight individual block6 winning seeds with stars/counts: three-seed mean lines can lose while some seeds win. Notes explicitly separate individual wins from mean wins; flat6 unmeasured in those prior cohorts. No source scores changed.
 
-## Frozen feature / head study launched (2026-10-12)
+## Frozen feature / head study launch (2026-10-12)
 
-- Userapprovednexttests. Eightcheckpoints:prior48p0/1/2,101,andfourcontinuations. SevenUUID-pinnedGPUqueues;slot0prior0thenlow203. Services`spectralfm-frozen-feature-slot0..6`verifiedactive. Allsevenfirstjobscompleted0055,baseline101also0106;noerrors. Preregistered34ffe23beforelaunch.
-- Fullflat/mean/seg4states0–6andexplicitpre-finalLayerNorm6features. Existingfamiliesonlyreusedafterfreshfeature/raw+block2OOFchecks;newlinearnested12-recipecontrolsunchanged. Secondaryfixed2Ridge/PLS/RBFheadsforraw/trained/random,same2×5outer/5innerfolds,learnedtransformsnested;primaryscoresunchanged.
--23focusedchecks plusrealprior2/0055smoke passed (cachedblock2R².6619529858059501reproduced). Checkpoint/configsourcesregistered,states/JSON/OOFs/W&Bfigureslocal;offlineHTMLnewchaptershowsprogressandfullresultswhenready. Spec/plan`docs/superpowers/*/2026-10-12-frozen-feature-study.md`;outputs`outputs/frozen-feature-study/`.
-- No newpretraining/export/gatemutation. Projectorpilot awaitsfrozenevidence. Headphase isCPU-heavyon4716rows;nofirmfinishestimateyet. Fullstudyresultsremainpending.
+- User approved next tests. Eight checkpoints: prior 48p 0/1/2, 101, and four continuations. Seven UUID-pinned GPU queues; slot0 prior0 then low203. Services `spectralfm-frozen-feature-slot0..6` verified active. All seven first jobs completed 0055, baseline 101 also 0106; no errors. Preregistered 34ffe23 before launch.
+- Full flat/mean/seg4 states 0–6 and explicit pre-final LayerNorm 6 features. Existing families only reused after fresh feature/raw+block2 OOF checks; new linear nested 12-recipe controls unchanged. Secondary fixed2 Ridge/PLS/RBF heads for raw/trained/random, same 2×5 outer/5 inner folds, learned transforms nested; primary scores unchanged.
+- 23 focused checks plus real prior2/0055 smoke passed (cached block2 R² .6619529858059501 reproduced). Checkpoint/config sources registered, states/JSON/OOFs/W&B figures local; offline HTML new chapter shows progress and full results when ready. Spec/plan `docs/superpowers/*/2026-10-12-frozen-feature-study.md`; outputs `outputs/frozen-feature-study/`.
+- No new pretraining/export/gate mutation. Projector pilot awaits frozen evidence. Head phase is CPU-heavy on 4716 rows; no firm finish estimate yet. Full study results remain pending.
 
 ## Completed frozen-feature study
 
-- All8jobs completed64linear+64head datasetoutputs. Everycheckpoint'sbestfixedfamily remainsblock2-flat;priorseed2leader7/8,+.089366. Fullflatcoverage andpre-finalLNreadouts uncoverednoreplacement;normalizationchangesmixed.
-- Secondarystandardizedheadmenu4–6/8. LDsecondaryraw.7625vsprimaryraw.8301while101trained.9588both;reportshowsbothcomparators. Preservingprimarylinearrecipesinaninner-selectedunionstill5–6/8;priorseed2trainedregresses.00994meanR². No stronger decoder established.
-- Exactcachedfour-readoutselectorreplaymatchesknown101predictions;prior0/1/2menu7/6/6wins. No8/8solution. Machine summaries/CSVs/menu+unionOOFs savedunderfrozenoutputs. Originalexport/gateunchanged.
-- Nextprojection-spacepilotdesignsaved`docs/superpowers/specs/2026-10-12-projection-space-pilot.md`;regularization-onlyhead,preservebackboneMSE/invariance,matched301/302seedsand49,799stepproposedbudget. No newtraining launched.
+- All 8 jobs completed 64 linear + 64 head dataset outputs. Every checkpoint's best fixed family remains block2-flat; prior seed2 leader 7/8, +.089366. Full flat coverage and pre-final LN readouts uncovered no replacement; normalization changes mixed.
+- Secondary standardized head menu 4–6/8. LD secondary raw .7625 vs primary raw .8301 while 101 trained .9588 both; report shows both comparators. Preserving primary linear recipes in an inner-selected union still 5–6/8; prior seed2 trained regresses .00994 mean R². No stronger decoder established.
+- Exact cached four-readout selector replay matches known 101 predictions; prior 0/1/2 menu 7/6/6 wins. No 8/8 solution. Machine summaries/CSVs/menu+union OOFs saved under frozen outputs. Original export/gate unchanged.
+- Next projection-space pilot design saved `docs/superpowers/specs/2026-10-12-projection-space-pilot.md`; regularization-only head, preserve backbone MSE/invariance, matched 301/302 seeds and 49,799 step proposed budget. No new training launched.
 
-## Active projection pilot (2026-10-12)
+## Projection pilot launch (2026-10-12)
 
 - User authorized launch. Registration/code commit `b38accf`; plan `docs/superpowers/plans/2026-10-12-projection-space-pilot.md` and hashed registration under `docs/superpowers/registrations/`.
-- Four matched runs from prior48pseed2: seeds301/302 × control/projected,49,799 additional steps, fresh AdamW,1000 warmup,LR5e-5→5e-7. SIGReg .05; only its token/pooled inputs move through256→512→128 MLP. Backbone prediction/invariance, full eligible samples and source/masking/batch recipe preserved.
-- Durable services `spectralfm-projection-{control,projected}-s{301,302}`, pinned to healthy physicalGPUs0/1/2/4 by UUID. W&B control301 `3be6orej`, projected301 `pft83led`, control302 `15o7a28q`, projected302 `49r2flsr`; group `projection-pilot`.
-- Automatic final gradient audit → all-block/raw/random evaluation → fixed-menu comparisons → report refresh. Outputs `outputs/projection-pilot/`. Fixed2 primary,flat6 secondary; no automatic export/gate replacement. Independent release validation still absent.
-- Verification:64 regression checks plus8 final report/config checks; real-source GPU smoke and50-step projected AMP calibration finite, one early scaler reduction. Online geometry, weighted per-term block2/6 gradients and AMP skipped-update counters logged.
-- Live launch verification:all four active,650–700steps,finite losses/gradient norms; initial AMP skips3–5 logged. Training estimate2–3hours from initial throughput, followed by evaluation. Resolved training rows12,748,642; source mass .5/.5.
+- Four matched runs from prior 48p seed2: seeds 301/302 × control/projected, 49,799 additional steps, fresh AdamW, 1000 warmup, LR 5e-5→5e-7. SIGReg .05; only its token/pooled inputs move through 256→512→128 MLP. Backbone prediction/invariance, full eligible samples and source/masking/batch recipe preserved.
+- Durable services `spectralfm-projection-{control,projected}-s{301,302}`, pinned to healthy physical GPUs 0/1/2/4 by UUID. W&B control301 `3be6orej`, projected301 `pft83led`, control302 `15o7a28q`, projected302 `49r2flsr`; group `projection-pilot`.
+- Automatic final gradient audit → all-block/raw/random evaluation → fixed-menu comparisons → report refresh. Outputs `outputs/projection-pilot/`. Fixed2 primary, flat6 secondary; no automatic export/gate replacement. Independent release validation still absent.
+- Verification: 64 regression checks plus 8 final report/config checks; real-source GPU smoke and 50-step projected AMP calibration finite, one early scaler reduction. Online geometry, weighted per-term block2/6 gradients and AMP skipped-update counters logged.
+- Live launch verification: all four active, 650–700 steps, finite losses/gradient norms; initial AMP skips 3–5 logged. Training estimate 2–3 hours from initial throughput, followed by evaluation. Resolved training rows 12,748,642; source mass .5/.5.
 
 ## Projection pilot final analysis
 
-- All four pipelines completed; source/config/final checkpoint hashes and 32 dataset evaluations verified. All21fixedreadouts measured for every run. Training49,799steps; AMP skips20/22/22/22logged, final loss/gradient finite.
-- Fixed2 means vsraw:controls301/302+.086476/+.083507;projected+.081446/+.081329. Pairedproject-control−.005030/−.002178;primary+.005both criterionfails. All7/8wins,loss0106. Startingprior2+.089366 remains fixedshortlist; noexport/gatechange.
-- Secondaryflat6recovers3/8bothprojectedvscontrol1/8and0/8,mean gains+.067447/+.170884. Block2 remains strongestfixedfamilyeveryrun. Menucontrol7/6wins/projected6/6;notrobustreplacement.
-- PredictionMSE~32%lowerprojectedbutbodypooledrank128–130vs145;finalblock6tokenSIG/MSEgradientratio39–44vs15–16. Noevidenceheadabsorbsregularizationpressure orimprovesisotropy. Paired0113regression−.020542±.008374/−.019208±.010080;secondnarrowlyabove materialcutoff,primaryfailsregardless.
-- Recommendationstopthisrecipe/noextraepochs;priorseed2fixed2requireslockedindependentgroupvalidation. Originalseed101export/gateunchanged. OfflineHTMLpairedgains/fullblockplots/scorematrix/historiesupdated. Reproducibleanalysis`scripts/projection_pilot_analysis.py`;machineJSONunderpilotoutputs.
+- All four pipelines completed; source/config/final checkpoint hashes and 32 dataset evaluations verified. All 21 fixed readouts measured for every run. Training 49,799 steps; AMP skips 20/22/22/22 logged, final loss/gradient finite.
+- Fixed2 means vs raw: controls 301/302 +.086476/+.083507; projected +.081446/+.081329. Paired project-control −.005030/−.002178; primary +.005 both criterion fails. All 7/8 wins, loss 0106. Starting prior2 +.089366 remains fixed shortlist; no export/gate change.
+- Secondary flat6 recovers 3/8 both projected vs control 1/8 and 0/8, mean gains +.067447/+.170884. Block2 remains strongest fixed family every run. Menu control 7/6 wins / projected 6/6; not robust replacement.
+- Prediction MSE ~32% lower projected but body pooled rank 128–130 vs 145; final block6 token SIG/MSE gradient ratio 39–44 vs 15–16. No evidence head absorbs regularization pressure or improves isotropy. Paired 0113 regression −.020542±.008374/−.019208±.010080; second narrowly above material cutoff, primary fails regardless.
+- Recommendation: stop this recipe / no extra epochs; prior seed2 fixed2 requires locked independent group validation. Original seed101 export/gate unchanged. Offline HTML paired gains/full block plots/score matrix/histories updated. The analysis script (`scripts/projection_pilot_analysis.py`) was retired in the cleanup; machine JSON under pilot outputs is the record.
 
-Final paired summary and six measured figures published to W&B: https://wandb.ai/hcohen/spectralfm-lejepa/runs/e72aiwt3.
+Later work (2026-10-13 onward): see CLAUDE.md and docs/superpowers/specs/2026-10-13-*.md.

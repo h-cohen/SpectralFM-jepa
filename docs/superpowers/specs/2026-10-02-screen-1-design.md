@@ -1,7 +1,7 @@
 # Screen 1 — which change closes the gap to data2vec on labeled_data?
 
 Date: 2026-10-02
-Status: approved in brainstorming, pending written-spec review
+Status (2026-10-13): completed. Historical record; current state is in CLAUDE.md.
 Builds on: `2026-10-02-lejepa-spectralfm-design.md` (baseline spec)
 
 ## 1. Goal
