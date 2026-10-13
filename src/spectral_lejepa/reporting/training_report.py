@@ -90,8 +90,6 @@ def candidates():
     fig, (a, b) = plt.subplots(1, 2, figsize=(13, 3.6))
     a.bar(x - .2, raw_w, .4, label='wins vs raw', color='#3a6ea5')
     a.bar(x + .2, rnd_w, .4, label='wins vs random weights', color='#9db4d0')
-    a.axhline(5, color='k', lw=.8, ls=':')
-    a.text(len(x) - .5, 5.1, 'contract: 5/8', ha='right', fontsize=8)
     a.set(xticks=x, xticklabels=names, ylim=(0, 8.6), ylabel='datasets (of 8)', title='Win counts')
     a.legend(frameon=False, loc='lower left', fontsize=8)
     b.bar(x, d, color=['#888'] * 5 + ['#c0504d'] * 3)

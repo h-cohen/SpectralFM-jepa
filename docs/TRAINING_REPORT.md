@@ -27,6 +27,8 @@ flowchart LR
 | 0114 | 230 | .983 | .982 | .986 | +.002 ± .001 |
 | 0120 | 125 | .380 | .354 | .405 | +.025 ± .054 |
 
+Shaded cells (HTML): the robust ensemble beats raw on that set.
+
 ![Ensemble R²](figures/training-report/fig5_ensemble_r2.svg)
 
 **Figure 1.** R² of raw spectra, the random-weight encoder and the robust ensemble; the labels show Δ vs raw. On labeled_data, the architecture and readout already reach .949 with random weights. Training adds most on 0113, 0055, 0112 and 0120.

@@ -36,7 +36,11 @@ def table(rows):
     cells = [[c.strip() for c in r.strip().strip('|').split('|')] for r in rows]
     align = ['num' if re.fullmatch(r':?-+:', c) else '' for c in cells[1]]
     head = ''.join(f'<th class="{a}">{inline(c)}</th>' for c, a in zip(cells[0], align))
-    body = ''.join('<tr>' + ''.join(f'<td class="{a}">{inline(c)}</td>' for c, a in zip(r, align)) + '</tr>'
+    # Results tables: shade the model's R² and its gain wherever the model beats raw spectra.
+    delta = [j for j, c in enumerate(cells[0]) if c.startswith('Δ vs raw')]
+    marked = delta + [j for j, c in enumerate(cells[0]) if 'ensemble R²' in c]
+    cls = lambda r, j: align[j] + (' win' if delta and j in marked and r[delta[0]].startswith('+') else '')
+    body = ''.join('<tr>' + ''.join(f'<td class="{cls(r, j)}">{inline(c)}</td>' for j, c in enumerate(r)) + '</tr>'
                    for r in cells[2:])
     return f'<div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
@@ -132,17 +136,17 @@ PAGE = '''<title>{title}</title>
 /* Layout: lab-notebook report, one 70ch reading column with a sticky section index on wide screens. */
 :root {{
   --bg: #f6f8f9; --surface: #ffffff; --fg: #18232b; --muted: #55646f; --rule: #d5dde2;
-  --accent: #2f5f8f; --accent-2: #b0473f; --code-bg: #eaeff2;
+  --accent: #2f5f8f; --accent-2: #b0473f; --code-bg: #eaeff2; --win-bg: #dcefe0; --win-fg: #1d5a32;
   --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
   --body: "Source Serif 4", Georgia, "Times New Roman", serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }}
 @media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{
   --bg: #11171c; --surface: #18212868; --fg: #dde5ea; --muted: #94a3ad; --rule: #2c3a44;
-  --accent: #7fb0de; --accent-2: #e08a7f; --code-bg: #1c2730; color-scheme: dark }} }}
+  --accent: #7fb0de; --accent-2: #e08a7f; --code-bg: #1c2730; --win-bg: #1f3a29; --win-fg: #9fdcb0; color-scheme: dark }} }}
 :root[data-theme="dark"] {{
   --bg: #11171c; --surface: #18212868; --fg: #dde5ea; --muted: #94a3ad; --rule: #2c3a44;
-  --accent: #7fb0de; --accent-2: #e08a7f; --code-bg: #1c2730; color-scheme: dark }}
+  --accent: #7fb0de; --accent-2: #e08a7f; --code-bg: #1c2730; --win-bg: #1f3a29; --win-fg: #9fdcb0; color-scheme: dark }}
 body {{ background: var(--bg); color: var(--fg); font: 17px/1.6 var(--body); }}
 .wrap {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.5rem; max-width: 76rem;
   margin: 0 auto; padding-inline: 16px; padding-block: 2rem 4rem; }}
@@ -176,6 +180,7 @@ th {{ text-align: left; font-weight: 600; border-bottom: 1.5px solid var(--fg); 
 td {{ border-bottom: 1px solid var(--rule); padding: 0.4rem 0.7rem 0.4rem 0; vertical-align: top; }}
 td.num, th.num {{ text-align: right; font-family: var(--mono); font-size: 0.84rem; }}
 td code {{ font-size: 0.8rem; }}
+td.win {{ background: var(--win-bg); color: var(--win-fg); font-weight: 600; }}
 figure {{ margin: 1.8rem 0; }}
 .plate {{ background: #ffffff; border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem; overflow-x: auto; }}
 .plate img {{ display: block; width: 100%; min-width: 34rem; height: auto; }}
