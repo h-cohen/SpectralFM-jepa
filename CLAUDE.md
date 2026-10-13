@@ -48,6 +48,7 @@ Each study has a spec or plan under `docs/superpowers/`, outputs under `outputs/
 - `models/`: tokenizer, masking, shared encoder and predictor, TorchScript export.
 - `training/`: objective (`loss.py`), loop (`trainer.py`), pretrain entry point, checkpointing, diagnostics, gradient terms and audit.
 - `evaluation/`: feature banks, nested probes, paired bootstrap, ensembles, gate, permutation audit, perturbation suite.
+- Embedding suite: `python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml`, then `embedding-figures`. It runs the previous project's cosine-similarity and noise metrics from its pinned commit (`evaluation/legacy.py`), with outputs in `outputs/embedding-eval/`.
 - `reporting/`: results report and its `sections/`, scorecards, training report (figures + HTML), architecture diagram. All build from saved outputs.
 - `ops/launch_final_model.sh`: durable final pipeline. `configs/`: YAML configs. `tests/` mirrors the package.
 - Training report: `docs/TRAINING_REPORT.md` and `.html`; rebuild with `python -m spectral_lejepa training-report` (`fetch` first, via `bash -ic`) and `training-report-html`. Corpus details: `docs/DATASETS.md`.

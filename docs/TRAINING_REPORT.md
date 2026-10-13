@@ -297,7 +297,68 @@ flowchart TB
 | Preferred over the original ensemble: raw wins ≥ 7 and random wins ≥ 7 | 8/8, 8/8 (original: 7, 6) | yes |
 | Each new member's 1%-noise drift ≤ 0.5× its start | .015/.093, .014/.091, .015/.090 | yes |
 
-## 9. Limitations
+## 9. Embedding similarity and noise robustness
+
+The previous project's geometry metrics, run on the four robust members with `python -m spectral_lejepa evaluate --suite embedding` (spec `docs/superpowers/specs/2026-10-14-embedding-similarity-noise-design.md`).
+
+- **Reuse.** Metric code is the old `eval.runner` code, executed unchanged from commit `6237feb`.
+- **Inputs.** Each spectrum gets the old per-spectrum layer norm and the old noise. It is then mapped back to raw units and given our global normalization.
+- **Readouts.** Block-2 mean (256 values) and block-2 flat (12,288 values).
+- **Ensemble.** The ensemble value is the mean of the four members' scores.
+- **Deviation.** Noise draws are seeded per type; the old code was unseeded.
+- **Outputs.** `outputs/embedding-eval/` (one figure folder per dataset).
+
+```mermaid
+flowchart LR
+    R["raw spectrum"] --> LN["per-spectrum layer norm<br/>(old input space)"]
+    LN --> NZ["old noise type<br/>(NOISE_CONFIGS)"]
+    NZ --> DN["× σᵢ + μᵢ<br/>back to raw units"]
+    DN --> G["global normalization"] --> E["encoder blocks 1–2"]
+    R --> G2["global normalization"] --> E2["encoder blocks 1–2"]
+    E --> C["cosine(clean, noisy)<br/>block2 mean / flat"]
+    E2 --> C
+```
+
+### Noise robustness
+
+The table shows ensemble cosine(clean, noisy) per noise type, as a range over the 12 sets. Columns: block-2 mean, then block-2 flat.
+
+| Noise type (old definition, normalized space) | Block-2 mean | Block-2 flat |
+|---|---|---|
+| gaussian_std: + N(0, 0.01) | 1.00 | 1.00 |
+| gain_low / gain_high: × N(1, 0.05) / × N(1, 0.1) | ≥ .997 | ≥ .997 |
+| gaussian_mean: + N(2, 0.001), a 2-SD offset | .60–.90 | .54–.90 |
+| shot_low: Poisson, scale 0.1 | .17–.71 | .18–.66 |
+| shot_high: Poisson, scale 0.05 | .17–.53 | .15–.51 |
+
+![Noise summary](figures/embedding-eval/summary_noise.svg)
+
+**Figure 7. Ensemble noise cosine per set and noise type.**
+- **Small perturbations.** Small Gaussian noise and ±5–10% gain leave both readouts unchanged.
+- **Offset and Poisson noise.** A 2-SD offset and the old Poisson shot noise move the features substantially. Shot noise at these scales replaces most of each normalized spectrum's structure.
+- **Hardest sets.** Shot noise moves the features most on labeled_data, in_dist, sanity, multi_ch and 0106. Cosines there are .15–.27.
+- **Readouts.** Block-2 flat behaves like block-2 mean, slightly lower on the single-channel sets.
+- **No reference.** Raw-input or random-weight references were not part of this request. The cosines therefore describe stability, not whether that stability helps prediction.
+
+### Similarity
+
+- **Stack retrieval.** Top-5 same-stack retrieval is at chance in both input space and embedding space:
+
+  | Set | Input | Block-2 mean | Block-2 flat | Chance (9/(N−1)) |
+  |---|---|---|---|---|
+  | sanity (N = 100) | .080 | .087 | .091 | .091 |
+  | in_dist (N = 500) | .016 | .015 | .014 | .018 |
+
+  The old "stack" (10 consecutive manifest rows) carries no detectable structure in these manifests, so this metric does not inform model choice here.
+- **Pairwise cosines.** Same-stack, random and same-position pairs have overlapping distributions. They centre near zero in input space and lie at .5–1.0, mostly above .7, for both readouts, because the features share one dominant direction (`outputs/embedding-eval/figures/sanity/cosine_distributions.svg`).
+
+![Panel](figures/embedding-eval/panel.svg)
+
+**Figure 8. The fixed 100-spectrum panel** (seed 42, robust_s401).
+- **Raw cosines.** Block-2 cosines are high everywhere, because of the shared direction.
+- **Mean-centred cosines.** After centring, components within multi_channel, sampled_data and labeled_data form clear diagonal blocks, as they do in input space. Single-channel stacks show weaker blocks.
+
+## 10. Limitations
 
 - **Retrospective selection.** About ten studies used the same eight sets. Bootstrap SDs reflect row sampling only, not selection or seed variance.
 - **Small sets.** n is 25–230, and the wins on 0055, 0106, 0112, 0114 and 0120 are below 1 SD.
@@ -305,7 +366,9 @@ flowchart TB
 - **Transductive evaluation.** Unseen instruments or sources are not measured.
 - **Cost.** Inference runs four members of 1.59M parameters each, two blocks per member.
 
-Next: run the evaluation suite on the ensemble (noise robustness, signal reconstruction), then validate on an independent group-labelled holdout.
+- **Geometry, not accuracy.** The section 9 metrics are geometry; stability under the old noise types is not a probe-accuracy result. Signal reconstruction was not run, because no decoder exists for this encoder.
+
+Next: validate on an independent group-labelled holdout.
 
 ## References
 

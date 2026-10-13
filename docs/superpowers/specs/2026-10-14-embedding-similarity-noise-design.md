@@ -1,6 +1,6 @@
 # Embedding similarity and noise robustness — design, 2026-10-14
 
-Status: proposed, awaiting user review. It depends on the repository restructure (`2026-10-14-repo-restructure-design.md`).
+Status: implemented 2026-10-14. Results are in `docs/TRAINING_REPORT.md` section 9; outputs are in `outputs/embedding-eval/`. Stack retrieval was at chance for input and embeddings, so that metric is uninformative on these manifests.
 
 ## Goal
 

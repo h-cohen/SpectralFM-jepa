@@ -15,9 +15,9 @@ plt.rcParams.update({'font.size': 9, 'axes.spines.top': False, 'axes.spines.righ
                      'svg.fonttype': 'none', 'svg.hashsalt': 'spectralfm'})   # reproducible SVG ids
 
 
-def _save(fig, path):
+def _save(fig, path, top=1.0):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, top))
     fig.savefig(path, metadata={'Date': None})
     plt.close(fig)
     return path
@@ -81,7 +81,7 @@ def distribution_figure(root, members, s, path):
         ax.set(title=space, xlabel='cosine')
     axes[0].legend(frameon=False, fontsize=7)
     fig.suptitle(f'{s}: pairwise cosine, members pooled', fontsize=9)
-    return _save(fig, path)
+    return _save(fig, path, top=.9)
 
 
 def panel_figure(root, path):
@@ -96,7 +96,7 @@ def panel_figure(root, path):
         ax.set(title=n.split('/', 1)[1], xticks=[], yticks=[])
     fig.suptitle(f'Structured 100-spectrum panel ({PANEL_MODEL}); blocks: single_channel_all, multi_channel, '
                  'sampled_data, labeled_data', fontsize=9)
-    return _save(fig, path)
+    return _save(fig, path, top=.9)
 
 
 def summary_figure(rows, path):
