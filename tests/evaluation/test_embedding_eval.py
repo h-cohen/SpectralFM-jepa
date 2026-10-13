@@ -56,3 +56,11 @@ def test_evaluate_model_on_synthetic_data():
     out = evaluate_model(build_model(MODEL, 245), ck, data, cfg, {'noise': Legacy, 'sim': None})
     for r in ('block2_mean', 'block2_flat'):
         assert 0.9 < out['noise']['toy'][r]['gaussian_std'] <= 1.0
+
+
+def test_ensemble_refuses_a_missing_member():
+    from spectral_lejepa.evaluation.embedding_eval import ensemble_rows
+    rows = [('a', 's', 'block2_flat', 'm', 1.0), ('b', 's', 'block2_flat', 'm', 3.0)]
+    assert ensemble_rows(rows, ['a', 'b']) == [('ensemble', 's', 'block2_flat', 'm', 2.0)]
+    with pytest.raises(ValueError, match='expected'):
+        ensemble_rows(rows[:1], ['a', 'b'])

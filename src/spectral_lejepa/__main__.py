@@ -16,11 +16,13 @@ COMMANDS = {
     'report': 'spectral_lejepa.reporting.results',
     'training-report': 'spectral_lejepa.reporting.training_report',
     'training-report-html': 'spectral_lejepa.reporting.training_report_html',
+    'embedding-figures': 'spectral_lejepa.reporting.embedding_figures',
 }
 
 # Commands whose main() parses no options, with the positional words each accepts. Help is answered
 # here so that `--help` never starts the job.
-NO_OPTIONS = {'training-report': ('fetch',), 'training-report-html': (), 'noise-calibration': (), 'perturbation': ()}
+NO_OPTIONS = {'training-report': ('fetch',), 'training-report-html': (), 'noise-calibration': (), 'perturbation': (),
+              'embedding-figures': ()}
 USAGE = 'usage: python -m spectral_lejepa {' + ','.join(COMMANDS) + '} [args]\n'
 HELP = ('-h', '--help')
 
