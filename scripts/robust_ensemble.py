@@ -18,7 +18,7 @@ import yaml
 
 from spectral_lejepa.config import load_config
 from spectral_lejepa.training.checkpoint import sha256_file
-from scripts.continuation_study import write_json
+from spectral_lejepa.utils.io import write_json
 from scripts.robustness_continuation import ROOT as PILOT, STEPS, training_config
 
 ROOT = Path('outputs/robust-ensemble')

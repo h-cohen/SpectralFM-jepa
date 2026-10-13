@@ -37,7 +37,7 @@ def run_audit(checkpoint, device="cuda", seed=SEED):
     inputs = torch.cat(batches).numpy()
     model.to(device).eval()
     objective = LeJEPAObjective(*(train_cfg[k] for k in ("lambda_sigreg", "sigreg_num_slices", "sigreg_knots",
-        "sigreg_t_max", "global_weight", "regularizer", "visreg_slices", "visreg_lambda")),
+        "sigreg_t_max", "global_weight")),
         (train_cfg.get("robust") or {}).get("weight", 0.0)).to(device).eval()
     masking_cfg = cfg["masking"]
     global_cfg = {"views": train_cfg["global_views"], "keep": train_cfg["global_keep"]}
@@ -58,7 +58,7 @@ def run_audit(checkpoint, device="cuda", seed=SEED):
         "source": {"checkpoint": str(checkpoint), "checkpoint_sha256": sha256_file(checkpoint),
                    "checkpoint_step": int(ckpt["step"]), "config_sha256": hashlib.sha256(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()},
         "config": {"lambda_sigreg": train_cfg["lambda_sigreg"], "global_weight": train_cfg["global_weight"],
-                   "regularizer": train_cfg["regularizer"], "sigreg_num_slices": train_cfg["sigreg_num_slices"],
+                   "sigreg_num_slices": train_cfg["sigreg_num_slices"],
                    "sigreg_knots": train_cfg["sigreg_knots"], "sigreg_t_max": train_cfg["sigreg_t_max"],
                    "global_views": train_cfg["global_views"], "global_keep": train_cfg["global_keep"],
                    "masking": masking_cfg},

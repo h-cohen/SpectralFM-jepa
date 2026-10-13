@@ -19,7 +19,7 @@ from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset,
                            source_row_probs, subsample, valid_subset)
 from ..data.perturb import check_config, perturb
 from ..models.masking import make_mask, random_mask
-from ..models.vit_1d import build_model
+from ..models.vit_1d import build_model, core_model_config
 from ..utils import wandb as wb
 from . import diagnostics as diag
 from .checkpoint import load_checkpoint, save_checkpoint, sha256_file
@@ -87,8 +87,6 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
     totals = {"loss": 0.0, "mse_loss": 0.0, "sigreg_loss": 0.0}
     if global_cfg:
         totals.update(global_inv_loss=0.0, global_sigreg_loss=0.0, global_loss=0.0)
-    if objective.regularizer == "visreg":
-        totals.update(reg_center=0.0, reg_scale=0.0, reg_shape=0.0)
     if robust_cfg:
         totals["robust_loss"] = 0.0
     n_batches = 0
@@ -100,7 +98,6 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
         with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
             out = model(x, masked_idx, visible_idx, view_idxs, robust_x, (robust_cfg or {}).get("block", 2))
         losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
-                           reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'),
                            robust=out.get("robust"))
         for k in totals:
             totals[k] += losses[k].item()
@@ -109,8 +106,7 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
     return {f"valid/{k}": v / n_batches for k, v in totals.items()}
 
 
-def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, reference_rank,
-                    objective=None, global_cfg=None):
+def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, reference_rank):
     """Log representation statistics and retain the initial rank as a collapse reference."""
     model.eval()
     reps = diag.encode(model, valid_signals, device)
@@ -123,10 +119,6 @@ def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, 
         reference_rank = pooled["effective_rank"]
     alert = diag.collapse_alert(pooled, reference_rank)
     metrics["representation/collapse_alert"] = int(alert)
-    if model.sigreg_projector is not None and objective is not None:
-        from .projection_diagnostics import run_projection_diagnostics
-        metrics.update(run_projection_diagnostics(run,model,objective,valid_signals,masking_cfg,
-                                                  global_cfg,step,seed,device))
     if alert:
         text = (f"step {step}: std={pooled['std']:.3g}, effective_rank={pooled['effective_rank']:.3g} "
                 f"(step-0 rank {reference_rank:.3g})")
@@ -148,30 +140,13 @@ def load_init_checkpoint(path, cfg) -> dict | None:
         return None
     ckpt = load_checkpoint(path)
     old = ckpt["config"]
-    head_keys = {'sigreg_projector', 'sigreg_projector_hidden_dim', 'sigreg_projector_dim'}
-    old_mode, new_mode = old['model'].get('sigreg_projector','none'), cfg['model'].get('sigreg_projector','none')
-    initialize_head = old_mode == 'none' and new_mode in ('control','mlp')
-    same_base = {k:v for k,v in old['model'].items() if k not in head_keys} == {k:v for k,v in cfg['model'].items() if k not in head_keys}
-    if old["model"] != cfg["model"] and not (same_base and (initialize_head or old_mode == new_mode == 'none')):
+    if core_model_config(old["model"]) != core_model_config(cfg["model"]):
         raise ValueError(f"training.init_checkpoint model config differs from this run: "
                          f"{old['model']} vs {cfg['model']}")
     if old["data"]["normalization"] != cfg["data"]["normalization"]:
         raise ValueError(f"training.init_checkpoint data.normalization is {old['data']['normalization']!r}, "
                          f"this run uses {cfg['data']['normalization']!r}")
-    return {"ckpt": ckpt, "info": {"path": str(path), "sha256": sha256_file(path), "step": ckpt["step"],
-                                    'initialize_sigreg_projector': initialize_head}}
-
-
-def initialize_weights(model, initial, resume=False):
-    if resume or not initial['info'].get('initialize_sigreg_projector'):
-        model.load_state_dict(initial['ckpt']['model'])
-        return
-    allowed = {'sigreg_projector.'+k for k in model.sigreg_projector.state_dict()}
-    if any(k.startswith('sigreg_projector.') for k in initial['ckpt']['model']):
-        raise ValueError('Unexpected head weights during initialization')
-    result = model.load_state_dict(initial['ckpt']['model'], strict=False)
-    if set(result.missing_keys) != allowed or result.unexpected_keys:
-        raise ValueError(f'Invalid initialization keys: {result}')
+    return {"ckpt": ckpt, "info": {"path": str(path), "sha256": sha256_file(path), "step": ckpt["step"]}}
 
 
 def load_resume_checkpoint(path, cfg):
@@ -212,6 +187,8 @@ def restore_optimization(ckpt, optimizer, scheduler, scaler):
 def train(cfg: dict) -> dict:
     ecfg, dcfg, mcfg, kcfg, tcfg = (cfg[k] for k in ("experiment", "data", "model", "masking", "training"))
     make_mask(kcfg, 1, mcfg["num_patches"])   # validates the masking config before any work
+    if tcfg.get("regularizer", "sigreg") != "sigreg":   # VISReg was retired; saved configs still carry the key
+        raise ValueError(f"training.regularizer={tcfg['regularizer']!r} is retired; only 'sigreg' is supported")
     if tcfg["optimizer"] != "adamw":
         raise ValueError(f"training.optimizer={tcfg['optimizer']!r}: only 'adamw' is implemented")
     global_cfg = None
@@ -300,11 +277,10 @@ def train(cfg: dict) -> dict:
 
     model = build_model(mcfg, dcfg["sequence_length"])
     if init:
-        initialize_weights(model, init, resume=bool(resume))
+        model.load_state_dict(init["ckpt"]["model"])
     model = model.to(device)
     objective = LeJEPAObjective(tcfg["lambda_sigreg"], tcfg["sigreg_num_slices"],
                                 tcfg["sigreg_knots"], tcfg["sigreg_t_max"], tcfg["global_weight"],
-                                tcfg["regularizer"], tcfg["visreg_slices"], tcfg["visreg_lambda"],
                                 (robust_cfg or {}).get("weight", 0.0)).to(device)
     optimizer = torch.optim.AdamW(param_groups(model, tcfg["weight_decay"]), lr=tcfg["learning_rate"])
     scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
@@ -319,8 +295,7 @@ def train(cfg: dict) -> dict:
 
     start_step = resume["ckpt"]["step"] if resume else 0
     latest, reference_rank = {}, None
-    metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, start_step, seed, device, reference_rank,
-                                            objective,global_cfg)
+    metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, start_step, seed, device, reference_rank)
     latest.update(metrics)
     skipped_updates = resume['ckpt'].get('metrics',{}).get('amp_skipped_updates',0) if resume else 0
 
@@ -368,7 +343,6 @@ def train(cfg: dict) -> dict:
             with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
                 out = model(x, masked_idx, visible_idx, view_idxs, robust_x, robust_block)
             losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
-                               reg_target=out.get('sigreg_target'), reg_views=out.get('sigreg_views'),
                                robust=out.get("robust"))
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(losses["loss"]).backward()
@@ -405,7 +379,7 @@ def train(cfg: dict) -> dict:
                 wb.log(run, valid, step=step)
             if step % tcfg["diag_every"] == 0 or last:
                 metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, step,
-                                                          seed, device, reference_rank,objective,global_cfg)
+                                                          seed, device, reference_rank)
                 latest.update(metrics)
             if step % tcfg["ckpt_every"] == 0 or last:
                 checkpoint(step, epoch)

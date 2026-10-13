@@ -272,7 +272,7 @@ def main(argv=None):
         for seed, stamp, resumed in [(0, '100813', 'wxrdfq4n'), (1, '100812', 'wuw24e91')]:
             cfg = json.loads((ROOT / f'outputs/long-1/eval/lr50_s{seed}_20261007-{stamp}_step200000/summary.json').read_text())
             sources[seed] = [cfg['lineage']['pretraining_run_id'], resumed]
-    cfg = __import__('yaml').safe_load((ROOT / 'configs/long1_resume_s0.yaml').read_text())
+    cfg = __import__('yaml').safe_load((ROOT / 'configs/final_model.yaml').read_text())
     total = 497990
     run, resuming = init_presentation_run(wandb, sources, cfg, total)
     print('Presentation URL:', run.url, flush=True)

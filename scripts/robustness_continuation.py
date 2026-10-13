@@ -17,7 +17,7 @@ import yaml
 
 from spectral_lejepa.config import load_config
 from spectral_lejepa.training.checkpoint import sha256_file
-from scripts.continuation_study import write_json
+from spectral_lejepa.utils.io import write_json
 
 ROOT = Path('outputs/robustness-continuation')
 CHECKPOINT = 'outputs/paired-long/p48_s2_20261008-161508/checkpoint_last.pt'

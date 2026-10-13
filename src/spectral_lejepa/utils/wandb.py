@@ -85,9 +85,8 @@ def training_metrics(metrics, tcfg, total_steps):
     for prefix in ("train", "valid"):
         mse, reg, glob = (f"{prefix}/{key}" for key in ("mse_loss", "sigreg_loss", "global_loss"))
         if mse in out and reg in out:
-            visreg = tcfg.get("regularizer") == "visreg"
-            lam = tcfg["visreg_lambda"] if visreg else tcfg["lambda_sigreg"]
-            out[f"{prefix}/prediction_contribution"] = out[mse] * (1 - lam if visreg else 1)
+            lam = tcfg["lambda_sigreg"]
+            out[f"{prefix}/prediction_contribution"] = out[mse]
             out[f"{prefix}/regularizer_contribution"] = out[reg] * lam
             out[f"{prefix}/global_contribution"] = out.get(glob, 0.) * tcfg.get("global_weight", 0.)
             if all(f'{prefix}/{k}' in out for k in ('global_inv_loss','global_sigreg_loss')):

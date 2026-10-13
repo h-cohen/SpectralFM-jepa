@@ -16,7 +16,7 @@ from sklearn.model_selection import KFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from scripts.continuation_study import write_json
+from spectral_lejepa.utils.io import write_json
 from scripts.evaluate import model_input
 from scripts.robustness_perturbations import DATASETS, PERTURBATIONS, block2_flat, perturb
 from spectral_lejepa.evaluation.probe import r2

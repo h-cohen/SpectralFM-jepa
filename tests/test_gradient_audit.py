@@ -10,8 +10,7 @@ def test_gradient_audit_reports_finite_block_terms_without_mutating_parameters_o
     cfg = {
         'num_patches': 48, 'dim': 16, 'depth': 6, 'heads': 4, 'mlp_dim': 32,
         'dropout': 0.0, 'predictor_dim': 16, 'predictor_depth': 1,
-        'predictor_heads': 4, 'predictor_mlp_dim': 32, 'projector': 'none',
-        'projector_hidden_dim': 32, 'projector_dim': 8,
+        'predictor_heads': 4, 'predictor_mlp_dim': 32,
     }
     model = build_model(cfg, 245).eval()
     objective = LeJEPAObjective(.05, num_slices=8, knots=5, t_max=3, global_weight=1.0)

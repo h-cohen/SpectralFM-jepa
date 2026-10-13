@@ -27,9 +27,6 @@ model:
   predictor_depth: 4
   predictor_heads: 6
   predictor_mlp_dim: 768
-  projector: none
-  projector_hidden_dim: 1024
-  projector_dim: 128
 
 masking:
   strategy: random
@@ -49,9 +46,6 @@ training:
   sigreg_num_slices: 1024
   sigreg_knots: 17
   sigreg_t_max: 3.0
-  regularizer: sigreg
-  visreg_slices: 4096
-  visreg_lambda: 0.6
   global_weight: 1.0
   global_views: 2
   global_keep: 0.5

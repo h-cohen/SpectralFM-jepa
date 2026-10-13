@@ -19,8 +19,7 @@ STATS = {"mean": 5.0, "std": 2.0}
 ROBUST = {"weight": 0.3, "block": 2, "sigma_max": .2, "offset_max": .05, "slope_max": .05,
           "scale_max": .05, "shift_max": 1, "prob": .5}
 MODEL = {'num_patches': 48, 'dim': 16, 'depth': 6, 'heads': 4, 'mlp_dim': 32, 'dropout': 0.0,
-         'predictor_dim': 16, 'predictor_depth': 1, 'predictor_heads': 4, 'predictor_mlp_dim': 32,
-         'projector': 'none', 'projector_hidden_dim': 32, 'projector_dim': 8}
+         'predictor_dim': 16, 'predictor_depth': 1, 'predictor_heads': 4, 'predictor_mlp_dim': 32}
 MASK = {'strategy': 'random', 'mask_ratio': .75, 'num_blocks': 3}
 
 

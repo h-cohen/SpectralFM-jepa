@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.continuation_study import write_json
+from spectral_lejepa.utils.io import write_json
 from scripts.robustness_perturbations import DATASETS
 from spectral_lejepa.evaluation.nested import paired_delta
 

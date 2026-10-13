@@ -75,30 +75,12 @@ class Predictor(nn.Module):
 
 class LeJEPA(nn.Module):
     def __init__(self, sequence_length, num_patches, dim, depth, heads, mlp_dim, dropout,
-                 predictor_dim, predictor_depth, predictor_heads, predictor_mlp_dim,
-                 projector="none", projector_hidden_dim=1024, projector_dim=128,
-                 sigreg_projector="none", sigreg_projector_hidden_dim=512, sigreg_projector_dim=128):
+                 predictor_dim, predictor_depth, predictor_heads, predictor_mlp_dim):
         super().__init__()
         self.tokenizer = PatchTokenizer(sequence_length, num_patches, dim)
         self.encoder = Encoder(dim, depth, heads, mlp_dim, dropout)
         self.predictor = Predictor(num_patches, dim, predictor_dim, predictor_depth,
                                    predictor_heads, predictor_mlp_dim, dropout)
-        if projector == "none":
-            self.projector = None
-        elif projector == "mlp":
-            # imported here so the baseline (projector: none) does not need it
-            from lightly.models.modules import LeJEPAProjectionHead
-            self.projector = LeJEPAProjectionHead(dim, projector_hidden_dim, projector_dim)
-        else:
-            raise ValueError(f"unknown projector {projector!r}; use 'none' or 'mlp'")
-        if sigreg_projector not in ('none', 'control', 'mlp'):
-            raise ValueError(f'unknown sigreg_projector {sigreg_projector!r}')
-        if projector != 'none' and sigreg_projector != 'none':
-            raise ValueError('Prediction projector and regularization projector cannot be combined')
-        self.sigreg_projector_mode = sigreg_projector
-        self.sigreg_projector = None if sigreg_projector == 'none' else nn.Sequential(
-            nn.Linear(dim, sigreg_projector_hidden_dim), nn.GELU(),
-            nn.Linear(sigreg_projector_hidden_dim, sigreg_projector_dim))
 
     def forward(self, x, masked_idx, visible_idx, view_idxs=None, robust_x=None, robust_block=2):
         tokens = self.tokenizer(x)                                            # [B, T, D]
@@ -110,28 +92,15 @@ class LeJEPA(nn.Module):
             target, hidden = self.encoder(tokens, return_all=True)
             robust = (hidden[robust_block - 1], self.encoder.prefix(self.tokenizer(robust_x), robust_block))
         views = None
-        if view_idxs is not None:   # pooled encoder outputs (before any projector): full view, then subsets
+        if view_idxs is not None:   # pooled encoder outputs: full view, then subsets
             views = torch.stack([target.mean(1)] + [self.encoder(gather_tokens(tokens, idx)).mean(1)
                                                     for idx in view_idxs])   # [V+1, B, D]
-        if self.projector is not None:
-            predicted, target = self._project(predicted, target)
         out = {"predicted": predicted, "target": target, "target_masked": gather_tokens(target, masked_idx)}
         if views is not None:
             out["views"] = views
         if robust_x is not None:
             out["robust"] = robust
-        if self.sigreg_projector_mode == 'mlp':
-            with torch.autocast(device_type=target.device.type, enabled=False):
-                out['sigreg_target'] = self.sigreg_projector(target.float())
-                if views is not None:
-                    out['sigreg_views'] = self.sigreg_projector(views.float())
         return out
-
-    def _project(self, predicted, target):
-        """Project predictions and targets in ONE call so BatchNorm sees one set of batch statistics."""
-        B, n_mask, D = predicted.shape
-        out = self.projector(torch.cat([predicted.reshape(-1, D), target.reshape(-1, D)]))
-        return out[: B * n_mask].reshape(B, n_mask, -1), out[B * n_mask:].reshape(B, target.shape[1], -1)
 
 
 class EvalBackbone(nn.Module):
@@ -148,10 +117,20 @@ class EvalBackbone(nn.Module):
         return SimpleNamespace(hidden_states=(tokens, *hidden[:-1], out), last_hidden_state=out)
 
 
+# Retired experiment options (prediction projector, SIGReg-input projector). Saved configs still carry
+# them; only their disabled values are accepted.
+RETIRED_MODEL_KEYS = ("projector", "projector_hidden_dim", "projector_dim", "sigreg_projector",
+                      "sigreg_projector_hidden_dim", "sigreg_projector_dim")
+
+
+def core_model_config(model_cfg: dict) -> dict:
+    return {k: v for k, v in model_cfg.items() if k not in RETIRED_MODEL_KEYS}
+
+
 def build_model(model_cfg: dict, sequence_length: int) -> LeJEPA:
+    for key in ("projector", "sigreg_projector"):
+        if model_cfg.get(key, "none") != "none":
+            raise ValueError(f"model.{key}={model_cfg[key]!r} is retired; only 'none' is supported")
     keys = ("num_patches", "dim", "depth", "heads", "mlp_dim", "dropout", "predictor_dim",
-            "predictor_depth", "predictor_heads", "predictor_mlp_dim", "projector",
-            "projector_hidden_dim", "projector_dim")
-    optional = {k: model_cfg[k] for k in ('sigreg_projector', 'sigreg_projector_hidden_dim',
-                                         'sigreg_projector_dim') if k in model_cfg}
-    return LeJEPA(sequence_length=sequence_length, **{k: model_cfg[k] for k in keys}, **optional)
+            "predictor_depth", "predictor_heads", "predictor_mlp_dim")
+    return LeJEPA(sequence_length=sequence_length, **{k: model_cfg[k] for k in keys})

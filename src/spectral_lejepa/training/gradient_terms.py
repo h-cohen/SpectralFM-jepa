@@ -19,8 +19,6 @@ def _vector(grads, params):
 def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, device="cpu", robust_cfg=None, stats=None):
     if model.training:
         raise ValueError("model must be in eval mode for the frozen gradient audit")
-    if objective.regularizer != "sigreg":
-        raise ValueError("gradient audit expects the final SIGReg objective")
     device = torch.device(device)
     x = x.to(device)
     params = {"block2": list(model.encoder.blocks[1].parameters()), "block6": list(model.encoder.blocks[5].parameters())}
@@ -39,7 +37,6 @@ def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, devi
         robust_x = perturb(x, robust_cfg, stats, generator) if robust_cfg else None
         output = model(x, masked, visible, views, robust_x, (robust_cfg or {}).get("block", 2))
         losses = objective(output["predicted"], output["target_masked"], output["target"], output["views"],
-                           reg_target=output.get('sigreg_target'),reg_views=output.get('sigreg_views'),
                            robust=output.get("robust"))
         lam, weight = objective.lambda_sigreg, objective.global_weight
         terms = {

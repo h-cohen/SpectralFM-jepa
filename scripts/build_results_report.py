@@ -337,7 +337,7 @@ def main(argv=None):
     analysis = data.get('production_analysis', {})
     continuation = data.get('continuation_study', {})
     if continuation.get('preference_result'):
-        from scripts.continuation_study import write_json
+        from spectral_lejepa.utils.io import write_json
         write_json(args.repo_root / 'outputs/continuation-study/assessment.json',
                    {'status': 'exploratory; original production gate unchanged',
                     'preference': continuation['preference_result']})

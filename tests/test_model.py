@@ -5,13 +5,12 @@ from spectral_lejepa.models.masking import random_mask
 from spectral_lejepa.models.vit_1d import EvalBackbone, Encoder, build_model, gather_tokens
 
 SMALL = dict(num_patches=24, dim=32, depth=2, heads=4, mlp_dim=64, dropout=0.0,
-             predictor_dim=24, predictor_depth=2, predictor_heads=4, predictor_mlp_dim=48,
-             projector="none", projector_hidden_dim=64, projector_dim=16)
+             predictor_dim=24, predictor_depth=2, predictor_heads=4, predictor_mlp_dim=48)
 
 
-def setup(projector="none", B=4, seed=0):
+def setup(B=4, seed=0):
     torch.manual_seed(seed)
-    model = build_model({**SMALL, "projector": projector}, 245).eval()
+    model = build_model(SMALL, 245).eval()
     x = torch.randn(B, 245)
     m, v = random_mask(B, 24, 0.5, torch.Generator().manual_seed(seed))
     return model, x, m, v
@@ -74,16 +73,11 @@ def test_prediction_never_sees_masked_samples():
         assert torch.allclose(model(x, m, v)["predicted"], model(x2, m, v)["predicted"], atol=1e-6)
 
 
-def test_projector_mlp():
-    model, x, m, v = setup(projector="mlp")
-    model.train()
-    out = model(x, m, v)
-    assert out["predicted"].shape == (4, 12, 16) and out["target"].shape == (4, 24, 16)
-
-
-def test_unknown_projector_rejected():
-    with pytest.raises(ValueError, match="projector"):
-        build_model({**SMALL, "projector": "linear"}, 245)
+def test_retired_projectors_rejected():
+    for key in ("projector", "sigreg_projector"):
+        with pytest.raises(ValueError, match="retired"):
+            build_model({**SMALL, key: "mlp"}, 245)
+    build_model({**SMALL, "projector": "none", "sigreg_projector": "none"}, 245)   # saved configs still load
 
 
 def test_eval_backbone_hidden_states():
