@@ -54,6 +54,31 @@ def noise_figure(rows, s, path):
     return _save(fig, path)
 
 
+def noise_grid_figure(rows, path):
+    """Every noise set in one figure: ensemble bars per noise type and readout, member values as dots."""
+    sets = list(dict.fromkeys(s for m, s, _, k, _ in rows if m == 'ensemble' and k.startswith('noise_cosine/')))
+    kinds = _kinds(rows)
+    members = sorted({m for m, *_ in rows if m != 'ensemble'})
+    cols = 4
+    fig, axes = plt.subplots(-(-len(sets) // cols), cols, figsize=(13, 2.3 * -(-len(sets) // cols)), sharey=True,
+                             squeeze=False)
+    x = np.arange(len(kinds))
+    for ax, s in zip(axes.flat, sets):
+        for i, r in enumerate(READOUTS):
+            pos = x + (i - .5) * .38
+            ax.bar(pos, [_value(rows, 'ensemble', s, r, f'noise_cosine/{k}') for k in kinds], .38, color=COLORS[r],
+                   label=r)
+            for m in members:
+                ax.plot(pos, [_value(rows, m, s, r, f'noise_cosine/{k}') for k in kinds], 'k.', ms=2)
+        ax.set(title=s, xticks=x, ylim=(0, 1.02))
+        ax.set_xticklabels([k.replace('gaussian_', 'g_') for k in kinds], rotation=40, ha='right', fontsize=7)
+    for ax in axes.flat[len(sets):]:
+        ax.set_visible(False)
+    axes.flat[0].legend(frameon=False, fontsize=7, loc='lower left')
+    fig.suptitle('cosine(clean, noisy) per dataset: bars = ensemble mean, dots = members', fontsize=9)
+    return _save(fig, path, top=.94)
+
+
 def match_figure(rows, s, path):
     models = sorted({m for m, ss, _, k, _ in rows if ss == s and k == 'embedding_stack_match_rate'})
     fig, ax = plt.subplots(figsize=(5, 3))
@@ -127,10 +152,13 @@ def figures(root, docs=None):
         paths.append(distribution_figure(root, members, s, out / s / 'cosine_distributions.svg'))
     paths.append(panel_figure(root, out / 'panel.svg'))
     paths.append(summary_figure(rows, out / 'summary_noise.svg'))
-    if docs is not None:
+    paths.append(noise_grid_figure(rows, out / 'noise_grid.svg'))
+    if docs is not None:   # the figures the training report embeds
         Path(docs).mkdir(parents=True, exist_ok=True)
-        for p in (out / 'panel.svg', out / 'summary_noise.svg'):
+        for p in (out / 'panel.svg', out / 'summary_noise.svg', out / 'noise_grid.svg'):
             shutil.copy(p, Path(docs) / p.name)
+        if (out / 'sanity' / 'cosine_distributions.svg').exists():
+            shutil.copy(out / 'sanity' / 'cosine_distributions.svg', Path(docs) / 'sanity_cosine_distributions.svg')
     return paths
 
 

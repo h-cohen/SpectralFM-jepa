@@ -1,374 +1,213 @@
 # SpectralFM-LeJEPA training report
 
-Status 2026-10-14. Covers the recipe and evidence behind the current candidate, the **robust four-seed ensemble**. Figures are rebuilt from saved outputs with `python -m spectral_lejepa training-report`. W&B project `hcohen/spectralfm-lejepa`.
+Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat features. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
 
-## 1. Summary
+## 1. Bottom line
 
-- **Task.** Learn frozen features from unlabeled 245-point spectra. Judge them by a nested-CV linear probe of `parameter_0` on eight labeled sets, against raw spectra and a random-weight encoder of the same architecture.
-- **Contract.** Beat raw R² on at least 5 of 8 sets. Any positive ΔR² is a win.
-- **Recipe.** Two stages:
-  - a LeJEPA masked-prediction pretraining: 48 patches, d256, 6 blocks, SIGReg, 10 epochs;
-  - a one-epoch continuation that adds a block-2 robustness term.
-- **Readout.** Block-2 tokens, flattened to 12,288 features. Ensemble four seeds by averaging their probe predictions.
-- **Result.**
-
-  | Comparison | Wins | Mean ΔR² |
-  |---|---|---|
-  | vs raw | 8/8 | +.0556 |
-  | vs random-weight encoder | 8/8 | +.0478 |
-
-  - All three registered criteria pass.
-  - Feature drift under 1% input noise falls about 6×.
-- **Limits.**
-  - The model was chosen retrospectively on the same eight sets.
-  - Five of the eight wins are within bootstrap noise.
-  - No independent labelled holdout exists yet.
-  - The export and the qualification gate are unchanged.
+**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet.
 
 ```mermaid
 flowchart LR
-    A["Packed corpus<br/>12.76M spectra"] --> B["Stage 1<br/>LeJEPA pretraining<br/>497,990 steps"]
-    B --> C["Stage 2<br/>robust continuation<br/>49,799 steps"]
-    C --> D["Frozen block-2 flat<br/>12,288 features"]
-    D --> E["Nested-CV linear probe<br/>per member"]
-    E --> F["Average 4 members'<br/>predictions"]
-    F --> G{"Registered criteria<br/>vs raw and random"}
-    G -->|pass| H["Holdout candidate"]
-    H -.->|missing| I["Independent labelled<br/>holdout"]
+    A["12.76M unlabeled spectra"] --> B["Stage 1: LeJEPA<br/>498k steps"]
+    B --> C["Stage 2: + block-2 robust term<br/>50k steps"]
+    C --> D["4 frozen encoders<br/>block-2 flat, 12,288 features"]
+    D --> E["Linear probe per member<br/>(nested CV)"]
+    E --> F["Average predictions"]
+    F --> G["8/8 vs raw · 8/8 vs random"]
 ```
 
-## 2. Data
-
-| Source group | Spectra | Sampling mass |
-|---|---:|---:|
-| `labeled_regression` (0055, 0106–0120) | 147,784 | 0.5 |
-| everything else: single_channel_all, multi_channel, sampled_data, labeled_data | 12,610,858 | 0.5 |
-| **Total** (10,000 rows held out for validation loss) | **12,758,642** | |
-
-- **Samples.** Each sample is one component: a mono 245-point spectrum.
-- **Labels.** Never loaded during training.
-- **Evaluation spectra.** Included in the pretraining corpus, so evaluation is transductive in the input distribution.
-- **Normalization.** One global affine map, `(x − 0.37842) / 0.51258`, using corpus statistics.
-- **Sampling.**
-  - Rows are drawn with replacement.
-  - Each group receives its mass, spread uniformly over its own rows.
-  - One epoch is 12,748,642 draws, or 49,799 steps at batch 256.
-
-Details are in `docs/DATASETS.md`.
-
-```mermaid
-flowchart TB
-    subgraph corpus["Packed corpus (spectra_all)"]
-        S1["single_channel_all 9.11M"]
-        S2["multi_channel 3.41M"]
-        S3["sampled_data + labeled_data 0.09M"]
-        S4["labeled_regression 0.15M"]
-    end
-    S1 & S2 & S3 --> G0["group 'default'<br/>mass 0.5"]
-    S4 --> G1["group 'labeled_regression'<br/>mass 0.5"]
-    G0 & G1 --> SM["SourceWeightedSampler<br/>with replacement, uniform within group"]
-    SM --> NZ["Global affine normalization"]
-    NZ --> BT["Batch (256, 245)"]
-    V["valid_rows.npy<br/>10,000 rows"] -.->|excluded| SM
-```
-
-## 3. Model
-
-LeJEPA (Balestriero & LeCun, 2025) differs from I-JEPA in two ways. There is **no EMA teacher and no stop-gradient**: the context and target passes share one encoder. Collapse is prevented by SIGReg, a sliced Epps–Pulley test that pushes embeddings toward an isotropic Gaussian.
-
-| Part | Shape | Parameters |
-|---|---|---:|
-| Patch tokenizer: 48 contiguous patches (5×6 + 43×5, padded to 6), `Linear(6→256)` + learned positions | (B, 48, 256) | 14,080 |
-| Encoder: 6 pre-LN transformer blocks, 8 heads, MLP 1024, final LayerNorm | (B, 48, 256) | 4,739,072 |
-| Predictor: 4 blocks, width 192, 6 heads, MLP 768 | (B, 36, 256) | 1,888,000 |
-| **Inference member**: tokenizer + blocks 1–2, no final norm | (B, 12288) | 1,593,600 |
-
-```mermaid
-flowchart LR
-    X["x (B,245)"] --> T["Tokenizer<br/>(B,48,256)"]
-    T --> MK["Random mask 75%<br/>visible 12 / masked 36"]
-    MK -->|"visible (B,12,256)"| EC["Encoder ×6<br/>context"]
-    EC --> P["Predictor<br/>+ mask tokens at 36 positions"]
-    P --> PR["predicted (B,36,256)"]
-    T -->|"all 48 tokens"| ET["Encoder ×6 + LN<br/>target (B,48,256)"]
-    ET --> TM["gather masked<br/>(B,36,256)"]
-    PR & TM --> L1["MSE"]
-    ET --> L2["token SIGReg<br/>over batch, per position"]
-    T -->|"2 random 24-token subsets"| EV["Encoder ×6, mean-pool"]
-    ET -->|mean-pool| PV["3 pooled views (3,B,256)"]
-    EV --> PV
-    PV --> L3["view invariance + pooled SIGReg"]
-    X -->|"perturb (stage 2)"| XP["x′"] --> T2["Tokenizer + blocks 1–2"]
-    ET -.->|"block-2 state h₂(x)"| L4["robust term"]
-    T2 -->|"h₂(x′)"| L4
-```
-
-## 4. Objective
-
-For each batch (B = 256), with λ = 0.05:
-
-```text
-L = MSE(pred, target_masked)                                      prediction
-  + λ · SIGReg(target as 48 positions × B × 256)                  token regularizer
-  + 1.0 · [(1 − λ) · Var_views(pooled) + λ · SIGReg(pooled views)] pooled-view term
-  + w_rob · mean‖h₂(x′) − h₂(x)‖² / Var_batch(h₂(x)).detach()      stage 2 only, w_rob = 0.1
-```
-
-- **SIGReg settings.** 1,024 random slices, 17 knots, t_max 3. It runs in fp32 inside AMP.
-- **Robust term.** It is scale-free, because it divides by the detached batch variance. Gradients flow through both branches.
-
-```mermaid
-flowchart TB
-    MSE["masked MSE ×1"] --> SUM(("Σ"))
-    TS["token SIGReg ×0.05"] --> SUM
-    subgraph pooled["pooled-view term ×1.0"]
-        INV["view invariance ×0.95"]
-        PS["pooled SIGReg ×0.05"]
-    end
-    INV --> SUM
-    PS --> SUM
-    RB["block-2 robust term ×0.1<br/>(stage 2)"] --> SUM
-    SUM --> OPT["AdamW, AMP, no grad clip"]
-```
-
-### Perturbations (stage 2)
-
-Each perturbation is applied with probability 0.5, independently per spectrum. It acts on raw values, and the spectrum is then renormalized. The draws come from a CPU generator separate from the one used for masking.
-
-| Type | Range | Source |
-|---|---|---|
-| Gaussian noise | σ ~ U(0, 0.2018) × spectrum SD | corpus p90 of Savitzky–Golay (11, 2) residual SD, mass-weighted |
-| Offset | U(±0.05) × spectrum range | prior perturbation suite |
-| Linear slope | U(±0.05) × range, across the band | prior perturbation suite |
-| Scale | 1 + U(±0.05) | prior perturbation suite |
-| Shift | ±1 bin, edge-padded | prior perturbation suite |
-
-```mermaid
-flowchart LR
-    C0["Label-free noise calibration<br/>~2,000 rows per group"] --> C1["σ_max = corpus p90 = 0.2018"]
-    C1 --> C2["1,000-step calibration run<br/>seed 400, discarded"]
-    C2 --> C3{"smallest w in {0.1, 0.3, 1}<br/>with w·‖∇robust‖ ≥ 0.5·‖∇MSE‖<br/>at block 2"}
-    C3 -->|"0.1 × 1.954 = 0.195 ≥ 0.056"| W["w_rob = 0.1"]
-```
-
-## 5. Training recipe
-
-| Setting | Stage 1: pretraining | Stage 2: robust continuation |
-|---|---|---|
-| Initialization | random (seeds 0, 1, 2; 101) | stage-1 checkpoint, fresh AdamW |
-| Steps | 497,990 (10 epochs) | 49,799 (1 epoch) |
-| Batch | 256 | 256 |
-| Optimizer | AdamW, weight decay 0.05 | same |
-| Peak LR | 5e-4 | 5e-5 |
-| Warmup | 1 epoch (49,799 steps), linear | 1,000 steps, linear |
-| Decay | cosine to 1e-3 × peak (5e-7) | cosine to 1e-2 × peak (5e-7) |
-| Masking | random 75% (36 of 48 patches) | same |
-| Loss | MSE + SIGReg λ 0.05 + pooled term ×1 | same + robust term ×0.1 on block 2 |
-| Precision | AMP fp16, fp32 losses | same |
-| Hardware | 1 × RTX 2080 Ti per run | same, about 2 h per run |
-| Configs | `configs/final_model.yaml`, `configs/paired_long.yaml` (48 patches) | `outputs/robust-ensemble/*/train.yaml`, registration JSON |
-
-![Stage 1 curves](figures/training-report/fig1_pretraining_curves.svg)
-
-**Figure 1. Stage 1.** All four seeds follow the same trajectory.
-- Prediction MSE keeps falling until the end of the cosine decay.
-- SIGReg and the pooled term plateau after about 100k steps.
-- Token effective rank rises from 90 to about 146 of 256, so there is no collapse.
-
-![Stage 2 curves](figures/training-report/fig2_continuation_curves.svg)
-
-**Figure 2. Stage 2.**
-- The robust term falls about 6× within 10k steps. The control, trained with weight 0, stays flat.
-- Prediction MSE ends higher than the control's, which is the expected cost of invariance.
-- SIGReg and effective rank are unchanged.
-
-### Checkpoint lineage
-
-```mermaid
-flowchart LR
-    R0["scratch 48p seed0<br/>W&B kknz92e3"] --> P0["robust_p0<br/>seed 410 · 8nfxzsde"]
-    R1["scratch 48p seed1<br/>m1p2atdu"] --> P1["robust_p1<br/>seed 411 · ya6s9o5p"]
-    R2["scratch 48p seed2<br/>ceanfxq1"] --> P2["robust_s401<br/>seed 401 · bqw877zh"]
-    R2 --> P2b["robust_s402<br/>seed 402 · d2fqocp5"]
-    R101["final seed101<br/>ylymmcnn · current export"] --> P3["robust_s101<br/>seed 412 · ok3up62j"]
-    P0 & P1 & P2 & P3 --> ENS["Robust ensemble"]
-    P2b -.->|"not a member<br/>(fixed before results)"| ENS
-```
-
-## 6. Design decisions
-
-Each choice was tested against the same nested-CV benchmark with raw and random controls. Specs and plans are in `docs/superpowers/`.
-
-```mermaid
-flowchart TB
-    S["Screens 1–8 (10-02 to 10-07)"] --> N1{"Input normalization"}
-    N1 -->|"global affine: kept"| N2{"Mask ratio"}
-    N1 -.-> X1["per-sample z-score: dropped"]
-    N2 -->|"0.75 random: kept"| N3{"Regularizer"}
-    N3 -->|"SIGReg λ 0.05: kept"| N4{"Pooled-view term"}
-    N3 -.-> X2["VISReg: no gain"]
-    N4 -->|"weight 1: kept"| N5{"Source mix"}
-    N5 -->|"50% labeled_regression: kept"| N6{"Patches (paired-long, 3 seeds)"}
-    N5 -.-> X3["wider/deeper model: no gain"]
-    N6 -->|"48: kept"| N7{"Readout (frozen-feature study)"}
-    N6 -.-> X4["24 patches: dropped"]
-    N7 -->|"block-2 flat best for all 8 checkpoints"| N8{"Further training"}
-    N7 -.-> X5["4-readout menu, LN ablation,<br/>Ridge/PLS/RBF heads: not consistent"]
-    N8 -.-> X6["duration-only, λ 0.01: no gain"]
-    N8 -.-> X7["SIGReg projector: −.002 to −.005"]
-    N8 -->|"seed ensemble: 7/8, passes"| N9{"Noise sensitivity ~20×"}
-    N9 -->|"block-2 robust term"| N10["Robust continuations<br/>7/8, 8/8 · random 8/8"]
-    N10 -->|"user contract: majority wins"| N11["Robust 4-seed ensemble<br/>8/8 · 8/8"]
-    classDef drop fill:#eee,stroke:#bbb,color:#999
-    class X1,X2,X3,X4,X5,X6,X7 drop
-```
-
-| Decision | Evidence | Outcome |
-|---|---|---|
-| Global affine normalization | Screens | Kept; per-sample z-score hurt |
-| SIGReg, not VISReg | Screens | VISReg λ 0.6 was worse; λ 0.9 tied |
-| 48 patches, not 24 | Paired-long, three seeds each | 48 kept |
-| Block-2 flat readout | Frozen-feature study, 8 checkpoints × 21 readouts | Best fixed family in every checkpoint |
-| No duration or λ continuation | Continuation study (202/203 × λ .05/.01) | Fixed mean +.0006; no gain |
-| No SIGReg projector | Projection pilot (301/302) | −.005 / −.002 vs control |
-| Robust term | Robustness continuation (401/402) | Drift 6× lower; clean mean Δraw halves; 0106 becomes a win |
-| Four-seed robust ensemble | Robust ensemble study | 8/8 vs raw and random; registered criteria pass |
-
-## 7. Evaluation protocol
-
-```mermaid
-flowchart TB
-    D["Labeled set: spectra, parameter_0"] --> FX["Frozen encoder<br/>block-2 tokens, flattened (n, 12288)"]
-    D --> RW["Raw spectra (n, 245)"]
-    D --> RD["Random-weight encoder<br/>same readout"]
-    FX & RW & RD --> O["Outer 5-fold × 2 repeats, seed 42"]
-    O --> I["Inner 5-fold on training rows only"]
-    I --> RC["12 recipes: none / standardize / whiten / whiten8,32,128<br/>× RidgeCV (α 1e-3..1e3) / OLS"]
-    RC --> SEL["Best recipe by inner R²"]
-    SEL --> FIT["Refit on outer-train, predict outer-test"]
-    FIT --> OOF["Out-of-fold predictions"]
-    OOF --> PD["paired_delta: R² difference on the same folds<br/>+ SD over 1,000 row-bootstrap resamples"]
-```
-
-- **Ensemble.** For each set, average the four members' out-of-fold predictions with equal weights. No weights are fitted.
-- **Raw reference.** Raw features go through the identical recipe search.
-- **Random control.** The random reference is the seed-2 random-weight encoder.
-
-### Results
-
-![Candidates](figures/training-report/fig4_candidates.svg)
-
-**Figure 3. Shortlisted models.**
-- The robust term trades mean margin for consistency: random-feature wins go from 6/8 to 8/8.
-- The ensemble recovers part of the lost margin, from +.044/+.047 to +.056.
-
-| Set | n | Raw R² | Random R² | Robust ensemble R² | Δ vs raw (± SD) | Δ vs random |
-|---|---:|---:|---:|---:|---:|---:|
-| labeled_data | 4,716 | .830 | .949 | .959 | +.129 ± .004 | +.010 |
-| 0055 | 25 | .591 | .541 | .640 | +.049 ± .127 | +.099 |
-| 0106 | 64 | .697 | .702 | .714 | +.017 ± .022 | +.011 |
-| 0109 | 96 | .918 | .933 | .943 | +.026 ± .011 | +.011 |
-| 0112 | 68 | .377 | .364 | .421 | +.044 ± .117 | +.057 |
-| 0113 | 70 | .548 | .561 | .702 | +.154 ± .060 | +.141 |
-| 0114 | 230 | .983 | .982 | .986 | +.002 ± .001 | +.003 |
-| 0120 | 125 | .380 | .354 | .405 | +.025 ± .054 | +.051 |
+| Set | n | Raw R² | Random-weight R² | Robust ensemble R² | Δ vs raw (± SD) |
+|---|---:|---:|---:|---:|---:|
+| labeled_data | 4,716 | .830 | .949 | .959 | +.129 ± .004 |
+| 0055 | 25 | .591 | .541 | .640 | +.049 ± .127 |
+| 0106 | 64 | .697 | .702 | .714 | +.017 ± .022 |
+| 0109 | 96 | .918 | .933 | .943 | +.026 ± .011 |
+| 0112 | 68 | .377 | .364 | .421 | +.044 ± .117 |
+| 0113 | 70 | .548 | .561 | .702 | +.154 ± .060 |
+| 0114 | 230 | .983 | .982 | .986 | +.002 ± .001 |
+| 0120 | 125 | .380 | .354 | .405 | +.025 ± .054 |
 
 ![Ensemble R²](figures/training-report/fig5_ensemble_r2.svg)
 
-**Figure 4. Robust ensemble against controls.** On labeled_data most of the gain over raw comes from the architecture and readout: random weights already reach .949. The trained encoder adds most on 0113, 0055, 0112 and 0120.
+**Figure 1.** R² of raw spectra, the random-weight encoder and the robust ensemble; the labels show Δ vs raw. On labeled_data, the architecture and readout already reach .949 with random weights. Training adds most on 0113, 0055, 0112 and 0120.
 
-![Member deltas](figures/training-report/fig6_member_deltas.svg)
+## 2. Data
 
-**Figure 5. Members.** Each member loses at most two sets, and the losses fall on different sets. Averaging the predictions turns every set positive.
-
-![Robustness](figures/training-report/fig7_robustness.svg)
-
-**Figure 6. Perturbation robustness.**
-- **Drift.** Drift falls for every perturbation type, including the held-out families never seen in training: 2-bin shift, 5% noise and sinusoidal baseline.
-- **Clean R².** The fixed-ridge R² on clean inputs drops slightly, from .73 to .69.
-- **Noisy R².** It rises at 1% and 3% noise.
-- **Regressions.** It gets worse under a 5% offset and a sinusoidal baseline. Baseline-type invariance is not solved.
-
-## 8. Registered criteria and verdict
-
-| Criterion (registered before results) | Result | Pass |
-|---|---|---|
-| Ensemble raw wins ≥ 5, mean Δraw > 0, mean Δrandom > 0 | 8/8, +.0556, +.0478 | yes |
-| Preferred over the original ensemble: raw wins ≥ 7 and random wins ≥ 7 | 8/8, 8/8 (original: 7, 6) | yes |
-| Each new member's 1%-noise drift ≤ 0.5× its start | .015/.093, .014/.091, .015/.090 | yes |
-
-## 9. Embedding similarity and noise robustness
-
-The previous project's geometry metrics, run on the four robust members with `python -m spectral_lejepa evaluate --suite embedding` (spec `docs/superpowers/specs/2026-10-14-embedding-similarity-noise-design.md`).
-
-- **Reuse.** The metric functions are the old `eval.runner` code, executed from commit `6237feb`: top-5 stack retrieval, cosine distributions, the panel selection and the noise definitions. One function is replaced: the panel's per-spectrum normalizer, so that the panel spectra arrive raw. Noise robustness also covers multi_ch, samples and the eight labeled sets, where the old runner used only sanity and in_dist.
-- **Inputs.** Each spectrum gets the old per-spectrum layer norm and the old noise. It is then mapped back to raw units and given our global normalization. The encoder therefore sees each perturbation scaled by that spectrum's own SD relative to the global SD, not the old perturbation in its own input space. Short wavs are zero-padded to 245 points; the old loader did not pad them.
-- **Readouts.** Block-2 mean (256 values) and block-2 flat (12,288 values).
-- **Ensemble.** The ensemble value is the mean of the four members' scores.
-- **Deviation.** Noise draws are seeded per type; the old code was unseeded.
-- **Outputs.** `outputs/embedding-eval/` (one figure folder per dataset).
+**Bottom line.** All 12.76M spectra are used, labels never. Half of each batch comes from the 0.15M regression-source spectra.
 
 ```mermaid
 flowchart LR
-    R["raw spectrum"] --> LN["per-spectrum layer norm<br/>(old input space)"]
-    LN --> NZ["old noise type<br/>(NOISE_CONFIGS)"]
-    NZ --> DN["× σᵢ + μᵢ<br/>back to raw units"]
-    DN --> G["global normalization"] --> E["encoder blocks 1–2"]
-    R --> G2["global normalization"] --> E2["encoder blocks 1–2"]
-    E --> C["cosine(clean, noisy)<br/>block2 mean / flat"]
-    E2 --> C
+    S1["single_channel_all 9.11M<br/>multi_channel 3.41M<br/>sampled + labeled_data 0.09M"] --> G0["group 'default'<br/>mass 0.5"]
+    S4["labeled_regression 0.15M"] --> G1["group 'labeled_regression'<br/>mass 0.5"]
+    G0 & G1 --> SM["sample with replacement<br/>uniform within group"]
+    SM --> NZ["global affine norm<br/>(x − 0.378) / 0.513"] --> BT["batch (256, 245)"]
+    V["10,000 validation rows"] -.->|excluded| SM
 ```
 
-### Noise robustness
+- **Corpus.** Evaluation spectra are in the corpus, so evaluation is transductive in the inputs.
+- **Epoch.** One epoch is 49,799 steps of 256 spectra. Details are in `docs/DATASETS.md`.
 
-The table shows ensemble cosine(clean, noisy) per noise type, as a range over the 12 sets. Columns: block-2 mean, then block-2 flat.
+## 3. Model and objective
 
-| Noise type (old definition, normalized space) | Block-2 mean | Block-2 flat |
+**Bottom line.** One shared encoder (no EMA teacher) predicts masked patch embeddings. SIGReg prevents collapse, and in stage 2 a block-2 invariance term makes the shipped features ignore measurement noise.
+
+```mermaid
+flowchart LR
+    X["x (B,245)"] --> T["48 patches → tokens<br/>(B,48,256)"]
+    T -->|"12 visible"| EC["encoder ×6"] --> P["predictor ×4"] --> L1["MSE on 36 masked"]
+    T -->|"all 48"| ET["encoder ×6 + LN<br/>target"] --> L1
+    ET --> L2["token SIGReg"]
+    ET --> L3["pooled-view invariance<br/>+ pooled SIGReg"]
+    X -->|"perturb (stage 2)"| XP["x′ → blocks 1–2"] --> L4["robust term:<br/>‖h₂(x′) − h₂(x)‖² / Var h₂"]
+    ET -.->|"h₂(x)"| L4
+    T --> I["inference: blocks 1–2,<br/>flatten → 12,288"]
+```
+
+```text
+L = MSE + 0.05·SIGReg(tokens) + [0.95·Var_views + 0.05·SIGReg(pooled)] + 0.1·robust (stage 2)
+```
+
+| Part | Output | Parameters |
+|---|---|---:|
+| Tokenizer: 48 contiguous patches, Linear(6→256) + positions | (B, 48, 256) | 14,080 |
+| Encoder: 6 pre-LN blocks, 8 heads, MLP 1024 | (B, 48, 256) | 4,739,072 |
+| Predictor: 4 blocks, width 192 | (B, 36, 256) | 1,888,000 |
+| **Shipped member**: tokenizer + blocks 1–2 | (B, 12288) | 1,593,600 |
+
+Stage-2 perturbations: each type is applied with probability 0.5, in raw units, then renormalized.
+
+| Perturbation | Range | Source |
 |---|---|---|
-| gaussian_std: + N(0, 0.01) | 1.00 | 1.00 |
-| gain_low / gain_high: × N(1, 0.05) / × N(1, 0.1) | ≥ .997 | ≥ .997 |
-| gaussian_mean: + N(2, 0.001), a 2-SD offset | .60–.90 | .54–.90 |
-| shot_low: Poisson, scale 0.1 | .17–.71 | .18–.66 |
-| shot_high: Poisson, scale 0.05 | .17–.53 | .15–.51 |
+| Gaussian noise | σ ≤ 0.20 × spectrum SD | corpus p90 noise estimate (Savitzky–Golay residual) |
+| Offset / slope / scale | ±5% | earlier perturbation suite |
+| Shift | ±1 bin | earlier perturbation suite |
+
+The weight 0.1 is the smallest of {0.1, 0.3, 1} whose block-2 gradient reaches half the MSE gradient (0.195 ≥ 0.056), set in a discarded 1,000-step calibration run.
+
+## 4. Training recipe
+
+**Bottom line.** Training is stable in both stages. Prediction loss still falls at the end of stage 1, and token effective rank stays near 146 of 256, so there is no collapse.
+
+| Setting | Stage 1: pretraining | Stage 2: robust continuation |
+|---|---|---|
+| Start | random (seeds 0, 1, 2, 101) | stage-1 checkpoint, fresh AdamW |
+| Steps | 497,990 (10 epochs) | 49,799 (1 epoch) |
+| LR | 5e-4, 1-epoch warmup, cosine to 5e-7 | 5e-5, 1,000-step warmup, cosine to 5e-7 |
+| Shared | batch 256, AdamW wd 0.05, 75% random masking, AMP, 1× RTX 2080 Ti | same; about 2 h per run |
+| Config | `configs/final_model.yaml`, `configs/paired_long.yaml` | `outputs/robust-ensemble/*/train.yaml` |
+
+![Stage 1 curves](figures/training-report/fig1_pretraining_curves.svg)
+
+**Figure 2. Stage 1.** All four seeds follow the same curves. Regularizers plateau after about 100k steps, and effective rank rises from 90 to 146.
+
+![Stage 2 curves](figures/training-report/fig2_continuation_curves.svg)
+
+**Figure 3. Stage 2.** The robust term falls about 6× in 10k steps; the weight-0 control stays flat. Prediction MSE rises slightly, the cost of invariance.
+
+```mermaid
+flowchart LR
+    R0["48p seed0"] --> P0["robust_p0 (seed 410)"]
+    R1["48p seed1"] --> P1["robust_p1 (411)"]
+    R2["48p seed2"] --> P2["robust_s401 (401)"]
+    R101["seed101 (export)"] --> P3["robust_s101 (412)"]
+    P0 & P1 & P2 & P3 --> ENS["robust ensemble"]
+```
+
+## 5. How the recipe was chosen
+
+**Bottom line.** Every component was kept only if it improved the nested-CV benchmark over raw and random controls. Only two later changes added anything: seed ensembling and the robust term.
+
+```mermaid
+flowchart TB
+    S["Screens"] --> A["global affine norm · 75% random mask<br/>SIGReg 0.05 · pooled term · 50% regression mix"]
+    A --> B["48 patches (vs 24, 3 seeds each)"]
+    B --> C["block-2 flat readout<br/>(best of 21 readouts, 8 checkpoints)"]
+    C --> D["seed ensemble 0/1/2/101<br/>7/8 vs raw"]
+    D --> E["robust continuation<br/>drift 6× lower"]
+    E --> F["robust 4-seed ensemble<br/>8/8 · 8/8"]
+    A -.-> X1["VISReg, wider model,<br/>per-sample z-score: dropped"]
+    C -.-> X2["readout menus, extra heads,<br/>LN ablation: not consistent"]
+    D -.-> X3["longer training, λ 0.01,<br/>SIGReg projector: no gain"]
+    classDef drop fill:#eee,stroke:#bbb,color:#888
+    class X1,X2,X3 drop
+```
+
+![Candidates](figures/training-report/fig4_candidates.svg)
+
+**Figure 4. Shortlisted models.** The robust term trades margin for consistency: wins over random weights go from 6/8 to 8/8, and the ensemble recovers part of the margin. All three criteria registered before the run passed (`docs/superpowers/specs/2026-10-13-robust-ensemble.md`).
+
+![Member deltas](figures/training-report/fig6_member_deltas.svg)
+
+**Figure 5. Members.** Each member loses at most two sets (robust_p1 loses none). Averaging turns all eight positive.
+
+## 6. Evaluation protocol
+
+**Bottom line.** Every probe recipe is chosen inside the training folds. Raw spectra and the random-weight encoder get the identical search, and gains are paired on the same folds.
+
+```mermaid
+flowchart LR
+    D["labeled set"] --> F["features: trained · raw · random-weight"]
+    F --> O["outer 5-fold × 2 repeats"]
+    O --> I["inner 5-fold: pick 1 of 12 recipes<br/>(normalizer × RidgeCV/OLS)"]
+    I --> P["refit, predict outer test"]
+    P --> M["ensemble: mean of members' predictions"]
+    M --> D2["paired ΔR² + row-bootstrap SD"]
+```
+
+## 7. Robustness
+
+**Bottom line.** The robust ensemble barely moves under realistic noise and gain changes. Large baseline offsets and heavy shot noise still move it.
+
+![Robustness](figures/training-report/fig7_robustness.svg)
+
+**Figure 6. Perturbation suite.** Feature drift falls for every perturbation, including families held out from training (2-bin shift, 5% noise, sinusoidal baseline). Fixed-ridge R² rises under 1–3% noise but drops under a 5% offset and a sinusoidal baseline.
+
+Previous-project noise test (`evaluate --suite embedding`): the old noise types are added in per-spectrum-normalized space and mapped back to raw units. The score is cosine(clean, noisy) of block-2 features.
+
+```mermaid
+flowchart LR
+    R["raw"] --> LN["per-spectrum norm"] --> NZ["old noise"] --> DN["back to raw"] --> E["global norm → blocks 1–2"]
+    R --> E2["global norm → blocks 1–2"]
+    E & E2 --> C["cosine(clean, noisy)"]
+```
 
 ![Noise summary](figures/embedding-eval/summary_noise.svg)
 
-**Figure 7. Ensemble noise cosine per set and noise type.**
-- **Small perturbations.** Small Gaussian noise and ±5–10% gain leave both readouts unchanged.
-- **Offset and Poisson noise.** A 2-SD offset and the old Poisson shot noise move the features substantially. Shot noise at these scales replaces most of each normalized spectrum's structure.
-- **Hardest sets.** Shot noise moves the features most on labeled_data, in_dist, sanity, multi_ch and 0106. Cosines there are .15–.27.
-- **Readouts.** Block-2 flat behaves like block-2 mean, slightly lower on the single-channel sets.
-- **No reference.** Raw-input or random-weight references were not part of this request. The cosines therefore describe stability, not whether that stability helps prediction.
+**Figure 7. Noise cosine, ensemble, 12 sets × 6 noise types.**
+- Small Gaussian noise and ±5–10% gain: cosine ≥ .997.
+- 2-SD offset: .54–.90.
+- Poisson shot noise: .15–.71. It is lowest on labeled_data, the single-channel sets, multi_ch and 0106.
+- Block-2 flat and mean behave alike.
 
-### Similarity
+![Noise grid](figures/embedding-eval/noise_grid.svg)
 
-- **Stack retrieval.** Top-5 same-stack retrieval is at chance in both input space and embedding space:
+**Figure 8. Per dataset.** The members (dots) agree closely, so the ensemble is not hiding a weak member.
 
-  | Set | Input | Block-2 mean | Block-2 flat | Chance (9/(N−1)) |
-  |---|---|---|---|---|
-  | sanity (N = 100) | .080 | .087 | .091 | .091 |
-  | in_dist (N = 500) | .016 | .015 | .014 | .018 |
+## 8. Embedding geometry
 
-  This metric detects no stack structure in either space. The likely reason is that 10 consecutive manifest rows are not a real grouping in these manifests, so the metric does not inform model choice here.
-- **Pairwise cosines.** Same-stack, random and same-position pairs have overlapping distributions. They centre near zero in input space and lie at .5–1.0, mostly above .7, for both readouts, because the features share one dominant direction (`outputs/embedding-eval/figures/sanity/cosine_distributions.svg`).
+**Bottom line.** Block-2 features share one dominant direction. Once it is removed, spectra group by component, as in the raw input. The old stack-retrieval metric is at chance even on raw inputs, so it carries no signal here.
 
 ![Panel](figures/embedding-eval/panel.svg)
 
-**Figure 8. The fixed 100-spectrum panel** (seed 42, robust_s401).
-- **Raw cosines.** Block-2 cosines are high everywhere, because of the shared direction.
-- **Mean-centred cosines.** After centring, components within multi_channel, sampled_data and labeled_data form clear diagonal blocks, as they do in input space. Single-channel stacks show weaker blocks.
+**Figure 9. Fixed 100-spectrum panel** (robust_s401). Raw block-2 cosines are high everywhere. After mean-centring, components within multi_channel, sampled_data and labeled_data form clear blocks.
 
-## 10. Limitations
+![Cosine distributions](figures/embedding-eval/sanity_cosine_distributions.svg)
 
-- **Retrospective selection.** About ten studies used the same eight sets. Bootstrap SDs reflect row sampling only, not selection or seed variance.
-- **Small sets.** n is 25–230, and the wins on 0055, 0106, 0112, 0114 and 0120 are below 1 SD.
-- **Canary.** The single-shuffle canary was not rerun for the ensemble. In earlier robust runs it failed on 0106/0120, while 100 permutations put real R² above every null.
+**Figure 10. Pairwise cosines (sanity set).** Same-stack, random and same-position pairs overlap in every space. Top-5 same-stack retrieval:
+
+| Set | Input | Block-2 mean | Block-2 flat | Chance |
+|---|---|---|---|---|
+| sanity (N = 100) | .080 | .087 | .091 | .091 |
+| in_dist (N = 500) | .016 | .015 | .014 | .018 |
+
+## 9. Limitations and next step
+
+- **Retrospective choice.** The candidate was chosen after about ten studies on the same eight sets. Bootstrap SDs cover row sampling only.
+- **Small sets.** Sets have 25–230 spectra, and the gains on 0055, 0106, 0112, 0114 and 0120 are under 1 SD.
 - **Transductive evaluation.** Unseen instruments or sources are not measured.
-- **Cost.** Inference runs four members of 1.59M parameters each, two blocks per member.
+- **Noise test.** It has no raw-input reference, and its noise is seeded where the old code was not. Signal reconstruction was not run, because there is no decoder.
 
-- **Geometry, not accuracy.** The section 9 metrics are geometry; stability under the old noise types is not a probe-accuracy result. Signal reconstruction was not run, because no decoder exists for this encoder.
-
-Next: validate on an independent group-labelled holdout.
+**Bottom line.** Next, score the robust ensemble once on an independent, group-labelled holdout.
 
 ## References
 

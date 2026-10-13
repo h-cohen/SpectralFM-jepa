@@ -38,8 +38,9 @@ def test_figures_cover_every_set_and_copy_summaries(tmp_path):
     paths = figures(tmp_path / 'run', tmp_path / 'docs')
     names = {p.relative_to(tmp_path / 'run' / 'figures').as_posix() for p in paths}
     assert {'sanity/noise_cosine.svg', 'sanity/match_rate.svg', 'sanity/cosine_distributions.svg',
-            'dataset0055/noise_cosine.svg', 'panel.svg', 'summary_noise.svg'} <= names
-    assert sorted(p.name for p in (tmp_path / 'docs').iterdir()) == ['panel.svg', 'summary_noise.svg']
+            'dataset0055/noise_cosine.svg', 'panel.svg', 'summary_noise.svg', 'noise_grid.svg'} <= names
+    assert sorted(p.name for p in (tmp_path / 'docs').iterdir()) == [
+        'noise_grid.svg', 'panel.svg', 'sanity_cosine_distributions.svg', 'summary_noise.svg']
 
 
 def test_rerun_overwrites_instead_of_accumulating(tmp_path):

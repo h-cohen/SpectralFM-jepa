@@ -118,7 +118,9 @@ def convert(md):
             while i + 1 < len(lines) and lines[i + 1].strip() and not re.match(r'(\s*[-|#!`]|\s*\d+\.)', lines[i + 1]):
                 i += 1
                 para.append(lines[i])
-            body.append(f'<p>{inline(" ".join(para))}</p>')
+            text = ' '.join(para)
+            cls = ' class="bottom"' if text.startswith('**Bottom line') else ''
+            body.append(f'<p{cls}>{inline(text)}</p>')
         i += 1
     return title, toc, '\n'.join(body)
 
@@ -178,6 +180,7 @@ figure {{ margin: 1.8rem 0; }}
 .plate {{ background: #ffffff; border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem; overflow-x: auto; }}
 .plate img {{ display: block; width: 100%; min-width: 34rem; height: auto; }}
 figcaption {{ font-size: 0.93rem; color: var(--muted); margin-top: 0.6rem; }}
+p.bottom {{ border-left: 3px solid var(--accent-2); padding: 0.5rem 0.9rem; background: var(--code-bg); border-radius: 0 4px 4px 0; }}
 figcaption strong {{ color: var(--fg); }}
 .key {{ display: flex; flex-wrap: wrap; gap: 0.6rem 2rem; margin-top: 1.2rem; font: 0.85rem var(--display); color: var(--muted); }}
 .key b {{ display: block; font: 500 1.5rem var(--mono); color: var(--accent-2); }}
