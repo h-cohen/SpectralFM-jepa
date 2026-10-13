@@ -1,0 +1,32 @@
+"""python -m spectral_lejepa <command> [args]: one entry point for every pipeline step."""
+import importlib
+import sys
+
+COMMANDS = {
+    'pretrain': 'spectral_lejepa.training.pretrain',
+    'gradient-audit': 'spectral_lejepa.training.audit',
+    'export': 'spectral_lejepa.models.export',
+    'pack': 'spectral_lejepa.data.pack_spectra',
+    'pack-pickles': 'spectral_lejepa.data.pack_pickles',
+    'noise-calibration': 'spectral_lejepa.data.noise_calibration',
+    'evaluate': 'spectral_lejepa.evaluation.run',
+    'gate': 'spectral_lejepa.evaluation.gate',
+    'permutation-audit': 'spectral_lejepa.evaluation.permutation',
+    'perturbation': 'spectral_lejepa.evaluation.perturbation',
+    'report': 'spectral_lejepa.reporting.results',
+    'training-report': 'spectral_lejepa.reporting.training_report',
+    'training-report-html': 'spectral_lejepa.reporting.training_report_html',
+}
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv or argv[0] not in COMMANDS:
+        sys.stderr.write('usage: python -m spectral_lejepa {' + ','.join(COMMANDS) + '} [args]\n')
+        sys.exit(2)
+    sys.argv = [f'spectral_lejepa {argv[0]}', *argv[1:]]   # modules parse sys.argv themselves
+    importlib.import_module(COMMANDS[argv[0]]).main()
+
+
+if __name__ == '__main__':
+    main()

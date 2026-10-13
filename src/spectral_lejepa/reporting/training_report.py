@@ -180,7 +180,7 @@ def fetch():
     HIST.write_text(json.dumps(out))
 
 
-def main():
+def figures():
     OUT.mkdir(parents=True, exist_ok=True)
     hist = json.loads(HIST.read_text())
     res = json.loads((ROOT / 'results_analysis.json').read_text())
@@ -192,5 +192,9 @@ def main():
     robustness(res)
 
 
+def main():
+    fetch() if sys.argv[1:] == ['fetch'] else figures()
+
+
 if __name__ == '__main__':
-    fetch() if sys.argv[1:] == ['fetch'] else main()
+    main()
