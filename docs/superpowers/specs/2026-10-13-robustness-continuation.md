@@ -67,3 +67,29 @@ Decision: if all primary criteria pass, a full-length robust run (or robust cont
 
 1. Are realistic instrument noise and baseline levels known from the hardware? If so, they replace the step 0 estimate.
 2. Should the robust arm start from all four 48p seeds instead of seed2 only, so a pass feeds the ensemble directly? This costs 8 jobs instead of 4.
+
+## Results (2026-10-13) — registered primary criteria FAIL
+
+All four jobs completed 49,799 steps, the gradient audit, all-block evaluation, policies and perturbation evaluation. Analysis: `scripts/robustness_continuation_analysis.py` → `outputs/robustness-continuation/results_analysis.json`. Robust weight 0.1 (calibration rule; weighted term ≈1.7× prediction at block2, stronger than the 0.5× target).
+
+| Check (both seeds) | s401 control → robust | s402 control → robust | Pass |
+|---|---|---|---|
+| Drift at 1% noise (median of medians) | .080 → .012 | .080 → .013 | yes (≈0.15×) |
+| Small-set mean R², noise 1% | .599 → .675 | .607 → .676 | yes |
+| Small-set mean R², noise 3% | −.677 → .447 | −.619 → .461 | yes |
+| Clean fixed2 mean Δraw (≥ control − .005) | .0846 → .0436 | .0871 → .0469 | **no** |
+| Clean raw wins (≥ control − 1) | 7 → 7 | 7 → 8 | yes |
+| Repeated per-dataset regression < −.02 | 0055, 0112, 0113, 0120 | | **no** |
+
+Per-dataset clean Δraw, control → robust (s401; s402 within .02): labeled_data .131 → .127, 0055 .051 → .030, 0106 −.104 → +.016, 0109 .007 → .031, 0112 .362 → −.001, 0113 .158 → .132, 0114 .001 → .003, 0120 .070 → .011. Paired robust − control: 0106 +.120±.033 and 0109 +.022±.008 improve; 0112 −.36±.10 is the dominant loss.
+
+Secondary and held-out (fixed ridge, small-set mean R², control → robust): noise 5% −3.8 → +.05; shift 2 .31 → .29; offset 5% −.73 → −1.69; slope 5% .62 → .48; scale 1.05 .47 → .33; sine baseline 5% .13 → −.46. Feature drift falls for every perturbation, but accuracy under baseline-type perturbations (offset, slope, scale, sine) gets worse. labeled_data still collapses under noise for every arm (R² ≈ −1e5), so that probe failure is not about the encoder.
+
+Interpretation:
+
+- The term does what it targets. Block-2 features become about 6× less sensitive to noise, and noisy accuracy rises on both seeds.
+- It also removes fine-detail signal that some sets depend on. 0112's +.36 gain, the largest in the benchmark, disappears. This matches the pre-launch concern that σ_max = .20 of row SD counts real narrow features as noise.
+- The 0106 loss reverses (−.10 → +.02), and s402 is the first 8/8 raw-win encoder. This is a hint about 0106, not a candidate: its mean gain is half the control's.
+- Invariance to baseline shifts did not transfer. Smaller drift with lower R² means the remaining feature change lines up with directions the probe uses.
+
+Decision under the registration: stop this recipe. Nothing is promoted or exported, and the 8-job ensemble extension is not proposed. A follow-up would need a new registration. Candidates are noise-only augmentation at a much smaller σ_max (≤ .03, the range evaluated), with no baseline terms, and a weight below 0.1. The calibration grid should go below 0.1.
