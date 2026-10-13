@@ -15,10 +15,11 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scripts.robust_ensemble import ROOT, job_oof
+from spectral_lejepa.evaluation.ensemble import ensemble_predictions, member_oof as job_oof
 from scripts.robustness_perturbations import DATASETS
 from spectral_lejepa.evaluation.nested import r2
 
+ROOT = Path('outputs/robust-ensemble')
 OUT = Path('docs/figures/training-report')
 HIST = Path('outputs/training-report/wandb_history.json')
 PILOT = Path('outputs/robustness-continuation')
@@ -108,7 +109,7 @@ def ensemble_scores():
         o = [job_oof(b, ds) for b in members]
         y = o[0]['y']
         rows[ds] = (score(y, o[0]['raw']), score(y, np.load(ref / ds / 'linear_oof.npz')['random_layer2/flat']),
-                    score(y, np.mean([x['layer2/flat'] for x in o], 0)))
+                    score(y, ensemble_predictions(o)))
     fig, ax = plt.subplots(figsize=(10, 3.8))
     x = np.arange(len(DATASETS))
     for i, (lab, c) in enumerate([('raw spectra', '#999'), ('random-weight encoder', '#9db4d0'),
