@@ -301,8 +301,8 @@ flowchart TB
 
 The previous project's geometry metrics, run on the four robust members with `python -m spectral_lejepa evaluate --suite embedding` (spec `docs/superpowers/specs/2026-10-14-embedding-similarity-noise-design.md`).
 
-- **Reuse.** Metric code is the old `eval.runner` code, executed unchanged from commit `6237feb`.
-- **Inputs.** Each spectrum gets the old per-spectrum layer norm and the old noise. It is then mapped back to raw units and given our global normalization.
+- **Reuse.** The metric functions are the old `eval.runner` code, executed from commit `6237feb`: top-5 stack retrieval, cosine distributions, the panel selection and the noise definitions. One function is replaced: the panel's per-spectrum normalizer, so that the panel spectra arrive raw. Noise robustness also covers multi_ch, samples and the eight labeled sets, where the old runner used only sanity and in_dist.
+- **Inputs.** Each spectrum gets the old per-spectrum layer norm and the old noise. It is then mapped back to raw units and given our global normalization. The encoder therefore sees each perturbation scaled by that spectrum's own SD relative to the global SD, not the old perturbation in its own input space. Short wavs are zero-padded to 245 points; the old loader did not pad them.
 - **Readouts.** Block-2 mean (256 values) and block-2 flat (12,288 values).
 - **Ensemble.** The ensemble value is the mean of the four members' scores.
 - **Deviation.** Noise draws are seeded per type; the old code was unseeded.
@@ -349,7 +349,7 @@ The table shows ensemble cosine(clean, noisy) per noise type, as a range over th
   | sanity (N = 100) | .080 | .087 | .091 | .091 |
   | in_dist (N = 500) | .016 | .015 | .014 | .018 |
 
-  The old "stack" (10 consecutive manifest rows) carries no detectable structure in these manifests, so this metric does not inform model choice here.
+  This metric detects no stack structure in either space. The likely reason is that 10 consecutive manifest rows are not a real grouping in these manifests, so the metric does not inform model choice here.
 - **Pairwise cosines.** Same-stack, random and same-position pairs have overlapping distributions. They centre near zero in input space and lie at .5–1.0, mostly above .7, for both readouts, because the features share one dominant direction (`outputs/embedding-eval/figures/sanity/cosine_distributions.svg`).
 
 ![Panel](figures/embedding-eval/panel.svg)

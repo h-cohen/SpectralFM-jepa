@@ -134,6 +134,8 @@ def ensemble_rows(rows, members):
 def run_suite(cfg):
     from spectral_lejepa.training.checkpoint import load_model
     out = Path(cfg['experiment']['output_dir'])
+    for stale in ('summary.csv', 'run_info.json'):   # a failed run must not leave the previous summary behind
+        (out / stale).unlink(missing_ok=True)
     legacy = {'sim': legacy_module('code/eval/evaluations/embedding_similarity.py'),
               'noise': legacy_module('code/eval/evaluations/noise_robustness.py'),
               'panel': legacy_module('code/eval/evaluations/structured_similarity.py',

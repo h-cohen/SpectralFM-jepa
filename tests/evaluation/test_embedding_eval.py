@@ -64,3 +64,13 @@ def test_ensemble_refuses_a_missing_member():
     assert ensemble_rows(rows, ['a', 'b']) == [('ensemble', 's', 'block2_flat', 'm', 2.0)]
     with pytest.raises(ValueError, match='expected'):
         ensemble_rows(rows[:1], ['a', 'b'])
+
+
+def test_a_failed_run_leaves_no_stale_summary(tmp_path, monkeypatch):
+    from spectral_lejepa.evaluation import embedding_eval
+    (tmp_path / 'summary.csv').write_text('model,set,readout,metric,value\nold,s,r,m,1\n')
+    monkeypatch.setattr(embedding_eval, 'legacy_module', lambda *a, **k: None)
+    monkeypatch.setattr(embedding_eval, 'load_data', lambda cfg, legacy: (_ for _ in ()).throw(RuntimeError('boom')))
+    with pytest.raises(RuntimeError):
+        embedding_eval.run_suite({'experiment': {'output_dir': str(tmp_path)}, 'models': {}})
+    assert not (tmp_path / 'summary.csv').exists()
