@@ -32,12 +32,13 @@ RUNS = {'s101_full': 'ylymmcnn', 'p48_s0': 'kknz92e3', 'p48_s1': 'm1p2atdu', 'p4
         'robust_p0': '8nfxzsde', 'robust_p1': 'ya6s9o5p', 'robust_s101': 'ok3up62j'}
 KEYS = ('train/loss', 'train/mse_loss', 'train/sigreg_loss', 'train/global_loss', 'train/robust_loss',
         'train/learning_rate', 'valid/mse_loss', 'representation/token_effective_rank')
-plt.rcParams.update({'font.size': 9, 'axes.spines.top': False, 'axes.spines.right': False, 'svg.fonttype': 'none'})
+plt.rcParams.update({'font.size': 9, 'axes.spines.top': False, 'axes.spines.right': False, 'svg.fonttype': 'none',
+                     'svg.hashsalt': 'spectralfm'})   # reproducible SVG ids
 
 
 def save(fig, name):
     fig.tight_layout()
-    fig.savefig(OUT / name)
+    fig.savefig(OUT / name, metadata={'Date': None})
     plt.close(fig)
 
 

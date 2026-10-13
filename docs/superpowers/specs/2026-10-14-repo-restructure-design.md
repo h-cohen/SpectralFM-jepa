@@ -17,12 +17,13 @@ The repository should read as a research-engineering project. Reusable code live
 src/spectral_lejepa/
   __main__.py      python -m spectral_lejepa {pretrain,evaluate,export,gate,report,training-report,pack}
   config.py
-  data/            loader.py, perturb.py, pack.py (pack_spectra + pack_pickles), noise_calibration.py
+  data/            loader.py, perturb.py, pack_spectra.py, pack_pickles.py, noise_calibration.py
   models/          tokenizer.py, masking.py, vit_1d.py, export.py (export_production)
   training/        loss.py, trainer.py, checkpoint.py, diagnostics.py, gradient_terms.py, audit.py (gradient_audit)
   evaluation/      bank.py, data.py, nested.py, probe.py, probe_torch.py, run.py (scripts/evaluate main),
                    ensemble.py (member OOF averaging), gate.py (final_model_gate),
-                   permutation.py (permutation_audit), perturbation.py (robustness_perturbations + robustness_eval)
+                   permutation.py (permutation_audit), perturbation.py (robustness_perturbations),
+                   perturbation_eval.py (robustness_eval)
   reporting/       results.py (build_results_report), matrix.py, readouts.py, story.py, scorecard.py,
                    local_wandb.py, architecture.py,
                    sections/{continuation,frozen_features,production_analysis,projection_pilot}.py,
@@ -42,9 +43,9 @@ tests/             data/, models/, training/, evaluation/, reporting/ mirroring 
 | final_model_gate.py | `evaluation/gate.py` |
 | gradient_audit.py | `training/audit.py` |
 | permutation_audit.py | `evaluation/permutation.py` |
-| robustness_perturbations.py + robustness_eval.py | `evaluation/perturbation.py` |
+| robustness_perturbations.py, robustness_eval.py | `evaluation/perturbation.py`, `evaluation/perturbation_eval.py` |
 | noise_calibration.py | `data/noise_calibration.py` |
-| pack_spectra.py + pack_pickles.py | `data/pack.py` |
+| pack_spectra.py, pack_pickles.py | `data/pack_spectra.py`, `data/pack_pickles.py` |
 | build_results_report.py, results_matrix.py, readout_variants.py, report_story.py, scorecard_figures.py, local_wandb.py, architecture_diagram.py | `reporting/` (names above) |
 | continuation_report.py, frozen_feature_report.py, production_analysis_report.py, projection_pilot_report.py | `reporting/sections/` |
 | training_report.py, training_report_html.py | `reporting/`; `robust_ensemble.job_oof` moves to `evaluation/ensemble.py` |
