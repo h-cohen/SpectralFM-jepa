@@ -228,6 +228,6 @@ artifacts/
 .superpowers/
 rolling_status.md
 rolling_status.html
-plans/
+/plans/
 
 .tmp/
