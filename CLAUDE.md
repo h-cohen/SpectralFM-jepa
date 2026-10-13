@@ -16,6 +16,7 @@
 | prior 48p seed2 | 7/8 | 6/8 | +.0894 | Retrospective holdout candidate |
 | Ensemble of 48p seeds 0/1/2/101 | 7/8 | 6/8 | +.0858 | Passed registered criteria; holdout candidate |
 | robust_s401 / robust_s402 (seed2 + robustness term) | 7/8, 8/8 | 8/8 | +.044, +.047 | Registered criteria failed; majority-contract candidate |
+| Robust ensemble (robust_s401, robust_p0, robust_p1, robust_s101) | 8/8 | 8/8 | +.0556 | Passed all registered criteria; preferred holdout candidate |
 
 - 0106 loses for every non-robust model; the robustness term turns it into a small win but erases 0112's +.36 gain.
 - Single-shuffle canaries are noisy at n = 25–125. A 100-permutation audit shows real R² above every null for all arms on 0106 and 0120. The canary limit is unchanged.
@@ -24,10 +25,7 @@
 
 ## Active job
 
-- Robust four-seed ensemble: spec `docs/superpowers/specs/2026-10-13-robust-ensemble.md`, registration `docs/superpowers/registrations/2026-10-13-robust-ensemble.json`.
-- It applies the robust recipe (weight 0.1, 49,799 steps) to prior 48p seed0, seed1 and final seed101, with training seeds 410/411/412. `robust_s401` is the seed2 member.
-- Services `spectralfm-robust-{p0,p1,s101}` on physical GPUs 0/1/2. W&B group `robust-ensemble`: p0 `8nfxzsde`, p1 `ya6s9o5p`, s101 `ok3up62j`.
-- When all three reach `completed` in `outputs/robust-ensemble/*/state.json`, run `python -m scripts.robust_ensemble analyze`.
+- None. The robust four-seed ensemble completed on 2026-10-13: spec and results in `docs/superpowers/specs/2026-10-13-robust-ensemble.md`, analysis `outputs/robust-ensemble/results_analysis.json`.
 
 ## Completed studies
 
@@ -41,6 +39,7 @@ Each study has a spec or plan under `docs/superpowers/`, outputs under `outputs/
 | 10-12 | Frozen-feature study; projection pilot (seeds 301/302) | Block2-flat is the best fixed family; the SIGReg projector does not help |
 | 10-13 | Production validation (seed ensemble, chemometric baselines, 0106 diagnosis, perturbation drift) | Ensemble passes; trained features amplify input noise about 20×; 0106 cause unknown |
 | 10-13 | Robustness continuation (seed2, 401/402 × control/robust) | See current state above |
+| 10-13 | Robust ensemble (seeds 0/1/101 robust continuations, training seeds 410/411/412; W&B p0 `8nfxzsde`, p1 `ya6s9o5p`, s101 `ok3up62j`) | 8/8 vs raw and random, +.0556; all criteria pass |
 
 ## Repository map
 

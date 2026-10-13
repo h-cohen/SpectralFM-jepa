@@ -1,6 +1,6 @@
 # Robust production roadmap — proposal, 2026-10-13
 
-Status (2026-10-13): section A done (results below). Section C ran as the robustness continuation (completed) and the robust four-seed ensemble (running); see their specs. Section B, independent labelled data, is still missing.
+Status (2026-10-13): section A done (results below). Section C ran as the robustness continuation (completed) and the robust four-seed ensemble (completed; 8/8, all criteria pass); see their specs. Section B, independent labelled data, is still missing.
 
 ## Evidence review
 
