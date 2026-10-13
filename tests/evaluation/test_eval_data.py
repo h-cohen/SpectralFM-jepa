@@ -8,7 +8,7 @@ import torch
 from spectral_lejepa.evaluation.bank import READOUTS, extract_bank, load_bank, readout_arms, save_bank
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
 from spectral_lejepa.models.vit_1d import EvalBackbone, build_model
-from tests.test_model import SMALL
+from tests.models.test_model import SMALL
 
 NOVA = "/mnt5/noy/SpectralFM/fairseq/data/nova_data"
 PARENT_OUT = "/mnt5/home/hadar/nova/SpectralFM-label-regression-eval-merged/code/eval_outputs"

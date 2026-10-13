@@ -11,7 +11,7 @@ from spectral_lejepa.config import load_config
 from spectral_lejepa.training.checkpoint import load_checkpoint, load_model, sha256_file
 from spectral_lejepa.training.trainer import lr_factor, schedule_lengths, train
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture

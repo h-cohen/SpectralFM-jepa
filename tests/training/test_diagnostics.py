@@ -7,7 +7,7 @@ from matplotlib.figure import Figure
 from spectral_lejepa.models.tokenizer import patch_bounds
 from spectral_lejepa.models.vit_1d import build_model
 from spectral_lejepa.training import diagnostics as diag
-from tests.test_model import SMALL
+from tests.models.test_model import SMALL
 
 
 def test_isotropic_gaussian():

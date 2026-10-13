@@ -13,7 +13,7 @@ from spectral_lejepa.models.vit_1d import build_model
 from spectral_lejepa.training.checkpoint import load_checkpoint
 from spectral_lejepa.training.loss import LeJEPAObjective
 from spectral_lejepa.training.trainer import train
-from tests.test_train_smoke import REPO, TINY_OVERRIDES
+from tests.training.test_train_smoke import REPO, TINY_OVERRIDES
 
 STATS = {"mean": 5.0, "std": 2.0}
 ROBUST = {"weight": 0.3, "block": 2, "sigma_max": .2, "offset_max": .05, "slope_max": .05,

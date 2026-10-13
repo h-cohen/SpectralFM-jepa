@@ -12,7 +12,7 @@ from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fa
 from spectral_lejepa.evaluation.nested import run_nested, write_json
 from spectral_lejepa.evaluation.bank import load_bank
 from spectral_lejepa.training.trainer import train
-from tests.test_train_smoke import TINY_OVERRIDES, REPO, data_dir, tiny_cfg  # noqa: F401  (fixture reuse)
+from tests.training.test_train_smoke import TINY_OVERRIDES, REPO, data_dir, tiny_cfg  # noqa: F401  (fixture reuse)
 
 SET = "toyset"
 

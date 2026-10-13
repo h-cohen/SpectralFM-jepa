@@ -8,7 +8,7 @@ import yaml
 from spectral_lejepa.models.export import ProductionEncoder
 from spectral_lejepa.models.vit_1d import build_model, EvalBackbone
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_final_recipe_preserves_validated_training_and_fixes_evaluation_interface():
@@ -43,9 +43,9 @@ def test_production_encoder_matches_block2_and_scripted_dynamic_batches(tmp_path
 
 
 def test_launcher_dry_run_serializes_fixed_eval_and_exports():
-    result = subprocess.run(['bash', 'scripts/launch_final_model.sh', '--dry-run'],
+    result = subprocess.run(['bash', 'ops/launch_final_model.sh', '--dry-run'],
                             cwd=ROOT, capture_output=True, text=True, check=True)
     assert 'configs/final_model.yaml' in result.stdout
     assert 'configs/eval_final_model.yaml' in result.stdout
-    assert 'spectral_lejepa.models.export' in result.stdout
+    assert 'spectral_lejepa export' in result.stdout
     assert 'flock' in result.stdout
