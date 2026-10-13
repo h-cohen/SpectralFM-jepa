@@ -1,5 +1,7 @@
 # All-data LeJEPA Foundation Model Implementation Plan
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.

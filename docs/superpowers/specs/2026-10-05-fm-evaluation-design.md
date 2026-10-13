@@ -1,5 +1,7 @@
 # Foundation-model evaluation: readout families, random-init control, "beats raw" scorecard
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Date: 2026-10-05
 Status (2026-10-13): implemented; the nested-CV protocol is in use. Historical record; current state is in CLAUDE.md.
 Sub-project A of the foundation-model effort (sub-project B = all-data LeJEPA pretraining, separate spec).

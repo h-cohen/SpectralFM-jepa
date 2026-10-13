@@ -1,5 +1,7 @@
 # Robustness continuation — design for approval, 2026-10-13
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Status (2026-10-13): approved, launched and completed. Registered primary criteria failed; see Results and the contract re-read at the end. The seed101 export, its gate and the holdout candidates are unchanged.
 
 ## Motivation

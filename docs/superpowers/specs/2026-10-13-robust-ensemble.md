@@ -1,5 +1,7 @@
 # Robust four-seed ensemble — registered 2026-10-13
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Status (2026-10-13): completed; all three registered criteria pass (8/8 vs raw and random, mean Δraw +.0556). See Results.
 
 Status (2026-10-13): registered and launched; the three jobs are running.

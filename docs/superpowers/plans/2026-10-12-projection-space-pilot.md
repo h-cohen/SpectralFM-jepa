@@ -1,5 +1,7 @@
 # Projection-space pilot implementation plan
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
 
 > Use superpowers:executing-plans inline, with a focused lighter-model diagnostics builder and reviewer.

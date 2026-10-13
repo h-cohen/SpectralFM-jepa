@@ -63,28 +63,28 @@ Optional robustness term (`training.robust`, off unless configured): each batch 
 
 The export in [`outputs/final-model/production`](outputs/final-model/production) accepts raw `float32` spectra shaped `(B, 245)` and applies the training-time global affine normalization. It returns the flattened output after encoder blocks 1 and 2, before the final normalization used after block 6 during training. For one spectrum, the output shape is `(1, 12288)` (12,288 features).
 
-The standalone SVG data-flow diagram can be generated with `scripts.architecture_diagram.render_dataflow()`; it has no external font, script, or asset dependencies.
+The standalone SVG data-flow diagram can be generated with `spectral_lejepa.reporting.architecture.render_dataflow()`; it has no external font, script, or asset dependencies.
 
 ## Commands
 
 ```bash
 uv sync
-systemd-run --user --unit=spectralfm-final-model-s101 bash -ic 'cd /mnt5/home/hadar/nova/SpectralFM-jepa && bash scripts/launch_final_model.sh'
+systemd-run --user --unit=spectralfm-final-model-s101 bash -ic 'cd /mnt5/home/hadar/nova/SpectralFM-jepa && bash ops/launch_final_model.sh'
 ```
 
 The interactive login shell loads the user's W&B environment. The durable launcher runs training, export, evaluation, the predeclared gate, and report rebuild. Use `--resume CHECKPOINT` for recovery; optimizer, scheduler and RNG state are restored. Temporary files stay in ignored `.tmp/`. For standalone export or evaluation, take the checkpoint path printed in `outputs/final-model/training.log`:
 
 ```bash
 CHECKPOINT="$(sed -n 's/^final checkpoint: //p' outputs/final-model/training.log | tail -1)"
-uv run python -m scripts.evaluate \
+uv run python -m spectral_lejepa evaluate \
   --checkpoint "$CHECKPOINT" \
   --config configs/eval_final_model.yaml
-uv run python -m scripts.export_production \
+uv run python -m spectral_lejepa export \
   --checkpoint "$CHECKPOINT" \
   --output outputs/final-model/production
 ```
 
-Plain pretraining: `uv run python -m scripts.pretrain --config configs/pretrain.yaml section.key=value ...`.
+Plain pretraining: `uv run python -m spectral_lejepa pretrain --config configs/pretrain.yaml section.key=value ...`.
 
 The launcher uses [`configs/final_model.yaml`](configs/final_model.yaml). Evaluation uses [`configs/eval_final_model.yaml`](configs/eval_final_model.yaml). Pretraining and evaluation may require `WANDB_API_KEY`; keep the key in the shell environment, never in the repository.
 

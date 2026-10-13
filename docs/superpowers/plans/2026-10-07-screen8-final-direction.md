@@ -1,5 +1,7 @@
 # Screen 8 and Final Training Direction Implementation Plan
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Status (2026-10-13): completed plan. Historical record; current state is in CLAUDE.md.
 
 > **For agentic workers:** Use superpowers:executing-plans. Focused subagents use gpt-6-luna and Cavecrew.

@@ -1,5 +1,7 @@
 # LeJEPA SpectralFM — Design
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Date: 2026-10-02
 Status (2026-10-13): implemented and superseded by the final recipe (`configs/final_model.yaml`). Historical record; current state is in CLAUDE.md.
 Source brief: `spectralfm_lejepa_project_prompt.md` (user-supplied)

@@ -1,5 +1,7 @@
 # Screen 1 — which change closes the gap to data2vec on labeled_data?
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Date: 2026-10-02
 Status (2026-10-13): completed. Historical record; current state is in CLAUDE.md.
 Builds on: `2026-10-02-lejepa-spectralfm-design.md` (baseline spec)

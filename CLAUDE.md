@@ -43,18 +43,15 @@ Each study has a spec or plan under `docs/superpowers/`, outputs under `outputs/
 
 ## Repository map
 
-- `src/spectral_lejepa/models/`: tokenizer, masking, shared encoder, predictor.
-- `src/spectral_lejepa/training/`: objective (`loss.py`), loop (`trainer.py`), checkpointing, diagnostics, gradient terms.
-- `src/spectral_lejepa/data/`: corpus loaders; `perturb.py` for the optional robustness term.
-- `src/spectral_lejepa/evaluation/`: feature banks, nested probes, paired bootstrap.
-- `scripts/pretrain.py`, `scripts/evaluate.py`: CLI entry points.
-- Final pipeline: `scripts/launch_final_model.sh`, `export_production.py`, `final_model_gate.py`.
-- Audits: `gradient_audit.py`, `permutation_audit.py`.
-- 2026-10-13 studies: `seed_ensemble.py`, `chemometric_baselines.py`, `diagnose_0106.py`, `robustness_perturbations.py`, `memorization_check.py`, `noise_calibration.py`, `robustness_continuation*.py`, `robustness_eval.py`, `robust_ensemble.py`.
-- Report: `scripts/build_results_report.py` and its `*_report.py`, `results_matrix.py`, `readout_variants.py`, `report_story.py` section modules. These build offline HTML, CSV and SVG from saved outputs.
-- `scripts/training_progress.py`: W&B presentation watcher (service `spectralfm-presentation`, stopped 2026-10-13).
-- Training report: `docs/TRAINING_REPORT.md` and `.html` (`python -m scripts.training_report_html`); figures in `docs/figures/training-report/` from `python -m scripts.training_report` (`fetch` first, via `bash -ic`).
-- Data packing: `pack_pickles.py`, `pack_spectra.py`. Corpus details: `docs/DATASETS.md`.
+- `src/spectral_lejepa/`: package; `python -m spectral_lejepa <command>` runs pretrain, evaluate, export, gate, report, training-report, training-report-html, pack, gradient-audit, permutation-audit, perturbation, noise-calibration.
+- `data/`: corpus loaders, packing, perturbations (`perturb.py`, the optional robustness term) and noise calibration.
+- `models/`: tokenizer, masking, shared encoder and predictor, TorchScript export.
+- `training/`: objective (`loss.py`), loop (`trainer.py`), pretrain entry point, checkpointing, diagnostics, gradient terms and audit.
+- `evaluation/`: feature banks, nested probes, paired bootstrap, ensembles, gate, permutation audit, perturbation suite.
+- `reporting/`: results report and its `sections/`, scorecards, training report (figures + HTML), architecture diagram. All build from saved outputs.
+- `ops/launch_final_model.sh`: durable final pipeline. `configs/`: YAML configs. `tests/` mirrors the package.
+- Training report: `docs/TRAINING_REPORT.md` and `.html`; rebuild with `python -m spectral_lejepa training-report` (`fetch` first, via `bash -ic`) and `training-report-html`. Corpus details: `docs/DATASETS.md`.
+- One-off study orchestration was removed on 2026-10-13 and 2026-10-14; specs, `outputs/` and git history keep the record.
 - Retired options (`model.projector`, `model.sigreg_projector`, `training.regularizer=visreg`) remain in saved configs; the code accepts only their disabled values.
 
 ## Execution rules

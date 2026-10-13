@@ -1,5 +1,7 @@
 # Robust production roadmap — proposal, 2026-10-13
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Status (2026-10-13): section A done (results below). Section C ran as the robustness continuation (completed) and the robust four-seed ensemble (completed; 8/8, all criteria pass); see their specs. Section B, independent labelled data, is still missing.
 
 ## Evidence review

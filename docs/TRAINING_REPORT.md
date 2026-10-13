@@ -1,6 +1,6 @@
 # SpectralFM-LeJEPA training report
 
-Status 2026-10-14. Covers the recipe and evidence behind the current candidate, the **robust four-seed ensemble**. Figures are rebuilt from saved outputs with `python -m scripts.training_report`. W&B project `hcohen/spectralfm-lejepa`.
+Status 2026-10-14. Covers the recipe and evidence behind the current candidate, the **robust four-seed ensemble**. Figures are rebuilt from saved outputs with `python -m spectral_lejepa training-report`. W&B project `hcohen/spectralfm-lejepa`.
 
 ## 1. Summary
 

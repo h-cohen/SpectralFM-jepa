@@ -1,5 +1,7 @@
 # All-data LeJEPA foundation model (sub-project B)
 
+> Paths before 2026-10-14 refer to `scripts/`; see `docs/superpowers/specs/2026-10-14-repo-restructure-design.md`.
+
 Date: 2026-10-06
 Status (2026-10-13): completed; all-data pretraining is the standing policy. Historical record; current state is in CLAUDE.md.
 
