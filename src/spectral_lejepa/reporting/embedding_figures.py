@@ -110,18 +110,37 @@ def distribution_figure(root, members, s, path):
 
 
 def panel_figure(root, path):
+    """Row 1: cosine similarity of the input and both block-2 readouts; row 2: the readouts after mean-centring."""
     a = np.load(root / PANEL_MODEL / 'arrays.npz')
-    names = ['panel/input'] + [f'panel/{r}{c}' for r in READOUTS for c in ('', '_centered')]
-    fig, axes = plt.subplots(1, len(names), figsize=(3 * len(names), 3.3))
-    for ax, n in zip(axes, names):
-        ax.imshow(a[n], vmin=-1, vmax=1, cmap='RdBu_r')
-        for b in (30, 60, 80):   # single_channel_all | multi_channel | sampled_data | labeled_data
+    bounds, groups = (0, 30, 60, 80, 100), ('single_channel_all', 'multi_channel', 'sampled_data', 'labeled_data')
+    mids = [(lo + hi) / 2 - .5 for lo, hi in zip(bounds, bounds[1:])]
+    fig, axes = plt.subplots(2, 3, figsize=(10.5, 7.4))
+    cells = [(axes[0, 0], 'input', 'input'), (axes[0, 1], 'block2_mean', 'block-2 mean'),
+             (axes[0, 2], 'block2_flat', 'block-2 flat'),
+             (axes[1, 1], 'block2_mean_centered', 'block-2 mean, after mean-centring'),
+             (axes[1, 2], 'block2_flat_centered', 'block-2 flat, after mean-centring')]
+    for ax, key, title in cells:
+        im = ax.imshow(a[f'panel/{key}'], vmin=-1, vmax=1, cmap='RdBu_r')
+        for b in bounds[1:-1]:
             ax.axhline(b - .5, color='k', lw=.5)
             ax.axvline(b - .5, color='k', lw=.5)
-        ax.set(title=n.split('/', 1)[1], xticks=[], yticks=[])
-    fig.suptitle(f'Structured 100-spectrum panel ({PANEL_MODEL}); blocks: single_channel_all, multi_channel, '
-                 'sampled_data, labeled_data', fontsize=9)
-    return _save(fig, path, top=.9)
+        ax.set_title(title, fontsize=9)
+        ax.set_xticks(mids, [g.split('_')[0] for g in groups], fontsize=7)
+        ax.set_yticks(mids, [g.split('_')[0] for g in groups], fontsize=7, rotation=90, va='center')
+        ax.tick_params(length=0)
+    key = axes[1, 0]
+    key.axis('off')
+    key.text(0, .5, f'{PANEL_MODEL}, 100 spectra in four groups:\n\n' + '\n'.join(
+        f'{lo}–{hi - 1}: {g}' for lo, hi, g in zip(bounds, bounds[1:], groups)) +
+        '\n\nRow 1: cosine similarity.\nRow 2: the same after subtracting\nthe mean feature vector.',
+        fontsize=8, va='center', transform=key.transAxes)
+    fig.subplots_adjust(left=.04, right=.88, top=.95, bottom=.04, wspace=.15, hspace=.2)
+    bar = fig.colorbar(im, cax=fig.add_axes((.91, .2, .015, .6)))
+    bar.set_label('cosine similarity')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, metadata={'Date': None})
+    plt.close(fig)
+    return path
 
 
 def summary_figure(rows, path):

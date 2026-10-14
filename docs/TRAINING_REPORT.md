@@ -300,7 +300,7 @@ flowchart LR
 
 ![Panel](figures/embedding-eval/panel.svg)
 
-**Figure 12. Fixed 100-spectrum panel** (robust_s401). Raw block-2 cosines are high everywhere. After mean-centring, components within multi_channel, sampled_data and labeled_data form clear blocks.
+**Figure 12. Fixed 100-spectrum panel** (robust_s401; colour is cosine similarity, −1 to 1). Top row: block-2 cosines are high everywhere (0.4–1), because all features share one dominant direction. Bottom row: after subtracting the mean feature vector, components within multi_channel, sampled_data and labeled_data form clear blocks, as in the input.
 
 ![Cosine distributions](figures/embedding-eval/sanity_cosine_distributions.svg)
 

@@ -48,3 +48,12 @@ def test_rerun_overwrites_instead_of_accumulating(tmp_path):
     a = figures(tmp_path / 'run', None)
     b = figures(tmp_path / 'run', None)
     assert sorted(a) == sorted(b) and all(p.read_bytes() for p in b)
+
+
+def test_panel_figure_has_two_rows_colour_scale_and_group_labels(tmp_path):
+    from spectral_lejepa.reporting import embedding_figures
+    fake_run(tmp_path / 'run')
+    path = embedding_figures.panel_figure(tmp_path / 'run', tmp_path / 'panel.svg')
+    svg = path.read_text()
+    assert 'cosine similarity' in svg   # colour-bar label
+    assert 'after mean-centring' in svg and 'multi_channel' in svg
