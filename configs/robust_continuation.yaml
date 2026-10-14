@@ -1,0 +1,80 @@
+# Stage 2: robust continuation of a stage-1 checkpoint (block-2 token invariance, weight 0.1).
+# One epoch, fresh AdamW, 1,000-step warmup (0.0201 epoch), LR 5e-5 -> 5e-7. Run once per ensemble member:
+#   python -m spectral_lejepa pretrain --config configs/robust_continuation.yaml \
+#     training.init_checkpoint=<stage-1 checkpoint_last.pt> experiment.seed=<seed> experiment.name=<member>
+# sigma_max is the corpus p90 noise estimate (python -m spectral_lejepa noise-calibration).
+experiment:
+  name: robust_continuation
+  seed: 0
+  output_dir: outputs/robust-continuation-runs
+data:
+  source: packed
+  packed_dir: /mnt5/home/hadar/nova/data/spectra_all
+  normalization: global
+  manifest_dir: /mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one
+  sequence_length: 245
+  max_train_samples: null
+  num_workers: 4
+  source_weights:
+    labeled_regression: 0.5
+    default: 0.5
+model:
+  num_patches: 48
+  dim: 256
+  depth: 6
+  heads: 8
+  mlp_dim: 1024
+  dropout: 0.0
+  predictor_dim: 192
+  predictor_depth: 4
+  predictor_heads: 6
+  predictor_mlp_dim: 768
+masking:
+  strategy: random
+  mask_ratio: 0.75
+  num_blocks: 3
+training:
+  batch_size: 256
+  epochs: 1
+  max_steps: 49799
+  optimizer: adamw
+  learning_rate: 5.0e-05
+  weight_decay: 0.05
+  warmup_epochs: 0.020090764874796684
+  final_lr_ratio: 0.01
+  lambda_sigreg: 0.05
+  sigreg_num_slices: 1024
+  sigreg_knots: 17
+  sigreg_t_max: 3.0
+  global_weight: 1.0
+  global_views: 2
+  global_keep: 0.5
+  amp: true
+  grad_clip: null
+  log_every: 50
+  val_every: 5000
+  diag_every: 5000
+  ckpt_every: 5000
+  device: cuda
+  resume: null
+  init_checkpoint: null
+  robust:
+    weight: 0.1
+    block: 2
+    prob: 0.5
+    sigma_max: 0.20181098959496105
+    offset_max: 0.05
+    slope_max: 0.05
+    scale_max: 0.05
+    shift_max: 1
+wandb:
+  enabled: true
+  log_checkpoints: false
+  entity: null
+  project: spectralfm-lejepa
+  group: robust-continuation
+  job_type: pretrain
+  tags:
+  - lejepa
+  - spectralfm
+  - robust-continuation

@@ -1,92 +1,95 @@
 # SpectralFM-LeJEPA
 
-SpectralFM learns frozen features from unlabeled 245-point spectra with masked joint-embedding prediction. A linear probe evaluates those features against raw spectra on eight labeled sets. Labels are excluded from pretraining; spectra from the evaluation corpus are eligible, so evaluation is transductive with respect to the input distribution.
+SpectralFM learns frozen features from unlabeled 245-point spectra with masked joint-embedding prediction (LeJEPA). The features aim to predict `parameter_0` better than the raw spectra do, on as many of eight labeled evaluation sets as possible, using a linear probe. Labels never enter pretraining. Evaluation spectra are part of the unlabeled corpus, so evaluation is transductive in the inputs.
 
-Status, candidates and the release blocker: [`docs/PRODUCTION_RECOMMENDATION.md`](docs/PRODUCTION_RECOMMENDATION.md). Corpus details: [`docs/DATASETS.md`](docs/DATASETS.md). Training recipe, diagrams and results: [`docs/TRAINING_REPORT.md`](docs/TRAINING_REPORT.md).
+Full results, diagrams and figures: [`docs/TRAINING_REPORT.md`](docs/TRAINING_REPORT.md). Corpus: [`docs/DATASETS.md`](docs/DATASETS.md). Status and release blocker: [`docs/PRODUCTION_RECOMMENDATION.md`](docs/PRODUCTION_RECOMMENDATION.md).
 
-## Architecture and data flow
+## Final model: robust seed ensemble
 
-The final recipe uses 48 contiguous patches and a six-block shared encoder. Training uses every encoder block; production inference uses the first two blocks and returns their raw token features before the final encoder normalization.
+Several encoders with the same architecture, each trained from a different random seed in two stages, then used frozen:
 
 ```mermaid
 flowchart LR
-    X["Raw float32 spectrum<br/>(B,245)"] --> N["Global affine normalization<br/>(B,245)"]
-    N --> P["48 contiguous patches<br/>5×6 + 43×5, pad to 6<br/>(B,48,6)"]
-    P --> E["Linear 6→256 + learned positions<br/>tokens (B,48,256)"]
-    E --> V["Select 12 visible tokens / sample<br/>(B,12,256)"]
-    V --> C["Shared encoder blocks 1–6<br/>context (B,12,256)"]
-    C --> Q["Predictor: 4 blocks, width 192"]
-    Q --> H["Masked prediction<br/>(B,36,256)"]
-    E --> T["Full target pass: shared encoder<br/>all 6 blocks + final norm<br/>target (B,48,256)"]
-    H --> M[MSE]
-    T --> G["Gather 36 masked positions<br/>target_masked (B,36,256)"]
-    G --> M
-    T --> S["Transpose to (48,B,256)<br/>token SIGReg"]
-    E --> W["Two random 24-token subsets<br/>encode and pool"]
-    T --> F["Pool full target"]
-    W --> PV["Full + two subset views<br/>(3,B,256)"]
-    F --> PV
-    PV --> L["View invariance + pooled SIGReg"]
-    E --> I["Inference: first 2 encoder blocks<br/>raw hidden before final norm<br/>(B,48,256)"]
-    I --> O["Flatten tokens and features<br/>(B,12288)"]
+    C["12.76M unlabeled spectra"] --> S1["Stage 1: LeJEPA pretraining<br/>10 epochs, per seed"]
+    S1 --> S2["Stage 2: robust continuation<br/>1 epoch, block-2 invariance"]
+    S2 --> F["Frozen blocks 1–2<br/>flatten → 12,288 features"]
+    F --> P["Linear probe per member<br/>(recipe chosen by inner CV)"]
+    P --> E["Ensemble: mean of members' predictions"]
 ```
-
-The two encoder paths in pretraining share weights. There is no EMA teacher or stop-gradient. The production output has **12,288 features** (`48 × 256`), not a pooled 256-dimensional vector.
 
 | Stage | Shape | Operation |
 |---|---|---|
-| Input | `(B, 245)` | Raw `float32`; one spectrum is `(1, 245)` |
-| Normalized | `(B, 245)` | Fixed global affine map `(x − μg) / σg` |
-| Patches | `(B, 48, 6)` | Five width-6 patches and 43 width-5 patches; right-pad the latter with zero |
-| Tokens | `(B, 48, 256)` | Shared `Linear(6 → 256)` plus learned positions |
-| Context | `(B, 12, 256)` | 25% visible patches, passed through all six encoder blocks |
-| Target | `(B, 48, 256)` | Full sequence through all six blocks and final LayerNorm |
-| Prediction | `(B, 36, 256)` | Four-block predictor, width 192; loss applies only to masked positions |
-| Pooled views | `(3, B, 256)` | Full target plus two encoded, pooled 24-token subsets |
-| Production feature | `(B, 12288)` | First two encoder blocks, before final six-block LayerNorm; flatten token and feature axes |
+| Input | `(B, 245)` | Raw `float32` spectrum |
+| Normalized | `(B, 245)` | Fixed global affine map `(x − 0.378) / 0.513` (corpus statistics) |
+| Tokens | `(B, 48, 256)` | 48 contiguous patches (5 of width 6, 43 of width 5, padded), `Linear(6 → 256)` + learned positions |
+| Encoder | `(B, 48, 256)` | 6 pre-LN transformer blocks, 8 heads, MLP 1024; shared by context and target paths (no EMA, no stop-gradient) |
+| Predictor | `(B, 36, 256)` | 4 blocks, width 192; predicts the 36 masked tokens from the 12 visible ones |
+| **Feature** | `(B, 12288)` | State after encoder block 2, before any final norm, flattened. 1.59M parameters per member |
 
-## Training objective
-
-For batch size `B = 256`, each token position is regularized across the batch:
+### Training objective
 
 ```text
-token loss = MSE(predicted, target_masked) + 0.05 × SIGReg(target transposed to (48, B, 256))
-pooled loss = 0.95 × view invariance + 0.05 × SIGReg(pooled views)
-total loss  = token loss + pooled loss
+stage 1:  L = MSE(predicted, target_masked) + 0.05·SIGReg(tokens)
+              + [0.95·view invariance + 0.05·SIGReg(pooled views)]
+stage 2:  L + 0.1 · mean‖h₂(x′) − h₂(x)‖² / Var(h₂(x))
 ```
 
-The training plan predeclares seed `101`, ten epochs (`497,990` steps), and expected source weights of 50/50 for regression-source spectra and the remaining packed corpus. These are sampling weights, not guaranteed per-batch proportions. Labels are never loaded by pretraining. The fixed global normalization statistics come from the packed-corpus metadata and are recorded in the run's `config.yaml`.
+- **SIGReg** pushes each token position, across the batch, toward an isotropic Gaussian; this prevents collapse.
+- **Pooled views** are the full sequence plus two random 24-token subsets, each encoded and mean-pooled.
+- **Stage 2.** `x′` is a perturbed copy of each spectrum. Each of these is applied with probability 0.5, in raw units, then renormalized:
+  - Gaussian noise, up to the corpus p90 noise level;
+  - ±5% offset, slope and scale;
+  - a ±1-bin shift.
 
-Optional robustness term (`training.robust`, off unless configured): each batch also gets a perturbed copy (noise, offset, slope, scale, ±1-bin shift, drawn in raw units and renormalized; `src/spectral_lejepa/data/perturb.py`). The loss adds `weight × mean((h₂(x′) − h₂(x))²) / var(h₂(x))` on block-2 tokens. The draws use a separate RNG stream, so masking is unchanged. It was used only for the 2026-10-13 continuation studies.
+  The term makes the shipped block-2 features invariant to measurement-type changes.
+- **Recipe.** Batch 256, AdamW (weight decay 0.05), 75% random masking, AMP.
+  - Stage 1: 497,990 steps, LR 5e-4 with cosine decay.
+  - Stage 2: 49,799 steps from the stage-1 checkpoint, fresh AdamW, LR 5e-5 with a 1,000-step warmup.
+  - Sampling: half of each batch, in expectation, comes from regression-source spectra.
 
-## Production inference
+### Result
 
-The export in [`outputs/final-model/production`](outputs/final-model/production) accepts raw `float32` spectra shaped `(B, 245)` and applies the training-time global affine normalization. It returns the flattened output after encoder blocks 1 and 2, before the final normalization used after block 6 during training. For one spectrum, the output shape is `(1, 12288)` (12,288 features).
+The ensemble beats raw spectra on 8 of 8 sets (mean ΔR² +.056) and a random-weight encoder of the same architecture on 8 of 8 (+.048). See the report for per-set R², uncertainty and limitations.
 
-The standalone SVG data-flow diagram can be generated with `spectral_lejepa.reporting.architecture.render_dataflow()`; it has no external font, script, or asset dependencies.
+## Robustness tests
+
+| Test | Command | What it measures |
+|---|---|---|
+| Perturbation suite | `python -m spectral_lejepa robustness --checkpoint CKPT --output OUT.json` | For each set, relative block-2 drift and fixed-ridge R² under noise (1/3/5%), offset, slope, scale, ±1/2-bin shift and a sinusoidal baseline. Probes are fit on clean rows. Shift-2, 5% noise and sinusoid are never seen in training |
+| Embedding suite | `python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml` | The previous project's metrics, run from its pinned commit: cosine(clean, noisy) under six noise types, top-5 stack retrieval, cosine distributions and a 100-spectrum panel. Members and the ensemble mean are scored on 12 sets |
+
+The robust continuation cuts 1%-noise drift about 6× and keeps features stable (cosine ≥ .997) under small noise and ±10% gain. Large baseline offsets and heavy shot noise still move the features.
 
 ## Commands
 
-```bash
-uv sync
-systemd-run --user --unit=spectralfm-final-model-s101 bash -ic 'cd /mnt5/home/hadar/nova/SpectralFM-jepa && bash ops/launch_final_model.sh'
-```
-
-The interactive login shell loads the user's W&B environment. The durable launcher runs training, export, evaluation, the predeclared gate, and report rebuild. Use `--resume CHECKPOINT` for recovery; optimizer, scheduler and RNG state are restored. Temporary files stay in ignored `.tmp/`. For standalone export or evaluation, take the checkpoint path printed in `outputs/final-model/training.log`:
+Run from the repository root with the project venv (`uv sync`). W&B uses `WANDB_API_KEY` from the shell; keep it out of the repository.
 
 ```bash
-CHECKPOINT="$(sed -n 's/^final checkpoint: //p' outputs/final-model/training.log | tail -1)"
-uv run python -m spectral_lejepa evaluate \
-  --checkpoint "$CHECKPOINT" \
-  --config configs/eval_final_model.yaml
-uv run python -m spectral_lejepa export \
-  --checkpoint "$CHECKPOINT" \
-  --output outputs/final-model/production
+# Stage 1, once per member (seed via override)
+python -m spectral_lejepa pretrain --config configs/final_model.yaml experiment.seed=<seed> experiment.name=<member>
+
+# Stage 2, once per member, from that member's stage-1 checkpoint
+python -m spectral_lejepa pretrain --config configs/robust_continuation.yaml \
+  training.init_checkpoint=<stage-1 checkpoint_last.pt> experiment.seed=<seed> experiment.name=<member>
+
+# Evaluate each member: nested-CV probes for every block/readout, raw and random-weight controls
+python -m spectral_lejepa evaluate --checkpoint <stage-2 checkpoint_last.pt> \
+  --config configs/eval_production_all_blocks.yaml experiment.output_dir=outputs/<study>/<member>/eval
+
+# Score the ensemble (block-2 flat) from the members' evaluation run dirs
+python -m spectral_lejepa ensemble --banks outputs/<study>/*/eval/*_step* --output outputs/<study>/ensemble.json
+
+# Robustness tests, figures, report
+python -m spectral_lejepa robustness --checkpoint <ckpt> --output outputs/<study>/<member>/perturbation.json
+python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml
+python -m spectral_lejepa embedding-figures
+python -m spectral_lejepa training-report && python -m spectral_lejepa training-report-html
+
+# Export one member as TorchScript: raw (B, 245) float32 -> (B, 12288)
+python -m spectral_lejepa export --checkpoint <ckpt> --output <dir>
 ```
 
-Plain pretraining: `uv run python -m spectral_lejepa pretrain --config configs/pretrain.yaml section.key=value ...`.
-
-The launcher uses [`configs/final_model.yaml`](configs/final_model.yaml). Evaluation uses [`configs/eval_final_model.yaml`](configs/eval_final_model.yaml). Pretraining and evaluation may require `WANDB_API_KEY`; keep the key in the shell environment, never in the repository.
+`python -m spectral_lejepa --help` lists every command. Long runs belong in user systemd services. `ops/launch_final_model.sh` is the durable single-model pipeline (train, export, evaluate, gate, report), with `--resume CHECKPOINT` for recovery.
 
 ## References
 

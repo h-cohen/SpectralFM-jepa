@@ -1,10 +1,10 @@
-"""Registered perturbation evaluation for one robustness-continuation job (or the starting checkpoint).
+"""Perturbation robustness of one checkpoint's block-2 flat features: drift and fixed-ridge R² on perturbed inputs.
 
 Fixed before any study result: A6 perturbations (src/spectral_lejepa/evaluation/perturbation.py, same seeds) plus
 the held-out family below. Probe: standardize + RidgeCV(logspace(-3, 6, 19)) fit on CLEAN training rows
 of the primary outer folds (seed42, 2 x 5), scored on perturbed test rows. Drift summary: per-row relative
 block2-flat drift, median within each dataset, then median of the eight dataset medians.
-Usage: python -m spectral_lejepa.evaluation.perturbation_eval {job|start}
+Usage: python -m spectral_lejepa robustness --checkpoint CKPT --output OUT.json
 """
 import argparse
 import json
@@ -22,8 +22,6 @@ from spectral_lejepa.evaluation.perturbation import DATASETS, PERTURBATIONS, blo
 from spectral_lejepa.evaluation.probe import r2
 from spectral_lejepa.training.checkpoint import load_model
 
-ROOT = Path('outputs/robustness-continuation')
-START = 'outputs/paired-long/p48_s2_20261008-161508/checkpoint_last.pt'
 BANKS = Path('outputs/frozen-feature-study/prior_s2')   # same input_raw/y for every checkpoint
 HELDOUT = {'shift_2': ('shift2', 2), 'noise_5pct': ('noise', .05), 'sine_baseline_5pct': ('sine', .05)}
 ALPHAS = np.logspace(-3, 6, 19)
@@ -84,12 +82,13 @@ def evaluate(checkpoint, out):
     write_json(out, {'checkpoint': str(checkpoint), 'sets': sets, 'summary': summary})
 
 
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    p.add_argument('--checkpoint', required=True)
+    p.add_argument('--output', type=Path, required=True)
+    a = p.parse_args(argv)
+    evaluate(a.checkpoint, a.output)
+
+
 if __name__ == '__main__':
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('job')
-    job = p.parse_args().job
-    if job == 'start':
-        evaluate(START, ROOT / 'start_perturbation.json')
-    else:
-        state = json.loads((ROOT / job / 'state.json').read_text())
-        evaluate(state['checkpoint'], ROOT / job / 'perturbation.json')
+    main()

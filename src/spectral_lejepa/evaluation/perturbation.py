@@ -2,7 +2,7 @@
 
 Probes are fit on CLEAN training rows with the recipe the inner CV already chose, then predict
 PERTURBED test rows. Same outer folds/probe seeds as the primary benchmark.
-Run: PYTHONPATH=src:. .venv/bin/python src/spectral_lejepa/evaluation/perturbation.py
+Run: python -m spectral_lejepa perturbation (fixed checkpoint list of the 2026-10-13 production validation).
 """
 from __future__ import annotations
 

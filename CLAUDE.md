@@ -1,67 +1,67 @@
 # SpectralFM-LeJEPA
 
-## Contract
+## Aim and evaluation rules
 
-- Train a frozen encoder whose nested-CV `parameter_0` R² beats raw spectra on a majority (≥ 5) of eight datasets: labeled_data, 0055, 0106, 0109, 0112, 0113, 0114, 0120.
-- Any positive ΔR² is a win; ≥ +0.05 is a strong win. The goal is a majority of wins, not large margins: matching raw on some sets is acceptable. Do not register criteria that require keeping a control's mean margin.
-- Keep raw and architecture/readout-matched random-weight controls. Do not change the scoring rule. Every results table shows raw R².
-- Labels never enter pretraining. All eligible spectra may be used, including evaluation spectra; evaluation is transductive.
-- Select probe recipes inside inner CV. Do not select a production checkpoint using outer-test scores. Register criteria before results.
+- Aim: frozen spectral features whose nested-CV `parameter_0` R² exceeds raw spectra on as many as possible of the eight sets: labeled_data, 0055, 0106, 0109, 0112, 0113, 0114, 0120.
+- Every results table shows raw R², alongside a random-weight encoder of the same architecture and readout.
+- Labels never enter pretraining. All eligible spectra, including evaluation spectra, may be used; evaluation is transductive.
+- Probe recipes are chosen inside inner CV. Never pick checkpoints, readouts or seeds from outer-test scores. Write down study criteria before seeing results.
 
-## Current state (2026-10-13)
+## Current state (2026-10-14)
 
-| Model (block2-flat, 12,288 features) | Raw wins | Random wins | Mean ΔR² vs raw | Status |
-|---|---|---|---|---|
-| seed101 final (`outputs/final-model/production`) | 5/8 | 6/8 | +.0801 | Export. Not gate-qualified: 0120 single-shuffle canary .0204 > .020 |
-| prior 48p seed2 | 7/8 | 6/8 | +.0894 | Retrospective holdout candidate |
-| Ensemble of 48p seeds 0/1/2/101 | 7/8 | 6/8 | +.0858 | Passed registered criteria; holdout candidate |
-| robust_s401 / robust_s402 (seed2 + robustness term) | 7/8, 8/8 | 8/8 | +.044, +.047 | Registered criteria failed; majority-contract candidate |
-| Robust ensemble (robust_s401, robust_p0, robust_p1, robust_s101) | 8/8 | 8/8 | +.0556 | Passed all registered criteria; preferred holdout candidate |
+- **Candidate:** robust seed ensemble. Four members, each a stage-1 LeJEPA run plus a stage-2 robust continuation. Block-2 flat features (12,288); predictions are averaged.
+  - It beats raw on 8/8 sets (+.0556) and random weights on 8/8 (+.0478).
+  - Member evaluations live in `outputs/robust-ensemble/*/eval` and `outputs/robustness-continuation/robust_s401/eval`.
+- **Exported single model:** `outputs/final-model/production` (seed101, 5/8). It is not gate-qualified, because the 0120 single-shuffle canary scored .0204 against a .020 limit.
+- **Blocker:** no independent group-labelled holdout exists. No benchmark result is release approval.
+- **Where things are documented:**
+  - Results and figures: `docs/TRAINING_REPORT.md` (and `.html`, published as artifact `4pDknEu4iwtFTgEsbnMJyy`).
+  - History: `docs/PRODUCTION_RECOMMENDATION.md`.
+  - Study specs: `docs/superpowers/specs/`.
+- **Running jobs:** none.
 
-- 0106 loses for every non-robust model; the robustness term turns it into a small win but erases 0112's +.36 gain.
-- Single-shuffle canaries are noisy at n = 25–125. A 100-permutation audit shows real R² above every null for all arms on 0106 and 0120. The canary limit is unchanged.
-- Release blocker: independent labelled spectra with group IDs. Score the candidates once on a locked group-disjoint holdout. No benchmark result is release approval.
-- Recommendation and history: `docs/PRODUCTION_RECOMMENDATION.md`. Roadmap: `docs/superpowers/specs/2026-10-13-robust-production-roadmap.md`.
+## Train
 
-## Active job
+- **Stage 1** (one member): `python -m spectral_lejepa pretrain --config configs/final_model.yaml experiment.seed=S experiment.name=N`. 497,990 steps, about 19 h on one RTX 2080 Ti.
+- **Stage 2:** `python -m spectral_lejepa pretrain --config configs/robust_continuation.yaml training.init_checkpoint=<stage-1 ckpt> experiment.seed=S experiment.name=N`. 49,799 steps, about 2 h.
+  - The init checkpoint is required. Without it, the stage-2 recipe trains from scratch.
+- **Long runs:** run them as user systemd services, launched through `bash -ic` (`systemd-run --user --unit=spectralfm-<name> bash -ic 'cd <repo> && ...'`).
+  - Resume with `training.resume=<checkpoint>`; optimizer, scheduler and RNG state are restored.
+  - `ops/launch_final_model.sh` is the single-model pipeline: train, export, evaluate, gate, report.
 
-- None. The robust four-seed ensemble completed on 2026-10-13: spec and results in `docs/superpowers/specs/2026-10-13-robust-ensemble.md`, analysis `outputs/robust-ensemble/results_analysis.json`.
+## Evaluate
 
-## Completed studies
+- **Member probes:** `python -m spectral_lejepa evaluate --checkpoint C --config configs/eval_production_all_blocks.yaml experiment.output_dir=<dir>`.
+  - Nested CV: 2×5 outer, 5 inner, 12 recipes. Covers every block and readout, plus raw and random-weight controls.
+  - Writes `<dir>/<run>_step<N>/<set>/nested_oof.npz`.
+- **Ensemble:** `python -m spectral_lejepa ensemble --banks <run dirs...> --output E.json`. Paired ΔR² vs raw and vs random, with bootstrap SD.
+- **Perturbation robustness:** `python -m spectral_lejepa robustness --checkpoint C --output P.json`. Block-2 drift and fixed-ridge R² under noise, offset, slope, scale, shift and a sinusoid.
+- **Embedding suite:** `python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml`, then `embedding-figures`.
+  - Runs the previous project's cosine-similarity and noise metrics from its pinned commit (`evaluation/legacy.py`).
+  - Writes to `outputs/embedding-eval/`.
+- **Other tools:** `permutation-audit` and `gradient-audit`. `export` writes TorchScript: raw `(B, 245)` in, `(B, 12288)` out.
+- **Report:**
+  - `training-report`; run `training-report fetch` first, via `bash -ic`, to pull W&B histories.
+  - `training-report-html`; republish the artifact from `docs/TRAINING_REPORT.html`.
+  - `report` builds the older results HTML.
 
-Each study has a spec or plan under `docs/superpowers/`, outputs under `outputs/<study>/`, and a W&B group of the same name. Orchestration code for studies before 2026-10-13 was removed in the cleanup; git history keeps it.
+## Code map
 
-| Date | Study | Outcome |
-|---|---|---|
-| 10-02 to 10-08 | Screens 1–8, long-1, paired-long (24/48 patches, masking, VISReg, projector) | 48 patches, random 75% masking and SIGReg kept; VISReg gave no gain; the prediction projector was never adopted |
-| 10-09 | Final model seed101 | 5/8, +.0801; gate fails on the 0120 canary |
-| 10-11 | Production analysis; continuation study (seeds 202/203 × λ .05/.01) | Duration-only or lower-SIGReg continuations do not help |
-| 10-12 | Frozen-feature study; projection pilot (seeds 301/302) | Block2-flat is the best fixed family; the SIGReg projector does not help |
-| 10-13 | Production validation (seed ensemble, chemometric baselines, 0106 diagnosis, perturbation drift) | Ensemble passes; trained features amplify input noise about 20×; 0106 cause unknown |
-| 10-13 | Robustness continuation (seed2, 401/402 × control/robust) | See current state above |
-| 10-13 | Robust ensemble (seeds 0/1/101 robust continuations, training seeds 410/411/412; W&B p0 `8nfxzsde`, p1 `ya6s9o5p`, s101 `ok3up62j`) | 8/8 vs raw and random, +.0556; all criteria pass |
-
-## Repository map
-
-- `src/spectral_lejepa/`: package; `python -m spectral_lejepa <command>` runs pretrain, evaluate, export, gate, report, training-report, training-report-html, pack, gradient-audit, permutation-audit, perturbation, noise-calibration.
-- `data/`: corpus loaders, packing, perturbations (`perturb.py`, the optional robustness term) and noise calibration.
-- `models/`: tokenizer, masking, shared encoder and predictor, TorchScript export.
-- `training/`: objective (`loss.py`), loop (`trainer.py`), pretrain entry point, checkpointing, diagnostics, gradient terms and audit.
-- `evaluation/`: feature banks, nested probes, paired bootstrap, ensembles, gate, permutation audit, perturbation suite.
-- Embedding suite: `python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml`, then `embedding-figures`. It runs the previous project's cosine-similarity and noise metrics from its pinned commit (`evaluation/legacy.py`), with outputs in `outputs/embedding-eval/`.
-- `reporting/`: results report and its `sections/`, scorecards, training report (figures + HTML), architecture diagram. All build from saved outputs.
-- `ops/launch_final_model.sh`: durable final pipeline. `configs/`: YAML configs. `tests/` mirrors the package.
-- Training report: `docs/TRAINING_REPORT.md` and `.html`; rebuild with `python -m spectral_lejepa training-report` (`fetch` first, via `bash -ic`) and `training-report-html`. Corpus details: `docs/DATASETS.md`.
-- One-off study orchestration was removed on 2026-10-13 and 2026-10-14; specs, `outputs/` and git history keep the record.
-- Retired options (`model.projector`, `model.sigreg_projector`, `training.regularizer=visreg`) remain in saved configs; the code accepts only their disabled values.
+- `src/spectral_lejepa/`; run `python -m spectral_lejepa --help` for every command.
+  - `data/`: loaders, packing, perturbations, noise calibration.
+  - `models/`: tokenizer, masking, encoder, predictor, export.
+  - `training/`: loss, trainer, checkpoint, diagnostics, audit.
+  - `evaluation/`: banks, nested probes, ensemble, gate, perturbation, embedding suite.
+  - `reporting/`: reports and figures.
+- `configs/`; `ops/`; `tests/` mirrors the package. Run tests with `PYTHONPATH=$PWD/src:$PWD .venv/bin/python -m pytest -q`, and add `-m slow` for tests that need real data or the parent repo.
+- Retired options (`model.projector`, `model.sigreg_projector`, `training.regularizer=visreg`) remain in saved configs. The code accepts only their disabled values.
 
 ## Execution rules
 
-- W&B credentials come from the user shell; launch jobs with `bash -ic`. Never print or store keys. Log metrics and figures, not checkpoint artifacts.
-- Keep long jobs in user systemd services. Do not overwrite an active launcher, and do not edit code that a running pipeline imports later. Do not restart training for documentation changes.
-- Physical GPU3 is broken. With `CUDA_DEVICE_ORDER=PCI_BUS_ID`, logical CUDA 0–2 map directly; 3–6 map to physical 4–7. Pin study jobs by GPU UUID.
-- Set `OMP_NUM_THREADS=4`, `JOBLIB_TEMP_FOLDER=/dev/shm`, writable `MPLCONFIGDIR`.
-- Never write under `/mnt5/noy` or modify the parent evaluation repository.
-- Commit on `main` as `Hadar <hal.nls@gmail.com>`. The user authorized pushing completed work.
-- Preserve checkpoint/RNG resume behavior, input normalization, loss weights and W&B axes during cleanup. Keep useful shape and numerical comments; avoid prose that repeats code.
-- `plans/` (SUMMARY.md historical log, AGENT_HANDOFF.md) is local and not tracked.
+- **W&B:** credentials come only from the user shell (`bash -ic`). Never print or store keys. Log metrics and figures, not checkpoints.
+- **GPUs:** physical GPU3 is broken. With `CUDA_DEVICE_ORDER=PCI_BUS_ID`, logical CUDA 0–2 are physical 0–2, and 3–6 are physical 4–7. Pin study jobs by GPU UUID.
+- **Environment:** set `OMP_NUM_THREADS=4`, `JOBLIB_TEMP_FOLDER=/dev/shm` and a writable `MPLCONFIGDIR`.
+- **Running jobs:** never overwrite an active launcher or edit code that a running pipeline imports later. Do not restart training for documentation changes.
+- **Write protection:** never write under `/mnt5/noy`, or into the parent repo `SpectralFM-label-regression-eval-merged`. That repo is read only via `git show` at the pinned commit.
+- **Git:** commit as `Hadar <hal.nls@gmail.com>`; pushing completed work is authorized. `plans/` is local and untracked.
+- **Cleanups:** preserve checkpoint/RNG resume, input normalization, loss weights and W&B axes. Keep shape and numerical comments.

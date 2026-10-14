@@ -2,13 +2,12 @@
 
 ## Current status (2026-10-13)
 
-- **Contract.** Winning means beating raw spectra on a majority (at least 5/8) of the eight datasets. Any positive gain counts. The user clarified that the goal is winning a majority, not large margins.
 - **Export.** The exported model is seed101 block2-flat: 5/8 wins, mean ΔR² +.0801. It is not gate-qualified: the 0120 single-shuffle canary scored .0204, above the .020 limit.
 - **Holdout candidates.** All are retrospective selections and none is gate-qualified.
   - Prior 48-patch seed2 block2-flat: 7/8 wins, mean ΔR² +.0894.
   - Four-seed ensemble (seeds 0/1/2/101, equal-weight predictions): 7/8 wins, mean ΔR² +.0858. It passed its registered criteria.
-- **Robustness continuation from seed2 (seeds 401/402).** The registered primary criteria failed on clean mean non-inferiority: mean Δraw fell from .085 to .044. Under the majority contract the robust arms win 7/8 and 8/8 against raw, and 8/8 against random features. Feature drift under 1% input noise is about 6× lower. 0106 becomes a win; the 0112 gain is lost. Details: `docs/superpowers/specs/2026-10-13-robustness-continuation.md`.
-- **Robust four-seed ensemble (robust_s401, robust_p0, robust_p1, robust_s101).** Completed and passed all three registered criteria. It wins 8/8 against raw and 8/8 against random features, with mean ΔR² +.0556 vs raw and +.0478 vs random. Each new member's 1%-noise drift fell about 6× from its start. It is the preferred holdout candidate under the majority contract. Its margins are smaller than the original ensemble's (+.0858), and several wins are within bootstrap noise. Results: `docs/superpowers/specs/2026-10-13-robust-ensemble.md`.
+- **Robustness continuation from seed2 (seeds 401/402).** The registered primary criteria failed on clean mean non-inferiority: mean Δraw fell from .085 to .044. The robust arms win 7/8 and 8/8 against raw, and 8/8 against random features. Feature drift under 1% input noise is about 6× lower. 0106 becomes a win; the 0112 gain is lost. Details: `docs/superpowers/specs/2026-10-13-robustness-continuation.md`.
+- **Robust four-seed ensemble (robust_s401, robust_p0, robust_p1, robust_s101).** Completed and passed all three registered criteria. It wins 8/8 against raw and 8/8 against random features, with mean ΔR² +.0556 vs raw and +.0478 vs random. Each new member's 1%-noise drift fell about 6× from its start. It is the preferred holdout candidate. Its margins are smaller than the original ensemble's (+.0858), and several wins are within bootstrap noise. Results: `docs/superpowers/specs/2026-10-13-robust-ensemble.md`.
 - **Release blocker.** Independent labelled data with group IDs is still missing. Once it exists, score the robust ensemble, seed101, seed2 and the original ensemble once each.
 
 ## Record of 2026-10-12
