@@ -125,3 +125,24 @@ class EnsembleRegressor:
 
     def predict(self, features):
         return np.mean([m.predict(features[:, j]) for j, m in enumerate(self.models_)], 0)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description='Embed raw spectra with the robust ensemble -> .npz '
+                                            '(embeddings (N, M, 12288), ids, members, bundle_manifest).')
+    p.add_argument('input', help='.npy (N, 245), a .wav, or a folder of .wav files')
+    p.add_argument('--output', required=True, type=Path)
+    p.add_argument('--bundle')
+    p.add_argument('--device', default='auto')
+    p.add_argument('--batch-size', type=int, default=256)
+    a = p.parse_args(argv)
+    embedder = SpectralEmbedder(a.bundle, a.device, a.batch_size)
+    emb, ids = embedder.embed_with_ids(a.input)
+    a.output.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(a.output, embeddings=emb, ids=np.array(ids), members=np.array(embedder.members),
+             bundle_manifest=json.dumps(embedder.manifest))
+    print(f'{a.output}: embeddings {emb.shape} from members {embedder.members}')
+
+
+if __name__ == '__main__':
+    main()

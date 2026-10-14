@@ -112,3 +112,20 @@ def test_ensemble_regressor_averages_member_predictions():
     reg = inf.EnsembleRegressor().fit(F, y)
     each = [m.predict(F[:, j]) for j, m in enumerate(reg.models_)]
     assert np.allclose(reg.predict(F), np.mean(each, 0))
+
+
+def test_cli_writes_the_documented_npz(bundle, tmp_path):
+    np.save(tmp_path / 'x.npy', spectra(4))
+    inf.main([str(tmp_path / 'x.npy'), '--output', str(tmp_path / 'out.npz'), '--bundle', str(bundle[0]),
+              '--device', 'cpu'])
+    z = np.load(tmp_path / 'out.npz')
+    assert sorted(z.files) == ['bundle_manifest', 'embeddings', 'ids', 'members']
+    assert z['embeddings'].shape == (4, 2, 12288) and list(z['members']) == ['a', 'b']
+    assert json.loads(str(z['bundle_manifest']))['format_version'] == 1
+
+
+def test_cli_writes_nothing_on_bad_input(bundle, tmp_path):
+    np.save(tmp_path / 'bad.npy', np.zeros((2, 10), np.float32))
+    with pytest.raises(ValueError):
+        inf.main([str(tmp_path / 'bad.npy'), '--output', str(tmp_path / 'out.npz'), '--bundle', str(bundle[0])])
+    assert not (tmp_path / 'out.npz').exists()
