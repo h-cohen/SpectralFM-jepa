@@ -246,17 +246,40 @@ flowchart LR
 
 **Figure 8. Per dataset.** The members (dots) agree closely, so the ensemble is not hiding a weak member.
 
-## 8. Embedding geometry
+## 8. Why block 2: depth and geometry
+
+**Bottom line.** Training creates the block-2 advantage, and the late blocks destroy it again. Random weights give about the same small gain at every block. Trained features are most useful for prediction at block 2 (+.042, every member between +.031 and +.051) and fall below raw at blocks 5–6 (−.10 and −.13). Isotropy grows with depth, toward the output where SIGReg acts.
+
+![Depth and isotropy](figures/training-report/fig8_depth_isotropy.svg)
+
+**Figure 9. Per-block profile, four robust members** (thin lines are members, thick lines their mean; dashed lines are random weights).
+- **Gain.** Left panel: the flat-readout gain over raw peaks at block 2.
+- **Spread.** Middle and right panels, on labeled_data features: training raises effective rank from 1 to 4 and lowers mean cosine from .999 to .44 toward block 6. Random weights stay collapsed onto one direction at every depth (rank 1.1, cosine .99).
+
+- **Why block 6 loses.** The objective acts on the output:
+  - SIGReg's gradient at block 6 is about 18× the prediction gradient (gradient audit);
+  - the pooled-view term makes masked views agree;
+  - a final LayerNorm removes per-token scale.
+
+  The output is pushed toward an isotropic, view-invariant code, which discards the amplitude and position detail that `parameter_0` depends on.
+- **Why block 2 wins.** Block 2 has learned useful local features but still carries that detail, and the flat readout keeps all 48 positions.
+- **Open questions.**
+  - Whether SIGReg itself is what creates the spread (no λ = 0 run exists).
+  - Whether block 2 needs the four blocks above it (no shallower encoder was trained).
+
+  Both are the subject of a planned ablation.
+
+### Embedding geometry (previous-project metrics)
 
 **Bottom line.** Block-2 features share one dominant direction. Once it is removed, spectra group by component, as in the raw input. The old stack-retrieval metric is at chance even on raw inputs, so it carries no signal here.
 
 ![Panel](figures/embedding-eval/panel.svg)
 
-**Figure 9. Fixed 100-spectrum panel** (robust_s401). Raw block-2 cosines are high everywhere. After mean-centring, components within multi_channel, sampled_data and labeled_data form clear blocks.
+**Figure 10. Fixed 100-spectrum panel** (robust_s401). Raw block-2 cosines are high everywhere. After mean-centring, components within multi_channel, sampled_data and labeled_data form clear blocks.
 
 ![Cosine distributions](figures/embedding-eval/sanity_cosine_distributions.svg)
 
-**Figure 10. Pairwise cosines (sanity set).** Same-stack, random and same-position pairs overlap in every space. Top-5 same-stack retrieval:
+**Figure 11. Pairwise cosines (sanity set).** Same-stack, random and same-position pairs overlap in every space. Top-5 same-stack retrieval:
 
 | Set | Input | Block-2 mean | Block-2 flat | Chance |
 |---|---|---|---|---|

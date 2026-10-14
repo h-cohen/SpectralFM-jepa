@@ -164,6 +164,59 @@ def robustness(res):
     save(fig, 'fig7_robustness.svg')
 
 
+MEMBER_EVALS = {'robust_s401': 'outputs/robustness-continuation/robust_s401/eval/*_step49799',
+                'robust_p0': 'outputs/robust-ensemble/robust_p0/eval/*_step49799',
+                'robust_p1': 'outputs/robust-ensemble/robust_p1/eval/*_step49799',
+                'robust_s101': 'outputs/robust-ensemble/robust_s101/eval/*_step49799'}
+
+
+def _isotropy(X):
+    """Effective rank (exp entropy of the centred PCA spectrum) and mean pairwise cosine of rows of X."""
+    X = X.astype(np.float64)
+    s = np.linalg.svd(X - X.mean(0), compute_uv=False) ** 2
+    p = s / s.sum()
+    u = X / np.linalg.norm(X, axis=1, keepdims=True)
+    return float(np.exp(-(p * np.log(p + 1e-12)).sum())), float((u @ u.T).mean())
+
+
+def depth_profile(member_evals=None):
+    """Block 0-6 flat-readout gain over raw and labeled_data feature isotropy, trained vs random weights."""
+    import glob
+    member_evals = member_evals or MEMBER_EVALS
+    stats = {'trained': {}, 'random': {}}
+    for name, pattern in member_evals.items():
+        run = Path(sorted(glob.glob(pattern))[0])
+        for kind, sub in (('trained', ''), ('random', 'random_control')):
+            delta = []
+            for k in range(7):
+                gains = []
+                for ds in DATASETS:
+                    raw = json.loads((run / ds / 'nested_results.json').read_text())['families']['raw']['r2_mean']
+                    fam = json.loads((run / ds / sub / 'nested_results.json').read_text())['families']
+                    gains.append(fam[f'layer{k}/flat']['r2_mean'] - raw)
+                delta.append(float(np.mean(gains)))
+            bank = np.load(run / 'labeled_data' / sub / 'bank.npz', allow_pickle=True)
+            iso = [_isotropy(bank[f'bank__layer{k}'][:, 0, 0]) for k in range(7)]   # mean-pooled tokens
+            stats[kind][name] = {'delta': delta, 'effective_rank': [i[0] for i in iso], 'mean_cosine': [i[1] for i in iso]}
+    fig, axes = plt.subplots(1, 3, figsize=(13, 3.4))
+    blocks = np.arange(7)
+    for ax, key, title in zip(axes, ('delta', 'effective_rank', 'mean_cosine'),
+                              ('flat readout: mean ΔR² vs raw (8 sets)', 'labeled_data: effective rank (pooled)',
+                               'labeled_data: mean pairwise cosine (pooled)')):
+        for kind, color, ls in (('trained', '#c0504d', '-'), ('random', '#888', '--')):
+            vals = np.array([v[key] for v in stats[kind].values()])
+            for row in vals:
+                ax.plot(blocks, row, color=color, lw=.6, alpha=.4, ls=ls)
+            ax.plot(blocks, vals.mean(0), color=color, lw=2, ls=ls, marker='o', ms=3,
+                    label=f'{kind} weights (mean of members)')
+        ax.set(title=title, xlabel='encoder block', xticks=blocks)
+    axes[0].axhline(0, color='k', lw=.6)
+    axes[0].axvline(2, color='k', lw=.6, ls=':')
+    axes[0].legend(frameon=False, fontsize=7)
+    save(fig, 'fig8_depth_isotropy.svg')
+    return stats
+
+
 def fetch():
     import wandb
     api, out = wandb.Api(), {}
@@ -188,6 +241,7 @@ def figures():
     ensemble_scores()
     member_heatmap(res)
     robustness(res)
+    depth_profile()
 
 
 def main():
