@@ -64,3 +64,18 @@ def test_ablation_figures_and_criteria(tmp_path, monkeypatch):
     assert res['criteria'] == {'S1': True, 'S2': True, 'D1': True}
     assert abs(res['jobs']['lam005_d2_s1']['flat'][2] + .2) < 1e-9
     assert len(res['jobs']['lam005_d4_s0']['flat']) == 5
+
+
+def test_true_vs_predicted_grid(tmp_path, monkeypatch):
+    import numpy as np
+    rng = np.random.default_rng(0)
+    preds = {}
+    for ds in ('labeled_data', 'dataset0055'):
+        y = rng.normal(5, 2, 40)
+        preds[ds] = {'y': y, 'raw spectra': np.stack([y + rng.normal(0, 2, 40)] * 2),
+                     'robust ensemble': np.stack([y + rng.normal(0, .5, 40)] * 2)}
+    monkeypatch.setattr(training_report, 'OUT', tmp_path)
+    best = training_report.true_vs_predicted(preds, 'fig_tvp.svg')
+    svg = (tmp_path / 'fig_tvp.svg').read_text()
+    assert 'R² =' in svg and 'true (z-scored)' in svg
+    assert best == {'labeled_data': 'robust ensemble', 'dataset0055': 'robust ensemble'}

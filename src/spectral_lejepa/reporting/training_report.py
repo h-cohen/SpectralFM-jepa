@@ -121,6 +121,53 @@ def ensemble_scores():
     save(fig, 'fig5_ensemble_r2.svg')
 
 
+def ensemble_oof():
+    """{set: {'y', 'raw spectra': (repeats, N), 'robust ensemble': (repeats, N)}}, block2-flat nested OOF."""
+    m = json.loads((ROOT / 'manifest.json').read_text())
+    members = [Path(m['seed2_member'])] + [ROOT / n for n in m['jobs']]
+    out = {}
+    for ds in DATASETS:
+        o = [job_oof(b, ds) for b in members]
+        out[ds] = {'y': o[0]['y'], 'raw spectra': o[0]['raw'], 'robust ensemble': ensemble_predictions(o)}
+    return out
+
+
+def true_vs_predicted(preds, name='fig11_true_vs_predicted.svg', lim=3.):
+    """One row per set, one column per model. Labels and predictions are z-scored with the set's label mean/SD;
+    points are the mean over outer-CV repeats; R² is the reported value (mean over repeats)."""
+    sets = list(preds)
+    cols = [c for c in preds[sets[0]] if c != 'y']
+    colors = dict(zip(cols, ('#3a6ea5', '#c0504d', '#2a9d8f', '#e9a23b')))
+    fig, axes = plt.subplots(len(sets), len(cols), figsize=(2.6 * len(cols) + .8, 2.6 * len(sets)), squeeze=False)
+    best = {}
+    for i, ds in enumerate(sets):
+        y = preds[ds]['y']
+        mu, sd = y.mean(), y.std()
+        scores = {c: float(np.mean([r2(y, p) for p in preds[ds][c]])) for c in cols}
+        best[ds] = max(scores, key=scores.get)
+        for j, c in enumerate(cols):
+            ax = axes[i, j]
+            z = lambda v: np.clip((v - mu) / sd, -lim, lim)   # clipped at the limits, not rescaled
+            ax.scatter(z(y), z(preds[ds][c].mean(0)), s=6, alpha=.5, color=colors[c], lw=0)
+            ax.plot([-lim, lim], [-lim, lim], 'k--', lw=.8)
+            ax.set(xlim=(-lim, lim), ylim=(-lim, lim), aspect='equal')
+            ax.text(.05, .93, f'R² = {scores[c]:.3f}', transform=ax.transAxes, fontsize=8, va='top', weight='bold',
+                    bbox=dict(boxstyle='round', fc='w', ec='#ccc'))
+            if c == best[ds]:
+                for s in ax.spines.values():
+                    s.set(visible=True, color='#3a6ea5', lw=2)
+            if i == 0:
+                ax.set_title(c, fontsize=9, weight='bold')
+            if j == 0:
+                ax.set_ylabel(f'{SHORT.get(ds, ds)}\npredicted', fontsize=8)
+            if i == len(sets) - 1:
+                ax.set_xlabel('true (z-scored)', fontsize=8)
+    fig.text(.01, .002, f'axes fixed to [−{lim:g}, {lim:g}] · dashed line is y = x · outlined panel is the best in its row',
+             fontsize=7, color='#666')
+    save(fig, name)
+    return best
+
+
 def member_heatmap(res):
     names = [Path(k).name for k in res['per_job_delta_raw']] + ['ENSEMBLE']
     M = np.array([[v[d] for d in DATASETS] for v in res['per_job_delta_raw'].values()]
@@ -305,6 +352,7 @@ def figures():
     continuation_curves(hist)
     candidates()
     ensemble_scores()
+    true_vs_predicted(ensemble_oof())
     member_heatmap(res)
     robustness(res)
     depth_profile()

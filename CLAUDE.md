@@ -22,7 +22,7 @@
 - **SIGReg/depth ablation (done 2026-10-14):** report section 8.
   - 9 two-epoch runs in `outputs/sigreg-depth-ablation/`, W&B group `sigreg-depth-ablation`.
   - λ = 0 collapses every block and block 2 falls below raw. Block 2 gains more at depth 6 than at depth 2.
-  - `training-report` regenerates figures 10–11 from these outputs.
+  - `training-report` regenerates figures 11–12 from these outputs.
 
 ## Train
 
