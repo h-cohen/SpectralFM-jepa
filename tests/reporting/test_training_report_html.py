@@ -1,3 +1,4 @@
+from spectral_lejepa.reporting import training_report_html
 from spectral_lejepa.reporting.training_report_html import convert
 
 
@@ -13,3 +14,11 @@ def test_cells_where_the_model_beats_raw_are_marked():
     _, _, body = convert(md)
     win, loss = body.split('<tr>')[2], body.split('<tr>')[3]
     assert win.count('win') == 2 and 'win' not in loss
+
+
+def test_portrait_figures_keep_their_natural_size(tmp_path, monkeypatch):
+    monkeypatch.setattr(training_report_html, 'SRC', tmp_path / 'REPORT.md')
+    (tmp_path / 'tall.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="288pt" height="864pt"></svg>')
+    (tmp_path / 'wide.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="720pt" height="216pt"></svg>')
+    assert 'class="portrait"' in training_report_html.image('t', 'tall.svg')
+    assert 'class="portrait"' not in training_report_html.image('w', 'wide.svg')

@@ -28,8 +28,12 @@ def inline(text):
 
 
 def image(alt, src):
-    data = base64.b64encode((SRC.parent / src).read_bytes()).decode()
-    return f'<img alt="{html.escape(alt)}" src="data:image/svg+xml;base64,{data}">'
+    raw = (SRC.parent / src).read_bytes()
+    size = re.search(rb'width="([\d.]+)pt" height="([\d.]+)pt"', raw)
+    portrait = size is not None and float(size[2]) > float(size[1])   # tall figures keep their natural size
+    data = base64.b64encode(raw).decode()
+    cls = ' class="portrait"' if portrait else ''
+    return f'<img alt="{html.escape(alt)}"{cls} src="data:image/svg+xml;base64,{data}">'
 
 
 def table(rows):
@@ -184,6 +188,7 @@ td.win {{ background: var(--win-bg); color: var(--win-fg); font-weight: 600; }}
 figure {{ margin: 1.8rem 0; }}
 .plate {{ background: #ffffff; border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem; overflow-x: auto; }}
 .plate img {{ display: block; width: 100%; min-width: 34rem; height: auto; }}
+.plate img.portrait {{ width: auto; min-width: 0; max-width: 100%; margin: 0 auto; }}
 figcaption {{ font-size: 0.93rem; color: var(--muted); margin-top: 0.6rem; }}
 p.bottom {{ border-left: 3px solid var(--accent-2); padding: 0.5rem 0.9rem; background: var(--code-bg); border-radius: 0 4px 4px 0; }}
 figcaption strong {{ color: var(--fg); }}

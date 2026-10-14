@@ -132,38 +132,38 @@ def ensemble_oof():
     return out
 
 
-def true_vs_predicted(preds, name='fig11_true_vs_predicted.svg', lim=3.):
-    """One row per set, one column per model. Labels and predictions are z-scored with the set's label mean/SD;
-    points are the mean over outer-CV repeats; R² is the reported value (mean over repeats)."""
+def true_vs_predicted(preds, name='fig11_true_vs_predicted.svg', panel=1.5):
+    """One row per set, one column per model, in label units. Each row's axes span the set's label range;
+    predictions outside it are clipped to the edge. Points are the mean over outer-CV repeats; R² is the
+    reported value (mean over repeats)."""
     sets = list(preds)
     cols = [c for c in preds[sets[0]] if c != 'y']
     colors = dict(zip(cols, ('#3a6ea5', '#c0504d', '#2a9d8f', '#e9a23b')))
-    fig, axes = plt.subplots(len(sets), len(cols), figsize=(2.6 * len(cols) + .8, 2.6 * len(sets)), squeeze=False)
+    fig, axes = plt.subplots(len(sets), len(cols), figsize=(panel * len(cols) + .7, panel * len(sets) + .3),
+                             squeeze=False)
     best = {}
     for i, ds in enumerate(sets):
         y = preds[ds]['y']
-        mu, sd = y.mean(), y.std()
+        pad = .08 * (y.max() - y.min())
+        lo, hi = y.min() - pad, y.max() + pad
         scores = {c: float(np.mean([r2(y, p) for p in preds[ds][c]])) for c in cols}
         best[ds] = max(scores, key=scores.get)
         for j, c in enumerate(cols):
             ax = axes[i, j]
-            z = lambda v: np.clip((v - mu) / sd, -lim, lim)   # clipped at the limits, not rescaled
-            ax.scatter(z(y), z(preds[ds][c].mean(0)), s=6, alpha=.5, color=colors[c], lw=0)
-            ax.plot([-lim, lim], [-lim, lim], 'k--', lw=.8)
-            ax.set(xlim=(-lim, lim), ylim=(-lim, lim), aspect='equal')
-            ax.text(.05, .93, f'R² = {scores[c]:.3f}', transform=ax.transAxes, fontsize=8, va='top', weight='bold',
-                    bbox=dict(boxstyle='round', fc='w', ec='#ccc'))
+            ax.scatter(y, np.clip(preds[ds][c].mean(0), lo, hi), s=3, alpha=.5, color=colors[c], lw=0)
+            ax.plot([lo, hi], [lo, hi], 'k--', lw=.6)
+            ax.set(xlim=(lo, hi), ylim=(lo, hi), aspect='equal')
+            ax.tick_params(labelsize=6, length=2)
+            ax.text(.04, .96, f'R² = {scores[c]:.3f}', transform=ax.transAxes, fontsize=6.5, va='top', weight='bold')
             if c == best[ds]:
                 for s in ax.spines.values():
-                    s.set(visible=True, color='#3a6ea5', lw=2)
+                    s.set(visible=True, color='#3a6ea5', lw=1.5)
             if i == 0:
-                ax.set_title(c, fontsize=9, weight='bold')
+                ax.set_title(c, fontsize=8, weight='bold')
             if j == 0:
-                ax.set_ylabel(f'{SHORT.get(ds, ds)}\npredicted', fontsize=8)
+                ax.set_ylabel(f'{SHORT.get(ds, ds)}\npredicted', fontsize=7)
             if i == len(sets) - 1:
-                ax.set_xlabel('true (z-scored)', fontsize=8)
-    fig.text(.01, .002, f'axes fixed to [−{lim:g}, {lim:g}] · dashed line is y = x · outlined panel is the best in its row',
-             fontsize=7, color='#666')
+                ax.set_xlabel('true', fontsize=7)
     save(fig, name)
     return best
 

@@ -77,5 +77,5 @@ def test_true_vs_predicted_grid(tmp_path, monkeypatch):
     monkeypatch.setattr(training_report, 'OUT', tmp_path)
     best = training_report.true_vs_predicted(preds, 'fig_tvp.svg')
     svg = (tmp_path / 'fig_tvp.svg').read_text()
-    assert 'R² =' in svg and 'true (z-scored)' in svg
+    assert 'R² =' in svg and 'z-scored' not in svg
     assert best == {'labeled_data': 'robust ensemble', 'dataset0055': 'robust ensemble'}
