@@ -18,6 +18,7 @@ import numpy as np
 from spectral_lejepa.evaluation.ensemble import ensemble_predictions, member_oof as job_oof
 from spectral_lejepa.evaluation.perturbation import DATASETS
 from spectral_lejepa.evaluation.nested import r2
+from spectral_lejepa.reporting.architecture import block_diagram
 
 ROOT = Path('outputs/robust-ensemble')
 OUT = Path('docs/figures/training-report')
@@ -346,6 +347,7 @@ def fetch():
 
 def figures():
     OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'fig0_architecture.svg').write_text(block_diagram())
     hist = json.loads(HIST.read_text())
     res = json.loads((ROOT / 'results_analysis.json').read_text())
     pretraining_curves(hist)

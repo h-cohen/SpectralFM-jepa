@@ -25,3 +25,15 @@ def test_dataflow_svg_shows_training_and_production_tensor_shapes():
     assert 'class="section"' not in svg and 'class="note"' not in svg
     assert 'class="df-section"' in svg and 'class="df-note"' in svg
     assert 'M187,755 V740 H777 V755' in svg
+
+
+def test_block_diagram_shows_every_branch_with_tensor_shapes():
+    from spectral_lejepa.reporting.architecture import block_diagram
+    svg = block_diagram()
+    root = ElementTree.fromstring(svg)   # well-formed
+    text = ' '.join(''.join(n.itertext()) for n in root.iter() if n.tag.endswith('text'))
+    for label in ('(B, 245)', '(B, 48, 6)', '(B, 48, 256)', '(B, 12, 256)', '(B, 36, 256)', '(3, B, 256)',
+                  '(B, 12288)', '(B, 4, 12288)', 'Tokenizer', 'Encoder', 'Predictor', 'Blocks 1–2',
+                  '14,080', '4,739,072', '1,888,000', '1,593,600', 'MSE', 'SIGReg', 'robust'):
+        assert label in text, label
+    assert 'linearGradient' in svg   # shaded 3-D blocks

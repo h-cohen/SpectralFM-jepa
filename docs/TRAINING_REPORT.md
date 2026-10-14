@@ -57,28 +57,9 @@ flowchart LR
 
 **Bottom line.** One shared encoder (no EMA teacher) predicts masked patch embeddings. SIGReg prevents collapse, and in stage 2 a block-2 invariance term makes the shipped features ignore measurement noise.
 
-```mermaid
-flowchart LR
-    X["x (B,245)"] --> T["48 patches → tokens<br/>(B,48,256)"]
-    T -->|"12 visible"| EC["encoder ×6"] --> P["predictor ×4"] --> L1["MSE on 36 masked"]
-    T -->|"all 48"| ET["encoder ×6 + LN<br/>target"] --> L1
-    ET --> L2["token SIGReg"]
-    ET --> L3["pooled-view invariance<br/>+ pooled SIGReg"]
-    X -->|"perturb (stage 2)"| XP["x′ → blocks 1–2"] --> L4["robust term:<br/>‖h₂(x′) − h₂(x)‖² / Var h₂"]
-    ET -.->|"h₂(x)"| L4
-    T --> I["inference: blocks 1–2,<br/>flatten → 12,288"]
-```
+![Architecture](figures/training-report/fig0_architecture.svg)
 
-```text
-L = MSE + 0.05·SIGReg(tokens) + [0.95·Var_views + 0.05·SIGReg(pooled)] + 0.1·robust (stage 2)
-```
-
-| Part | Output | Parameters |
-|---|---|---:|
-| Tokenizer: 48 contiguous patches, Linear(6→256) + positions | (B, 48, 256) | 14,080 |
-| Encoder: 6 pre-LN blocks, 8 heads, MLP 1024 | (B, 48, 256) | 4,739,072 |
-| Predictor: 4 blocks, width 192 | (B, 36, 256) | 1,888,000 |
-| **Shipped member**: tokenizer + blocks 1–2 | (B, 12288) | 1,593,600 |
+**Figure 3. Architecture and data flow.** Top: one training step. The three encoder rows are the same module, so all branches update the same weights; tensor shapes are on every edge, and loss terms are the red boxes. Middle: a shipped member keeps only the tokenizer and the first two blocks and flattens their output. Bottom: the loss.
 
 Stage-2 perturbations: each type is applied with probability 0.5, in raw units, then renormalized.
 
@@ -104,11 +85,11 @@ The weight 0.1 is the smallest of {0.1, 0.3, 1} whose block-2 gradient reaches h
 
 ![Stage 1 curves](figures/training-report/fig1_pretraining_curves.svg)
 
-**Figure 3. Stage 1.** All four seeds follow the same curves. Regularizers plateau after about 100k steps, and effective rank rises from 90 to 146.
+**Figure 4. Stage 1.** All four seeds follow the same curves. Regularizers plateau after about 100k steps, and effective rank rises from 90 to 146.
 
 ![Stage 2 curves](figures/training-report/fig2_continuation_curves.svg)
 
-**Figure 4. Stage 2.** The robust term falls about 6× in 10k steps; the weight-0 control stays flat. Prediction MSE rises slightly, the cost of invariance.
+**Figure 5. Stage 2.** The robust term falls about 6× in 10k steps; the weight-0 control stays flat. Prediction MSE rises slightly, the cost of invariance.
 
 ```mermaid
 flowchart LR
@@ -201,11 +182,11 @@ flowchart TB
 
 ![Candidates](figures/training-report/fig4_candidates.svg)
 
-**Figure 5. Shortlisted models.** The robust term trades margin for consistency: wins over random weights go from 6/8 to 8/8, and the ensemble recovers part of the margin. All three criteria registered before the run passed.
+**Figure 6. Shortlisted models.** The robust term trades margin for consistency: wins over random weights go from 6/8 to 8/8, and the ensemble recovers part of the margin. All three criteria registered before the run passed.
 
 ![Member deltas](figures/training-report/fig6_member_deltas.svg)
 
-**Figure 6. Members.** Each member loses at most two sets (robust_p1 loses none). Averaging turns all eight positive.
+**Figure 7. Members.** Each member loses at most two sets (robust_p1 loses none). Averaging turns all eight positive.
 
 ## 6. Evaluation protocol
 
@@ -227,7 +208,7 @@ flowchart LR
 
 ![Robustness](figures/training-report/fig7_robustness.svg)
 
-**Figure 7. Perturbation suite.** Feature drift falls for every perturbation, including families held out from training (2-bin shift, 5% noise, sinusoidal baseline). Fixed-ridge R² rises under 1–3% noise but drops under a 5% offset and a sinusoidal baseline.
+**Figure 8. Perturbation suite.** Feature drift falls for every perturbation, including families held out from training (2-bin shift, 5% noise, sinusoidal baseline). Fixed-ridge R² rises under 1–3% noise but drops under a 5% offset and a sinusoidal baseline.
 
 Previous-project noise test (`evaluate --suite embedding`): the old noise types are added in per-spectrum-normalized space and mapped back to raw units. The score is cosine(clean, noisy) of block-2 features.
 
@@ -240,7 +221,7 @@ flowchart LR
 
 ![Noise summary](figures/embedding-eval/summary_noise.svg)
 
-**Figure 8. Noise cosine, ensemble, 12 sets × 6 noise types.**
+**Figure 9. Noise cosine, ensemble, 12 sets × 6 noise types.**
 - Small Gaussian noise and ±5–10% gain: cosine ≥ .997.
 - 2-SD offset: .54–.90.
 - Poisson shot noise: .15–.71. It is lowest on labeled_data, the single-channel sets, multi_ch and 0106.
@@ -248,7 +229,7 @@ flowchart LR
 
 ![Noise grid](figures/embedding-eval/noise_grid.svg)
 
-**Figure 9. Per dataset.** The members (dots) agree closely, so the ensemble is not hiding a weak member.
+**Figure 10. Per dataset.** The members (dots) agree closely, so the ensemble is not hiding a weak member.
 
 ## 8. Why block 2: depth and geometry
 
@@ -256,7 +237,7 @@ flowchart LR
 
 ![Depth and isotropy](figures/training-report/fig8_depth_isotropy.svg)
 
-**Figure 10. Per-block profile, four robust members** (thin lines are members, thick lines their mean; dashed lines are random weights).
+**Figure 11. Per-block profile, four robust members** (thin lines are members, thick lines their mean; dashed lines are random weights).
 - **Gain.** Left panel: the flat-readout gain over raw peaks at block 2.
 - **Spread.** Middle and right panels, on labeled_data features: training raises effective rank from 1 to 4 and lowers mean cosine from .999 to .44 toward block 6. Random weights stay collapsed onto one direction at every depth (rank 1.1, cosine .99).
 
@@ -286,14 +267,14 @@ flowchart LR
 
 ![SIGReg ablation](figures/training-report/fig9_sigreg_ablation.svg)
 
-**Figure 11. SIGReg weight, depth 6.**
+**Figure 12. SIGReg weight, depth 6.**
 - **Collapse at λ = 0.** Pooled mean cosine is 1.00 at blocks 1–5, and block-2 effective rank is 1.6. The predictor can still lower the masked loss, but the features carry almost nothing beyond the mean spectrum: block 2 wins on 4/8 sets with a −.014 mean.
 - **Any SIGReg fixes it.** Already at λ = .01, block-2 gain is +.085 (6/8 wins), about the same as λ = .05 (+.082, 7/8).
 - **Too much hurts.** At λ = .2, block 6 is most isotropic (rank 117), but block-2 gain halves to +.037. Spread is necessary, not sufficient: past a point, SIGReg displaces the prediction signal.
 
 ![Depth ablation](figures/training-report/fig10_depth_ablation.svg)
 
-**Figure 12. Depth at λ = .05** (solid lines seed 0, dashed seed 1). Left panel is clipped at −.25. Depth-6 seed-0 block 4 is −.60, driven by one unstable probe on 0112 (R² −4.2).
+**Figure 13. Depth at λ = .05** (solid lines seed 0, dashed seed 1). Left panel is clipped at −.25. Depth-6 seed-0 block 4 is −.60, driven by one unstable probe on 0112 (R² −4.2).
 - **The output block always loses.** In every depth, the last block is the most isotropic and falls below raw. At depth 2, that block is block 2.
 - **Block 2 is better with blocks above it.** Block-2 gain is +.08 at depth 6, +.015/+.066 at depth 4, and −.05/−.23 at depth 2. The best block of a 2-block encoder (block 1, +.022/+.047) is still below block 2 of a 6-block one.
 - **Likely mechanism.** The upper blocks absorb the SIGReg and invariance pressure, so block 2 can keep local detail while the prediction loss still trains it. On this reading, depth helps block 2 as a buffer, not by being used at readout time. The runs are consistent with this but do not isolate it.
@@ -304,11 +285,11 @@ flowchart LR
 
 ![Panel](figures/embedding-eval/panel.svg)
 
-**Figure 13. Fixed 100-spectrum panel** (robust_s401; colour is cosine similarity, −1 to 1). Top row: block-2 cosines are high everywhere (0.4–1), because all features share one dominant direction. Bottom row: after subtracting the mean feature vector, components within multi_channel, sampled_data and labeled_data form clear blocks, as in the input.
+**Figure 14. Fixed 100-spectrum panel** (robust_s401; colour is cosine similarity, −1 to 1). Top row: block-2 cosines are high everywhere (0.4–1), because all features share one dominant direction. Bottom row: after subtracting the mean feature vector, components within multi_channel, sampled_data and labeled_data form clear blocks, as in the input.
 
 ![Cosine distributions](figures/embedding-eval/sanity_cosine_distributions.svg)
 
-**Figure 14. Pairwise cosines (sanity set).** Same-stack, random and same-position pairs overlap in every space. Top-5 same-stack retrieval:
+**Figure 15. Pairwise cosines (sanity set).** Same-stack, random and same-position pairs overlap in every space. Top-5 same-stack retrieval:
 
 | Set | Input | Block-2 mean | Block-2 flat | Chance |
 |---|---|---|---|---|
