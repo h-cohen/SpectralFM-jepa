@@ -161,9 +161,9 @@ def block_diagram() -> str:
          f'<rect width="{W}" height="{H}" fill="#fff"/>']
     # ---- training panel ----
     p.append('<rect x="15" y="15" width="1250" height="600" rx="12" fill="#f2f3f5"/>')
-    p.append(_label(35, 45, 'Architecture: LeJEPA training step', 'hd', 'start'))
+    p.append(_label(35, 45, 'SpectralFM-LeJEPA Training Step', 'hd', 'start'))
     p.append(_label(35, 66, 'batch B = 256 · bracketed encoders = one module, shared weights, no EMA teacher', 'nt', 'start'))
-    p.append(_label(1250, 45, 'Encoder: 6 standard pre-LayerNorm transformer blocks, d = 256', 'nt', 'end'))
+    p.append(_label(1250, 45, 'Encoder: 1-D ViT over 48 patch tokens, 6 pre-LayerNorm transformer blocks, d = 256', 'nt', 'end'))
     p.append(_label(1250, 62, 'each block: 8-head self-attention + GELU MLP (256 → 1024 → 256), residual', 'nt', 'end'))
     # input and tokenizer
     p.append(_label(95, 117, 'spectrum x', 'nt'))
@@ -188,10 +188,10 @@ def block_diagram() -> str:
         p.append(_line([(bus_x, y), (enc_x - 26, y)]))
         p.append(_label(bus_x + 8, y - 8, lab, 'nt', 'start'))
         p.append(_label(bus_x + 8, y + 17, shape, 'sh', 'start'))
-    p.append(_block(enc_x, rows['ctx'] - 38, enc_w, 76, 'Encoder', ('6 transformer blocks', 'context path'),
+    p.append(_block(enc_x, rows['ctx'] - 38, enc_w, 76, 'Encoder', ('1-D ViT, 6 blocks', 'context path'),
                     '4,739,072'))
-    p.append(_block(enc_x, rows['tgt'] - 38, enc_w, 76, 'Encoder', ('6 transformer blocks', '+ final LayerNorm')))
-    p.append(_block(enc_x, rows['view'] - 38, enc_w, 76, 'Encoder', ('6 transformer blocks', '+ final LayerNorm')))
+    p.append(_block(enc_x, rows['tgt'] - 38, enc_w, 76, 'Encoder', ('1-D ViT, 6 blocks', '+ final LayerNorm')))
+    p.append(_block(enc_x, rows['view'] - 38, enc_w, 76, 'Encoder', ('1-D ViT, 6 blocks', '+ final LayerNorm')))
     # bracket: the three encoders are one module
     top, bot = rows['ctx'] - 50, rows['view'] + 40
     p.append(f'<path d="M{enc_x - 8},{top} L{enc_x - 20},{top} L{enc_x - 20},{bot} L{enc_x - 8},{bot}" '

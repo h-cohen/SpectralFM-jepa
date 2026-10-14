@@ -43,9 +43,9 @@ def test_block_diagram_titles_and_explains_terms():
     from spectral_lejepa.reporting.architecture import block_diagram
     root = ElementTree.fromstring(block_diagram())
     text = [''.join(n.itertext()) for n in root.iter() if n.tag.endswith('text')]
-    assert any(t.startswith('Architecture') for t in text)
+    assert 'SpectralFM-LeJEPA Training Step' in text
     assert not any('Training step (batch' in t for t in text)
     joined = ' '.join(text)
-    for label in ('B = 256', 'LayerNorm', 'transformer', 'self-attention', 'robustness'):
+    for label in ('B = 256', 'LayerNorm', '1-D ViT', 'self-attention', 'robustness'):
         assert label in joined, label
     assert ' LN' not in joined   # the abbreviation is spelled out

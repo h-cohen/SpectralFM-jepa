@@ -22,7 +22,7 @@ flowchart LR
 | Input | `(B, 245)` | Raw `float32` spectrum |
 | Normalized | `(B, 245)` | Fixed global affine map `(x − 0.378) / 0.513` (corpus statistics) |
 | Tokens | `(B, 48, 256)` | 48 contiguous patches (5 of width 6, 43 of width 5, padded), `Linear(6 → 256)` + learned positions |
-| Encoder | `(B, 48, 256)` | 6 pre-LN transformer blocks, 8 heads, MLP 1024; shared by context and target paths (no EMA, no stop-gradient) |
+| Encoder | `(B, 48, 256)` | 1-D ViT: 6 pre-LayerNorm transformer blocks, 8 heads, MLP 1024; shared by context and target paths (no EMA, no stop-gradient) |
 | Predictor | `(B, 36, 256)` | 4 blocks, width 192; predicts the 36 masked tokens from the 12 visible ones |
 | **Feature** | `(B, 12288)` | State after encoder block 2, before any final norm, flattened. 1.59M parameters per member |
 

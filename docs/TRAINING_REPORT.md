@@ -55,7 +55,7 @@ flowchart LR
 
 ## 3. Model and objective
 
-**Bottom line.** One shared encoder (no EMA teacher) predicts masked patch embeddings. SIGReg prevents collapse, and in stage 2 a block-2 invariance term makes the shipped features ignore measurement noise.
+**Bottom line.** One shared 1-D ViT encoder (no EMA teacher) predicts masked patch embeddings. SIGReg prevents collapse, and in stage 2 a block-2 invariance term makes the shipped features ignore measurement noise.
 
 ![Architecture](figures/training-report/fig0_architecture.svg)
 
