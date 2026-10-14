@@ -49,3 +49,11 @@ def test_block_diagram_titles_and_explains_terms():
     for label in ('B = 256', 'LayerNorm', '1-D ViT', 'self-attention', 'robustness'):
         assert label in joined, label
     assert ' LN' not in joined   # the abbreviation is spelled out
+
+
+def test_block_diagram_states_learned_positions():
+    from spectral_lejepa.reporting.architecture import block_diagram
+    root = ElementTree.fromstring(block_diagram())
+    joined = ' '.join(''.join(n.itertext()) for n in root.iter() if n.tag.endswith('text'))
+    assert 'absolute positions (48, 256)' in joined and 'positions (48, 192)' in joined
+    assert joined.count('learned') >= 2

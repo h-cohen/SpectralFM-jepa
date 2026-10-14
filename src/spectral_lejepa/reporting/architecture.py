@@ -170,7 +170,7 @@ def block_diagram() -> str:
     p.append(_label(95, 135, '(B, 245)'))
     p.append(_line([(150, 127), (215, 127)]))
     p.append(_label(182, 117, 'norm', 'nt'))
-    p.append(_block(220, 90, 250, 76, 'Tokenizer', ('48 patches → (B, 48, 6)', 'Linear(6→256) + positions'),
+    p.append(_block(220, 84, 250, 88, 'Tokenizer', ('48 patches → (B, 48, 6)', 'Linear(6→256) + learned', 'absolute positions (48, 256)'),
                     '14,080'))
     p.append(_line([(480, 127), (520, 127)]))
     p.append(_tokens(526, 120))
@@ -200,7 +200,7 @@ def block_diagram() -> str:
     pr_x, pr_w = 985, 150
     p.append(_line([(out_x, rows['ctx']), (pr_x - 4, rows['ctx'])]))
     p.append(_label((out_x + pr_x) / 2, rows['ctx'] - 8, '(B, 12, 256)'))
-    p.append(_block(pr_x, rows['ctx'] - 46, pr_w, 92, 'Predictor', ('4 transformer blocks', 'd = 192', '+ 36 mask tokens'),
+    p.append(_block(pr_x, rows['ctx'] - 46, pr_w, 92, 'Predictor', ('4 blocks, d = 192', 'mask tokens + learned', 'positions (48, 192)'),
                     '1,888,000'))
     p.append(_line([(pr_x + pr_w / 2, rows['ctx'] - 46 - 9), (pr_x + pr_w / 2, 108), (1166, 108)]))
     p.append(_label(pr_x + pr_w / 2 - 8, 150, '(B, 36, 256)', 'sh', 'end'))

@@ -59,7 +59,7 @@ flowchart LR
 
 ![Architecture](figures/training-report/fig0_architecture.svg)
 
-**Figure 3. Architecture and data flow.** Top: one training step. The three encoder rows are the same module, so all branches update the same weights; tensor shapes are on every edge, and loss terms are the red boxes. Middle: a shipped member keeps only the tokenizer and the first two blocks and flattens their output. Bottom: the loss.
+**Figure 3. Architecture and data flow.** Top: one training step. The three encoder rows are the same module, so all branches update the same weights; tensor shapes are on every edge, and loss terms are the red boxes. Positions are learned, not fixed: the tokenizer adds a learned absolute embedding (48 × 256) once at the input, the transformer blocks add none, and visible tokens keep their positions when they are selected. The predictor has its own learned embedding (48 × 192) that places the mask queries. Middle: a shipped member keeps only the tokenizer and the first two blocks and flattens their output. Bottom: the loss.
 
 Stage-2 perturbations: each type is applied with probability 0.5, in raw units, then renormalized.
 
