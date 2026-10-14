@@ -161,9 +161,10 @@ def block_diagram() -> str:
          f'<rect width="{W}" height="{H}" fill="#fff"/>']
     # ---- training panel ----
     p.append('<rect x="15" y="15" width="1250" height="600" rx="12" fill="#f2f3f5"/>')
-    p.append(_label(35, 45, 'Training step (batch B = 256)', 'hd', 'start'))
-    p.append(_label(35, 66, 'the bracketed encoders are one module with shared weights (no EMA teacher); every branch back-propagates into it',
-                    'nt', 'start'))
+    p.append(_label(35, 45, 'Architecture: LeJEPA training step', 'hd', 'start'))
+    p.append(_label(35, 66, 'batch B = 256 · bracketed encoders = one module, shared weights, no EMA teacher', 'nt', 'start'))
+    p.append(_label(1250, 45, 'Encoder: 6 standard pre-LayerNorm transformer blocks, d = 256', 'nt', 'end'))
+    p.append(_label(1250, 62, 'each block: 8-head self-attention + GELU MLP (256 → 1024 → 256), residual', 'nt', 'end'))
     # input and tokenizer
     p.append(_label(95, 117, 'spectrum x', 'nt'))
     p.append(_label(95, 135, '(B, 245)'))
@@ -187,20 +188,21 @@ def block_diagram() -> str:
         p.append(_line([(bus_x, y), (enc_x - 26, y)]))
         p.append(_label(bus_x + 8, y - 8, lab, 'nt', 'start'))
         p.append(_label(bus_x + 8, y + 17, shape, 'sh', 'start'))
-    p.append(_block(enc_x, rows['ctx'] - 32, enc_w, 64, 'Encoder ×6', 'context path', '4,739,072'))
-    p.append(_block(enc_x, rows['tgt'] - 32, enc_w, 64, 'Encoder ×6 + LN', 'target path'))
-    p.append(_block(enc_x, rows['view'] - 32, enc_w, 64, 'Encoder ×6 + LN', 'pooled views'))
+    p.append(_block(enc_x, rows['ctx'] - 38, enc_w, 76, 'Encoder', ('6 transformer blocks', 'context path'),
+                    '4,739,072'))
+    p.append(_block(enc_x, rows['tgt'] - 38, enc_w, 76, 'Encoder', ('6 transformer blocks', '+ final LayerNorm')))
+    p.append(_block(enc_x, rows['view'] - 38, enc_w, 76, 'Encoder', ('6 transformer blocks', '+ final LayerNorm')))
     # bracket: the three encoders are one module
-    top, bot = rows['ctx'] - 44, rows['view'] + 36
+    top, bot = rows['ctx'] - 50, rows['view'] + 40
     p.append(f'<path d="M{enc_x - 8},{top} L{enc_x - 20},{top} L{enc_x - 20},{bot} L{enc_x - 8},{bot}" '
              'fill="none" stroke="#14808a" stroke-width="2"/>')
     # context -> predictor -> MSE
     pr_x, pr_w = 985, 150
     p.append(_line([(out_x, rows['ctx']), (pr_x - 4, rows['ctx'])]))
     p.append(_label((out_x + pr_x) / 2, rows['ctx'] - 8, '(B, 12, 256)'))
-    p.append(_block(pr_x, rows['ctx'] - 38, pr_w, 76, 'Predictor ×4', ('width 192', '+ 36 mask tokens'),
+    p.append(_block(pr_x, rows['ctx'] - 46, pr_w, 92, 'Predictor', ('4 transformer blocks', 'd = 192', '+ 36 mask tokens'),
                     '1,888,000'))
-    p.append(_line([(pr_x + pr_w / 2, rows['ctx'] - 38 - 9), (pr_x + pr_w / 2, 108), (1166, 108)]))
+    p.append(_line([(pr_x + pr_w / 2, rows['ctx'] - 46 - 9), (pr_x + pr_w / 2, 108), (1166, 108)]))
     p.append(_label(pr_x + pr_w / 2 - 8, 150, '(B, 36, 256)', 'sh', 'end'))
     p.append(_pill(1170, 88, 80, 64, 'MSE'))
     # target: token SIGReg; masked targets up to MSE; pooled full view down; block-2 state down to robust
@@ -210,8 +212,8 @@ def block_diagram() -> str:
     for x in (1030, 1100, 1150):
         p.append(f'<circle cx="{x}" cy="{rows["tgt"]}" r="3.5" fill="#333"/>')
     p.append(_line([(1150, rows['tgt']), (1150, 140), (1166, 140)]))
-    p.append(_label(1143, 285, '36 masked', 'nt', 'end'))
-    p.append(_label(1143, 301, '(B, 36, 256)', 'sh', 'end'))
+    p.append(_label(1143, 298, '36 masked', 'nt', 'end'))
+    p.append(_label(1143, 314, '(B, 36, 256)', 'sh', 'end'))
     p.append(_line([(1100, rows['tgt']), (1100, rows['view'] - 34)], dashed=True))
     p.append(_label(1106, rows['tgt'] + 40, 'full-view mean', 'nt', 'start'))
     p.append(_line([(out_x, rows['view']), (1048, rows['view'])]))
@@ -220,13 +222,14 @@ def block_diagram() -> str:
     p.append(_pill(1052, rows['view'] - 30, 198, 60, '0.95·Var + 0.05·SIGReg', 'pooled views (3, B, 256)'))
     # stage-2 robust branch
     ry = 548
-    p.append('<line x1="30" y1="487" x2="1250" y2="487" stroke="#c9ccd1" stroke-dasharray="4 4"/>')
-    p.append('<text x="35" y="510" class="hd" font-size="14" text-anchor="start">Stage 2 only</text>')
+    p.append('<line x1="30" y1="484" x2="1250" y2="484" stroke="#c9ccd1" stroke-dasharray="4 4"/>')
+    p.append('<text x="35" y="503" class="hd" font-size="14" text-anchor="start">Stage 2 only: robustness to '
+             'measurement perturbations</text>')
     p.append(_line([(95, 143), (95, ry), (215, ry)]))
     p.append(_block(220, ry - 30, 250, 60, 'Perturb x → x′', 'noise · offset · slope · scale · shift'))
     p.append(_line([(479, ry), (enc_x - 4, ry)]))
     p.append(_label(590, ry - 8, '(B, 245)'))
-    p.append(_block(enc_x, ry - 32, enc_w, 64, 'Blocks 1–2', ('after the tokenizer', 'same weights')))
+    p.append(_block(enc_x, ry - 32, enc_w, 64, 'Blocks 1–2', ('first 2 encoder blocks', 'same weights')))
     p.append(_line([(out_x, ry), (1048, ry)]))
     p.append(_label(955, ry + 17, '(B, 48, 256)'))
     p.append(_label(955, ry - 8, 'h₂(x′)', 'nt'))
@@ -244,7 +247,7 @@ def block_diagram() -> str:
     p.append(_label(182, iy - 10, 'norm', 'nt'))
     p.append(_block(220, iy - 30, 220, 60, 'Tokenizer', '(B, 48, 6) → (B, 48, 256)'))
     p.append(_line([(449, iy), (530, iy)]))
-    p.append(_block(535, iy - 30, 180, 60, 'Blocks 1–2', 'no final LN'))
+    p.append(_block(535, iy - 30, 180, 60, 'Blocks 1–2', 'no final LayerNorm'))
     p.append(_line([(724, iy), (810, iy)]))
     p.append(_label(767, iy - 10, '(B, 48, 256)'))
     p.append(_block(815, iy - 30, 130, 60, 'Flatten', '48 × 256'))
