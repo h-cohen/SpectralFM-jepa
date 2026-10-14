@@ -117,26 +117,87 @@ flowchart LR
 
 ## 5. How the recipe was chosen
 
-**Bottom line.** Every component was kept only if it improved the nested-CV benchmark over raw and random controls. Only two later changes added anything: seed ensembling and the robust term.
+**Bottom line.** Each component survived a direct comparison against raw spectra and a random-weight encoder.
+- **Kept, from the screens:** global affine normalization, 75% random masking, the pooled-view term, the 50% regression-source mix, 48 patches and the block-2 flat readout.
+- **Added later:** two changes improved the result beyond the screens, seed ensembling and the block-2 robust term.
+- **Dropped:** everything else (block masking, a wider model, VISReg, projectors, longer or lower-λ continuation, readout menus).
+
+Wins count sets with ΔR² > 0 against raw. Screen 1 scored labeled_data only, and screens 3–4 and 8 are short continuations, so numbers are comparable within a stage, not across stages.
 
 ```mermaid
 flowchart TB
-    S["Screens"] --> A["global affine norm · 75% random mask<br/>SIGReg 0.05 · pooled term · 50% regression mix"]
-    A --> B["48 patches (vs 24, 3 seeds each)"]
-    B --> C["block-2 flat readout<br/>(best of 21 readouts, 8 checkpoints)"]
-    C --> D["seed ensemble 0/1/2/101<br/>7/8 vs raw"]
-    D --> E["robust continuation<br/>drift 6× lower"]
-    E --> F["robust 4-seed ensemble<br/>8/8 · 8/8"]
-    A -.-> X1["VISReg, wider model,<br/>per-sample z-score: dropped"]
-    C -.-> X2["readout menus, extra heads,<br/>LN ablation: not consistent"]
-    D -.-> X3["longer training, λ 0.01,<br/>SIGReg projector: no gain"]
-    classDef drop fill:#eee,stroke:#bbb,color:#888
-    class X1,X2,X3 drop
+    B0["Baseline (10-02)<br/>24p · mask 0.5 · per-sample z-score · pooled readout<br/>labeled_data .741 vs data2vec .853"] --> R0["Readout spike<br/>early-block flat .925 vs pooled .762 (raw .824)"]
+    R0 --> S1["Screen 1 · labeled_data, 5 epochs<br/>no change beats control"]
+    S1 --> S2["Screen 2 · all 12.76M spectra<br/>global affine norm + mask 0.75: 3/8, +.003"]
+    S2 --> S3["Screen 3 · source mix<br/>50% regression-source: 4/8, 0112 .38 → .69–.80"]
+    S3 --> S4["Screen 4 · pooled-view term<br/>weight 1, 2 views: 5/8, +.015"]
+    S4 --> S5["Screen 5 · regularizer<br/>SIGReg 0.05 kept"]
+    S5 --> S6["Screen 6 · 3 epochs from scratch<br/>pooled 1 + 50% mix: 5/8, +.045 (Δrandom +.051)"]
+    S6 --> S7["Screen 7 · patches<br/>12p 4/8 · 24p 5/8 · 48p 5/8, Δrandom +.108"]
+    S7 --> L1["Long-1 · 10 epochs, 24p<br/>seed0 5/8 +.044 · seed1 3/8 +.011"]
+    L1 --> S8["Screen 8 · masking re-test<br/>random 0.75 kept"]
+    S8 --> PL["Paired-long · 3 seeds each<br/>48p +.067 vs 24p +.046 → 48 patches"]
+    PL --> FM["Final model seed101<br/>5/8, +.080 · export"]
+    FM --> FF["Frozen-feature study<br/>block-2 flat best in 8/8 checkpoints"]
+    FF --> SE["Seed ensemble 0/1/2/101<br/>7/8, +.086 · noise drift ~20×"]
+    SE --> RC["Robustness continuation<br/>7/8 & 8/8 · drift .080 → .012"]
+    RC --> RE["Robust 4-seed ensemble<br/>8/8 vs raw · 8/8 vs random · +.056"]
+
+    S1 -.-> X1["block masking 0.5/0.75 · 49 patches<br/>λ 0.02 · projector · d384×8"]
+    S2 -.-> X2["per-sample z-score: 2/8, −.129<br/>wide d384×8: 3/8, −.058"]
+    S3 -.-> X3["80% mix: starves labeled_data (.844)"]
+    S4 -.-> X4["weight 0.25 · 4 views: 2/8, −.092"]
+    S5 -.-> X5["VISReg λ 0.6: 2/8, −.066<br/>λ 0.9: 3/8, +.006 (≈ SIGReg)"]
+    S8 -.-> X8["random 0.5 · block 0.75<br/>failed per-seed gates"]
+    FM -.-> X9["readout menus · block-6 flat 2/8<br/>extra heads · LN ablation"]
+    FF -.-> X10["+2 epochs, λ .05/.01: +.0006<br/>SIGReg projector: −.005/−.002"]
+    classDef drop fill:#eee,stroke:#bbb,color:#777
+    classDef keep fill:#e2f2e5,stroke:#5a9,color:#1d5a32
+    class X1,X2,X3,X4,X5,X8,X9,X10 drop
+    class RE keep
 ```
+
+| Stage (date) | Question | Arms → wins vs raw, mean ΔR² | Decision |
+|---|---|---|---|
+| Baseline (10-02) | Does LeJEPA beat the earlier data2vec model? | Pooled embedding on labeled_data: .741 vs .853. Readout spike: early-block flat .925, seg4 .846, pooled .762; random-weight flat .898; raw .824 | Position-preserving early-block readout; always report a random-weight control |
+| Screen 1 (10-02) | Masking, patches, λ, projector, width (labeled_data, 5 epochs) | Control .730/.709. Block mask 0.5 −.044, mask 0.75 −.040, block 0.75 −.080, 49 patches −.130, λ 0.02 −.044, projector −.007, d384×8 −.045 | Nothing beats control; block masking and width dropped |
+| Screen 2 (10-06) | Input normalization and capacity on all 12.76M spectra | z-score, mask 0.5: 2/8, −.129. Global affine, mask 0.5: 2/8, −.047. Global, mask 0.75: 3/8, +.003. Wide: 3/8, −.058 | Global affine normalization and mask 0.75 kept |
+| Screen 3 (10-06) | Source mix (15k-step continuation) | Natural 4/8, +.005; 50% regression-source 4/8, +.005; 80% 4/8, +.018 | 50%; 80% starves labeled_data (.844); 0112 rises from .38 to .69–.80 with any mix |
+| Screen 4 (10-06) | Pooled-view term | Weight 0.25: 4/8, +.015. Weight 1, 2 views: 5/8, +.015 (Δrandom +.021). Weight 1, 4 views: 2/8, −.092 | Weight 1, two half-length views |
+| Screen 5 (10-06) | VISReg instead of SIGReg | VISReg λ 0.6: 2/8, −.066; λ 0.9: 3/8, +.006; continued: 2/8, −.041 | SIGReg λ 0.05 kept |
+| Screen 6 (10-07) | Recipe from scratch, 3 epochs | Pooled 1: 4/8 (two seeds, −.110/−.001). Pooled 0.25: 3/8, −.031. Pooled 1 + 50% mix: 5/8, +.045 (Δrandom +.051) | Pooled term + 50% mix is the recipe. Seed noise is large (0106 −.87 vs −.08) |
+| Screen 7 (10-07) | Patch count | 12: 4/8, +.046. 24: 5/8, +.045. 48: 5/8, +.045, Δrandom +.108 | 24 and 48 move to a full-length comparison |
+| Long-1 (10-07) | 10 epochs (24 patches) | seed0 5/8, +.044; seed1 3/8, +.011; random-weight control alone 4/8, −.006 | Longer training helps unevenly across seeds |
+| Screen 8 (10-08) | Masking re-test (continuations, 2 seeds) | Random 0.5: 5/8 and 4/8, +.017. Block 0.75: 6/8 and 5/8, +.018. Both fail the pre-registered per-seed gates | Random 0.75 kept |
+| Paired-long (10-08) | 24 vs 48 patches, 3 seeds × 10 epochs | 24p: wins 6/5/4, +.046. 48p: wins 5/4/7, +.067. Paired gain +.021 | 48 patches |
+| Final model (10-09) | Pre-registered production run, seed101 | 5/8, +.080 | Exported; the 0120 single-shuffle canary (.0204 vs .020) blocks qualification |
+| Production analysis (10-11) | Readout policies | Four-readout menu 7/8, +.093; fixed block-2 flat 5/8; block-6 flat 2/8 | Keep the fixed block-2 readout |
+| Continuation (10-11) | +2 epochs, λ 0.05 vs 0.01 | Fixed-readout gain +.0006 on average; λ 0.01 regresses | Stop duration-only sweeps |
+| Frozen features (10-12) | 21 readouts × 8 checkpoints, extra heads | Block-2 flat best in all 8 checkpoints; Ridge/PLS/RBF heads 4–6/8 | Block-2 flat |
+| Projection pilot (10-12) | SIGReg through a projector | −.005 and −.002 vs control (7/8 all) | Dropped |
+| Seed ensemble (10-13) | Average 4 seeds' predictions | 7/8, +.086 (random 6/8); trained features amplify 1% noise ~20× | Kept; noise sensitivity found |
+| Robustness continuation (10-13) | Block-2 invariance to measured noise | 7/8 and 8/8 vs raw, 8/8 vs random, +.044/+.047; drift .080 → .012 | Robust term kept |
+| Robust ensemble (10-13) | Robust term on all 4 seeds | 8/8 vs raw, 8/8 vs random, +.056 | Final model |
+
+### Input normalization
+
+- **The choice.** One fixed affine map for the whole corpus, `(x − 0.3784) / 0.5126`, replaced the per-spectrum z-score inherited from the earlier pipeline.
+- **Why.** The per-spectrum z-score removes each spectrum's amplitude and offset, and some labels depend on them.
+  - Even a raw-spectrum probe on dataset0055 falls from .591 to .176 when its inputs are z-scored.
+  - In screen 2 the z-scored encoder reached .123 on 0055, against .502 with global normalization.
+  - The mean gain over raw improved from −.129 to −.047 at an equal 2/8 wins, so the benefit concentrates on small amplitude-dependent sets.
+- **Consequence.** Global statistics leave noise and baseline shifts in the input. That is the sensitivity the stage-2 robust term later addressed.
+
+### Not swept
+
+- **Learning rate.** It stayed at 5e-4 for stage 1, with lower rates only for continuations. The long-1 arm names "lr50"/"lr80" denote 50%/80% source mix, not learning rate.
+- **Model size.** Only d384×8 was tested against d256×6.
+- **Pooled-term weight.** Nothing above 1 was tried.
+- **SIGReg λ.** Only 0.02 (screen 1) and 0.01 (continuation) were tried, besides 0.05.
 
 ![Candidates](figures/training-report/fig4_candidates.svg)
 
-**Figure 4. Shortlisted models.** The robust term trades margin for consistency: wins over random weights go from 6/8 to 8/8, and the ensemble recovers part of the margin. All three criteria registered before the run passed (`docs/superpowers/specs/2026-10-13-robust-ensemble.md`).
+**Figure 4. Shortlisted models.** The robust term trades margin for consistency: wins over random weights go from 6/8 to 8/8, and the ensemble recovers part of the margin. All three criteria registered before the run passed.
 
 ![Member deltas](figures/training-report/fig6_member_deltas.svg)
 

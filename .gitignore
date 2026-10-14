@@ -231,3 +231,6 @@ rolling_status.html
 /plans/
 
 .tmp/
+
+# Local design specs and plans (not published)
+/docs/superpowers/

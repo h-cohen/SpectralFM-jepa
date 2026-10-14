@@ -17,7 +17,7 @@
 - **Where things are documented:**
   - Results and figures: `docs/TRAINING_REPORT.md` (and `.html`, published as artifact `4pDknEu4iwtFTgEsbnMJyy`).
   - History: `docs/PRODUCTION_RECOMMENDATION.md`.
-  - Study specs: `docs/superpowers/specs/`.
+  - Study specs and plans: `docs/superpowers/` (local, untracked).
 - **Running jobs:** none.
 
 ## Train
