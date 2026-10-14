@@ -60,6 +60,25 @@ The ensemble beats raw spectra on 8 of 8 sets (mean ΔR² +.056) and a random-we
 
 The robust continuation cuts 1%-noise drift about 6× and keeps features stable (cosine ≥ .997) under small noise and ±10% gain. Large baseline offsets and heavy shot noise still move the features.
 
+## Inference
+
+The trained encoders stay outside git. Build the bundle once from the member checkpoints listed in `configs/inference.yaml`: `python -m spectral_lejepa export-ensemble` writes `outputs/inference/robust-ensemble/` (four TorchScript encoders and a checksummed manifest).
+
+```python
+from spectral_lejepa.inference import SpectralEmbedder, EnsembleRegressor
+emb = SpectralEmbedder()                    # bundle: argument, $SPECTRALFM_BUNDLE, or the default path
+F = emb.embed('path/to/wavs/')              # (N, 4, 12288): block-2 flat features per member
+model = EnsembleRegressor().fit(F, y)       # one ridge per member; predictions are averaged
+y_hat = model.predict(emb.embed(new_spectra))
+```
+
+- **Command line.** `python -m spectral_lejepa embed INPUT --output OUT.npz [--device cpu|cuda]`.
+  - INPUT is a `.npy` of shape (N, 245), one mono 245-sample `.wav`, or a folder of `.wav` files, with ids taken from sorted file names.
+  - The `.npz` holds `embeddings`, `ids`, `members` and `bundle_manifest`.
+- **Keep the member axis.** The encoders are independent, so fit one model per member and average the predictions; do not average the embeddings.
+- **GPU and CPU.** GPU output matches the evaluation features exactly; CPU differs by about 1e-3.
+- **Portability.** `src/spectral_lejepa/inference.py` needs only torch, numpy, soundfile and scikit-learn, so it can be copied with a bundle to another machine.
+
 ## Commands
 
 Run from the repository root with the project venv (`uv sync`). W&B uses `WANDB_API_KEY` from the shell; keep it out of the repository.

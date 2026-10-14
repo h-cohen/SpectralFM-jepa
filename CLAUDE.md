@@ -39,6 +39,7 @@
 - **Embedding suite:** `python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml`, then `embedding-figures`.
   - Runs the previous project's cosine-similarity and noise metrics from its pinned commit (`evaluation/legacy.py`).
   - Writes to `outputs/embedding-eval/`.
+- **Inference:** `export-ensemble` builds `outputs/inference/robust-ensemble/` from `configs/inference.yaml`. `embed INPUT --output OUT.npz` or `spectral_lejepa.inference.SpectralEmbedder` returns (N, 4, 12288); README has a usage example.
 - **Other tools:** `permutation-audit` and `gradient-audit`. `export` writes TorchScript: raw `(B, 245)` in, `(B, 12288)` out.
 - **Report:**
   - `training-report`; run `training-report fetch` first, via `bash -ic`, to pull W&B histories.

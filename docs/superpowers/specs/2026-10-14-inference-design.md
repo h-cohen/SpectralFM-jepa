@@ -1,6 +1,6 @@
 # Inference pipeline — design, 2026-10-14
 
-Status: approved design, awaiting spec review.
+Status: implemented 2026-10-14. CPU embeddings differ from GPU (and from the GPU-extracted evaluation banks) by about 1e-3.
 
 ## Goal
 
