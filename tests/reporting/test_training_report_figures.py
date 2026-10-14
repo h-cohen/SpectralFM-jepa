@@ -79,3 +79,14 @@ def test_true_vs_predicted_grid(tmp_path, monkeypatch):
     svg = (tmp_path / 'fig_tvp.svg').read_text()
     assert 'R² =' in svg and 'z-scored' not in svg
     assert best == {'labeled_data': 'robust ensemble', 'dataset0055': 'robust ensemble'}
+
+
+def test_input_figure_shows_patches_and_mask(tmp_path, monkeypatch):
+    import numpy as np
+    monkeypatch.setattr(training_report, 'OUT', tmp_path)
+    x = np.random.default_rng(0).normal(size=(3, 245)).astype('float32')
+    info = training_report.input_figure(x, ['a', 'b', 'c'])
+    assert (tmp_path / 'fig0_input_patches_mask.svg').exists()
+    assert info['widths'] == [6] * 5 + [5] * 43
+    assert all(len(m) == 36 for m in info['masked'])     # 75% of 48 patches
+    assert len({tuple(m) for m in info['masked']}) == 3   # each example gets its own mask

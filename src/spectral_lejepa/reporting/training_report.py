@@ -266,6 +266,60 @@ def depth_profile(member_evals=None):
 
 
 ABLATION = Path('outputs/sigreg-depth-ablation')
+PACKED = Path('/mnt5/home/hadar/nova/data/spectra_all')
+EXAMPLES = Path('outputs/training-report/input_examples.npz')
+EXAMPLE_SOURCES = ('single_channel_all', 'multi_channel', 'labeled_regression/dataset0055')
+
+
+def input_examples(packed=PACKED, cache=EXAMPLES, seed=0):
+    """One seeded spectrum per source in EXAMPLE_SOURCES, globally normalized as in training; cached."""
+    if not cache.exists():
+        stats = json.loads((packed / 'stats.json').read_text())
+        ends = np.cumsum(list(stats['counts'].values()))   # rows are packed contiguously by source
+        starts = dict(zip(stats['counts'], ends - np.array(list(stats['counts'].values()))))
+        rng = np.random.default_rng(seed)
+        rows = [int(starts[s] + rng.integers(stats['counts'][s])) for s in EXAMPLE_SOURCES]
+        x = np.load(packed / 'spectra.npy', mmap_mode='r')[rows].astype(np.float32)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(cache, x=(x - stats['mean']) / stats['std'], rows=rows, sources=list(EXAMPLE_SOURCES))
+    d = np.load(cache)
+    return d['x'], [str(s) for s in d['sources']]
+
+
+def input_figure(x, sources, name='fig0_input_patches_mask.svg', num_patches=48, mask_ratio=.75, seed=0):
+    """Rows: example spectra. Columns: the input, its contiguous patches, and one random 75% mask."""
+    import torch
+    from spectral_lejepa.models.masking import random_mask
+    from spectral_lejepa.models.tokenizer import patch_bounds
+    bounds = patch_bounds(x.shape[1], num_patches)
+    masked, _ = random_mask(len(x), num_patches, mask_ratio, torch.Generator().manual_seed(seed))
+    masked = [set(m.tolist()) for m in masked]
+    navy, teal, orange, grey = '#1f4e79', '#2a9d8f', '#d9822b', '#b8c2c6'
+    fig, axes = plt.subplots(len(x), 3, figsize=(11, 1.9 * len(x) + .5), sharex='col', squeeze=False)
+    for i, (sig, src) in enumerate(zip(x, sources)):
+        a, b, c = axes[i]
+        a.plot(np.arange(len(sig)), sig, color=navy, lw=1)
+        a.set_ylabel(src.replace('labeled_regression/', ''), fontsize=8)
+        for p, (lo, hi) in enumerate(bounds):
+            seg = np.arange(lo, min(hi + 1, len(sig)))   # overlap one bin so the line is continuous
+            b.axvspan(lo - .5, hi - .5, color='#e6eef0' if p % 2 else 'white', lw=0)
+            b.plot(seg, sig[seg], color=orange if p % 2 else navy, lw=1.2)
+            hidden = p in masked[i]
+            if hidden:
+                c.axvspan(lo - .5, hi - .5, color='#fbe3e0', lw=0)
+            c.plot(seg, sig[seg], color=grey if hidden else teal, lw=1, ls=':' if hidden else '-')
+        for ax in (b, c):
+            ax.set_xticks([(lo + hi - 1) / 2 for lo, hi in bounds[::8]], [f'p{p}' for p in range(0, num_patches, 8)])
+        b.set_ylim(a.get_ylim()), c.set_ylim(a.get_ylim())
+    n_mask = len(masked[0])
+    titles = ('(a) input spectrum, 245 bins (normalized)', f'(b) {num_patches} contiguous patches',
+              f'(c) mask: {num_patches - n_mask} visible, {n_mask} masked (shaded)')
+    for ax, t in zip(axes[0], titles):
+        ax.set_title(t, fontsize=9)
+    axes[-1, 0].set_xlabel('bin')
+    axes[-1, 1].set_xlabel('patch'), axes[-1, 2].set_xlabel('patch')
+    save(fig, name)
+    return {'widths': [hi - lo for lo, hi in bounds], 'masked': [sorted(m) for m in masked]}
 
 
 def ablation_stats(root=ABLATION):
@@ -348,6 +402,7 @@ def fetch():
 def figures():
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / 'fig0_architecture.svg').write_text(block_diagram())
+    input_figure(*input_examples())
     hist = json.loads(HIST.read_text())
     res = json.loads((ROOT / 'results_analysis.json').read_text())
     pretraining_curves(hist)

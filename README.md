@@ -26,6 +26,10 @@ flowchart LR
 | Predictor | `(B, 36, 256)` | 4 blocks, width 192; predicts the 36 masked tokens from the 12 visible ones |
 | **Feature** | `(B, 12288)` | State after encoder block 2, before any final norm, flattened. 1.59M parameters per member |
 
+![Input, patches and mask](docs/figures/training-report/fig0_input_patches_mask.svg)
+
+Three example inputs (single_channel_all, multi_channel, dataset0055) after normalization: (a) the 245-bin spectrum, (b) its 48 contiguous patches, (c) one pretraining mask, in which 36 of 48 patches (shaded) are hidden and the predictor must recover their embeddings from the 12 visible ones.
+
 ### Training objective
 
 ```text
