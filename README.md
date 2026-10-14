@@ -77,7 +77,10 @@ y_hat = model.predict(emb.embed(new_spectra))
   - The `.npz` holds `embeddings`, `ids`, `members` and `bundle_manifest`.
 - **Keep the member axis.** The encoders are independent, so fit one model per member and average the predictions; do not average the embeddings.
 - **GPU and CPU.** GPU output matches the evaluation features exactly; CPU differs by about 1e-3.
-- **Portability.** `src/spectral_lejepa/inference.py` needs only torch, numpy, soundfile and scikit-learn, so it can be copied with a bundle to another machine.
+- **Portability.** `src/spectral_lejepa/inference.py` needs only torch, numpy, soundfile and scikit-learn. Copied with a bundle to another machine, it runs as `python inference.py INPUT --output OUT.npz --bundle DIR`.
+- **Trust.** Bundles are TorchScript, which executes code when loaded: load only bundles you built or trust.
+- **Input files.** Wavs must be stored as float (FLOAT/DOUBLE), not integer PCM.
+- **Output size.** Each spectrum takes 196 KB (4 × 12,288 float32), so 15k spectra make about 3 GB. The CLI streams embeddings to disk instead of RAM.
 
 ## Commands
 

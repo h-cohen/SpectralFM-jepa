@@ -1,6 +1,8 @@
 """SpectralFM inference: raw 245-point spectra -> robust-ensemble embedding (N, M, 12288).
 
-Self-contained (torch, numpy, soundfile, scikit-learn only): copy this file and a bundle anywhere.
+Self-contained (torch, numpy, soundfile, scikit-learn only). Inside the repo, import it or use the CLI below;
+elsewhere, copy this file and a bundle and run `python inference.py INPUT --output OUT.npz --bundle DIR`.
+A bundle is TorchScript, which executes code when loaded: load only bundles you built or trust.
     from spectral_lejepa.inference import SpectralEmbedder, EnsembleRegressor
     F = SpectralEmbedder().embed('spectra/')            # (N, M, 12288): one block-2 flat vector per member
     reg = EnsembleRegressor().fit(F_train, y_train)     # one ridge per member, predictions averaged
@@ -17,15 +19,17 @@ import numpy as np
 import soundfile as sf
 import torch
 
-DEFAULT_BUNDLE = Path('outputs/inference/robust-ensemble')
+_HERE = Path(__file__).resolve()
+DEFAULT_BUNDLE = (_HERE.parents[2] if len(_HERE.parents) > 2 else _HERE.parent) / 'outputs/inference/robust-ensemble'
 LENGTH = 245
 
 
 def resolve_bundle(bundle=None):
     path = Path(bundle or os.environ.get('SPECTRALFM_BUNDLE') or DEFAULT_BUNDLE)
     if not (path / 'manifest.json').is_file():
-        raise FileNotFoundError(f'no inference bundle at {path}; build it with '
-                                '`python -m spectral_lejepa export-ensemble` or set SPECTRALFM_BUNDLE')
+        raise FileNotFoundError(f'no inference bundle at {path}; pass --bundle DIR (bundle=...) or set '
+                                'SPECTRALFM_BUNDLE; inside the repo, build it with '
+                                '`python -m spectral_lejepa export-ensemble`')
     return path
 
 
@@ -40,6 +44,11 @@ def _check(arr, where):
 
 
 def _read_wav(path):
+    if not path.is_file():
+        raise FileNotFoundError(f'{path}: no such file')
+    subtype = sf.info(str(path)).subtype
+    if subtype not in ('FLOAT', 'DOUBLE'):   # integer PCM would be rescaled to [-1, 1]
+        raise ValueError(f'{path.name}: spectra must be stored as float wavs, got {subtype}')
     data, _ = sf.read(str(path), dtype='float32', always_2d=True)
     if data.shape[1] != 1:
         raise ValueError(f'{path.name}: expected a mono wav, got {data.shape[1]} channels')
@@ -57,11 +66,11 @@ def load_spectra(x):
         paths = [Path(p) for p in x]
     else:
         p = Path(x)
-        if p.suffix == '.npy':
+        if p.suffix.lower() == '.npy':
             arr = np.load(p)
             arr = arr[None] if arr.ndim == 1 else arr
             return _check(arr, p.name), [str(i) for i in range(len(arr))]
-        paths = sorted(p.glob('*.wav')) if p.is_dir() else [p]
+        paths = sorted(q for q in p.iterdir() if q.suffix.lower() == '.wav') if p.is_dir() else [p]
         if p.is_dir() and not paths:
             raise ValueError(f'{p}: no .wav files')
     if not paths:
@@ -95,9 +104,14 @@ class SpectralEmbedder:
         self.members = [m['name'] for m in self.manifest['members']]
 
     @torch.no_grad()
-    def embed_with_ids(self, x):
+    def embed_with_ids(self, x, out=None):
+        """out: optional preallocated (N, M, 12288) float32 array, e.g. a memmap for inputs larger than RAM."""
         arr, ids = load_spectra(x)
-        out = np.empty((len(arr), len(self.encoders), 12288), np.float32)
+        shape = (len(arr), len(self.encoders), 12288)
+        if out is None:
+            out = np.empty(shape, np.float32)
+        elif out.shape != shape:
+            raise ValueError(f'out has shape {out.shape}, expected {shape}')
         for i in range(0, len(arr), self.batch_size):
             batch = torch.from_numpy(arr[i:i + self.batch_size]).to(self.device)
             for j, enc in enumerate(self.encoders):
@@ -137,11 +151,19 @@ def main(argv=None):
     p.add_argument('--batch-size', type=int, default=256)
     a = p.parse_args(argv)
     embedder = SpectralEmbedder(a.bundle, a.device, a.batch_size)
-    emb, ids = embedder.embed_with_ids(a.input)
+    spectra, ids = load_spectra(a.input)
     a.output.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(a.output, embeddings=emb, ids=np.array(ids), members=np.array(embedder.members),
-             bundle_manifest=json.dumps(embedder.manifest))
-    print(f'{a.output}: embeddings {emb.shape} from members {embedder.members}')
+    tmp = a.output.with_name(a.output.name + '.embeddings.tmp.npy')   # embeddings stream to disk, not RAM
+    try:
+        emb = np.lib.format.open_memmap(tmp, 'w+', np.float32, (len(spectra), len(embedder.members), 12288))
+        embedder.embed_with_ids(spectra, out=emb)
+        np.savez(a.output, embeddings=emb, ids=np.array(ids), members=np.array(embedder.members),
+                 bundle_manifest=json.dumps(embedder.manifest))
+        shape = emb.shape
+        del emb
+    finally:
+        tmp.unlink(missing_ok=True)
+    print(f'{a.output}: embeddings {shape} from members {embedder.members}')
 
 
 if __name__ == '__main__':

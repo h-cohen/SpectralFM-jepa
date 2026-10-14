@@ -97,7 +97,7 @@ def test_bad_wavs_are_rejected(tmp_path):
     sf.write(tmp_path / 'short.wav', np.zeros(240, np.float32), 16000)
     with pytest.raises(ValueError, match='short.wav'):
         inf.load_spectra(tmp_path / 'short.wav')
-    sf.write(tmp_path / 'stereo.wav', np.zeros((245, 2), np.float32), 16000)
+    sf.write(tmp_path / 'stereo.wav', np.zeros((245, 2), np.float32), 16000, subtype='FLOAT')
     with pytest.raises(ValueError, match='mono'):
         inf.load_spectra(tmp_path / 'stereo.wav')
     (tmp_path / 'empty').mkdir()
@@ -129,3 +129,51 @@ def test_cli_writes_nothing_on_bad_input(bundle, tmp_path):
     with pytest.raises(ValueError):
         inf.main([str(tmp_path / 'bad.npy'), '--output', str(tmp_path / 'out.npz'), '--bundle', str(bundle[0])])
     assert not (tmp_path / 'out.npz').exists()
+
+
+def test_default_bundle_does_not_depend_on_the_working_directory(monkeypatch, tmp_path):
+    assert inf.DEFAULT_BUNDLE.is_absolute()
+    monkeypatch.delenv('SPECTRALFM_BUNDLE', raising=False)
+    monkeypatch.setattr(inf, 'DEFAULT_BUNDLE', tmp_path / 'missing')
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(FileNotFoundError) as e:
+        inf.resolve_bundle()
+    msg = str(e.value)
+    assert msg.index('--bundle') < msg.index('export-ensemble') and 'SPECTRALFM_BUNDLE' in msg
+
+
+def test_wav_and_npy_suffixes_are_case_insensitive(tmp_path):
+    x = spectra(2)
+    sf.write(tmp_path / 'A.WAV', x[0], 16000, subtype='FLOAT')
+    sf.write(tmp_path / 'b.wav', x[1], 16000, subtype='FLOAT')
+    assert inf.load_spectra(tmp_path)[1] == ['A.WAV', 'b.wav']
+    np.save(tmp_path / 'x.npy', x)
+    (tmp_path / 'x.npy').rename(tmp_path / 'X.NPY')
+    assert inf.load_spectra(tmp_path / 'X.NPY')[0].shape == (2, 245)
+
+
+def test_integer_pcm_wavs_are_rejected(tmp_path):
+    sf.write(tmp_path / 'pcm.wav', np.zeros(245, np.float32), 16000, subtype='PCM_16')
+    with pytest.raises(ValueError, match='float'):
+        inf.load_spectra(tmp_path / 'pcm.wav')
+
+
+def test_missing_input_path_is_a_clear_error(tmp_path):
+    with pytest.raises(FileNotFoundError, match='nope.wav'):
+        inf.load_spectra(tmp_path / 'nope.wav')
+
+
+def test_cli_streams_through_a_memmap_and_cleans_up(bundle, tmp_path, monkeypatch):
+    np.save(tmp_path / 'x.npy', spectra(5))
+    seen = {}
+    orig = inf.SpectralEmbedder.embed_with_ids
+    def spy(self, x, out=None):
+        seen['out'] = type(out)
+        return orig(self, x, out=out)
+    monkeypatch.setattr(inf.SpectralEmbedder, 'embed_with_ids', spy)
+    inf.main([str(tmp_path / 'x.npy'), '--output', str(tmp_path / 'o.npz'), '--bundle', str(bundle[0]),
+              '--device', 'cpu', '--batch-size', '2'])
+    assert seen['out'] is np.memmap
+    assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith('o.')) == ['o.npz']
+    ref = inf.SpectralEmbedder(bundle[0], device='cpu').embed(spectra(5))
+    assert np.allclose(np.load(tmp_path / 'o.npz')['embeddings'], ref, atol=1e-6)
