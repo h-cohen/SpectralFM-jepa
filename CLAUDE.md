@@ -18,7 +18,10 @@
   - Results and figures: `docs/TRAINING_REPORT.md` (and `.html`, published as artifact `4pDknEu4iwtFTgEsbnMJyy`).
   - History: `docs/PRODUCTION_RECOMMENDATION.md`.
   - Study specs and plans: `docs/superpowers/` (local, untracked).
-- **Running jobs:** none.
+- **Running jobs (launched 2026-10-14):** SIGReg/depth ablation, 9 jobs (λ 0/.01/.05/.2 at depth 6; depth 2/4/6 at λ .05 × 2 seeds), 2 epochs each.
+  - Services `spectralfm-abl-gpu{0,1,2,4,5,6,7}`; W&B group `sigreg-depth-ablation`.
+  - Orchestration: `ops/sigreg_depth_ablation.py` (each job runs train, then evaluate, then isotropy; resumable). Outputs: `outputs/sigreg-depth-ablation/`.
+  - Do not edit code these jobs import until they finish.
 
 ## Train
 
