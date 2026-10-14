@@ -28,3 +28,39 @@ def test_depth_profile_figure_from_member_banks(tmp_path, monkeypatch):
     assert (tmp_path / 'out' / 'fig8_depth_isotropy.svg').exists()
     assert stats['trained']['m1']['delta'][2] > stats['trained']['m1']['delta'][6]
     assert len(stats['trained']['m1']['effective_rank']) == 7
+
+
+def _ablation_job(root, job, design, gain2, erank_top):
+    import json
+    depth = design[0]
+    run = root / job / 'eval' / f'{job}_step9'
+    for ds in training_report.DATASETS:
+        for sub in ('', 'random_control'):
+            d = run / ds / sub
+            d.mkdir(parents=True, exist_ok=True)
+            fam = {'raw': {'r2_mean': .5},
+                   **{f'layer{k}/flat': {'r2_mean': .5 + (gain2 if k == 2 and not sub else 0.)} for k in range(depth + 1)}}
+            (d / 'nested_results.json').write_text(json.dumps({'families': fam}))
+    geo = lambda r: {'effective_rank': r, 'top_pc_share': .1, 'mean_cosine': .1, 'sigreg': 1.}
+    blocks = {str(k): {'trained': geo(erank_top * (k + 1) / (depth + 1)), 'random': geo(1.),
+                       'trained_tokens': {'effective_rank': 2., 'top_pc_share': .1}} for k in range(depth + 1)}
+    (root / job / 'isotropy.json').write_text(json.dumps({'depth': depth, 'blocks': blocks}))
+    (root / job / 'state.json').write_text(json.dumps({'job': job, 'design': list(design)}))
+
+
+def test_ablation_figures_and_criteria(tmp_path, monkeypatch):
+    root = tmp_path / 'abl'
+    for job, design, gain, rank in [('lam0_d6_s0', (6, 0., 0), -.01, 5.), ('lam001_d6_s0', (6, .01, 0), .08, 40.),
+                                    ('lam005_d6_s0', (6, .05, 0), .08, 90.), ('lam02_d6_s0', (6, .2, 0), .04, 110.),
+                                    ('lam005_d6_s1', (6, .05, 1), .07, 90.), ('lam005_d4_s0', (4, .05, 0), .02, 80.),
+                                    ('lam005_d4_s1', (4, .05, 1), .06, 80.), ('lam005_d2_s0', (2, .05, 0), -.05, 70.),
+                                    ('lam005_d2_s1', (2, .05, 1), -.2, 70.)]:
+        _ablation_job(root, job, design, gain, rank)
+    monkeypatch.setattr(training_report, 'OUT', tmp_path / 'out')
+    (tmp_path / 'out').mkdir()
+    res = training_report.ablations(root)
+    assert (tmp_path / 'out' / 'fig9_sigreg_ablation.svg').exists()
+    assert (tmp_path / 'out' / 'fig10_depth_ablation.svg').exists()
+    assert res['criteria'] == {'S1': True, 'S2': True, 'D1': True}
+    assert abs(res['jobs']['lam005_d2_s1']['flat'][2] + .2) < 1e-9
+    assert len(res['jobs']['lam005_d4_s0']['flat']) == 5

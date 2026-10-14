@@ -191,9 +191,9 @@ flowchart TB
 ### Not swept
 
 - **Learning rate.** It stayed at 5e-4 for stage 1, with lower rates only for continuations. The long-1 arm names "lr50"/"lr80" denote 50%/80% source mix, not learning rate.
-- **Model size.** Only d384×8 was tested against d256×6.
+- **Model size.** Only d384×8 was tested against d256×6 at full length. Depths 2 and 4 were trained only in the short ablation of section 8.
 - **Pooled-term weight.** Nothing above 1 was tried.
-- **SIGReg λ.** Only 0.02 (screen 1) and 0.01 (continuation) were tried, besides 0.05.
+- **SIGReg λ.** At full length, only 0.02 (screen 1) and 0.01 (continuation) were tried, besides 0.05. The short ablation of section 8 adds 0 and 0.2.
 
 ![Candidates](figures/training-report/fig4_candidates.svg)
 
@@ -263,11 +263,36 @@ flowchart LR
 
   The output is pushed toward an isotropic, view-invariant code, which discards the amplitude and position detail that `parameter_0` depends on.
 - **Why block 2 wins.** Block 2 has learned useful local features but still carries that detail, and the flat readout keeps all 48 positions.
-- **Open questions.**
-  - Whether SIGReg itself is what creates the spread (no λ = 0 run exists).
-  - Whether block 2 needs the four blocks above it (no shallower encoder was trained).
 
-  Both are the subject of a planned ablation.
+### Ablations: SIGReg weight and depth
+
+**Bottom line.** SIGReg is what spreads the representation. Without it, every block collapses onto one direction, and block 2 falls below raw. Depth helps block 2: the same block is clearly better in a 6-block encoder than as the output of a 2-block one. All three criteria registered before the runs passed.
+
+- **Design.** Nine runs, each trained from scratch with the stage-1 recipe for 2 epochs instead of 10; they are compared only with each other.
+  - SIGReg weight λ ∈ {0, .01, .05, .2} at depth 6 (seed 0). λ also weights the pooled term, so λ = 0 leaves pure invariance.
+  - Depth 2, 4 and 6 at λ = .05, seeds 0 and 1.
+- **Measurements.** Each run gets the full probe evaluation (all blocks, 8 sets) and isotropy on 10,000 held-out corpus rows.
+  - Effective rank is exp(entropy) of the PCA spectrum of mean-pooled features. Rank and mean cosine are scale-free.
+
+| Criterion (registered before the runs) | Result | |
+|---|---|---|
+| **S1.** At λ = 0, block-6 effective rank is under 10% of λ = .05's, and block-2 gain is lower | rank 9.0 vs 92.3 (9.7%); gain −.014 vs +.082 | pass |
+| **S2.** Block-6 effective rank rises monotonically with λ | 9.0 → 42.3 → 92.3 → 116.9 | pass |
+| **D1.** Block-2 gain is higher at depth 6 than at depth 2, on both seeds | seed 0: +.082 vs −.048; seed 1: +.076 vs −.225 | pass |
+
+![SIGReg ablation](figures/training-report/fig9_sigreg_ablation.svg)
+
+**Figure 10. SIGReg weight, depth 6.**
+- **Collapse at λ = 0.** Pooled mean cosine is 1.00 at blocks 1–5, and block-2 effective rank is 1.6. The predictor can still lower the masked loss, but the features carry almost nothing beyond the mean spectrum: block 2 wins on 4/8 sets with a −.014 mean.
+- **Any SIGReg fixes it.** Already at λ = .01, block-2 gain is +.085 (6/8 wins), about the same as λ = .05 (+.082, 7/8).
+- **Too much hurts.** At λ = .2, block 6 is most isotropic (rank 117), but block-2 gain halves to +.037. Spread is necessary, not sufficient: past a point, SIGReg displaces the prediction signal.
+
+![Depth ablation](figures/training-report/fig10_depth_ablation.svg)
+
+**Figure 11. Depth at λ = .05** (solid lines seed 0, dashed seed 1). Left panel is clipped at −.25. Depth-6 seed-0 block 4 is −.60, driven by one unstable probe on 0112 (R² −4.2).
+- **The output block always loses.** In every depth, the last block is the most isotropic and falls below raw. At depth 2, that block is block 2.
+- **Block 2 is better with blocks above it.** Block-2 gain is +.08 at depth 6, +.015/+.066 at depth 4, and −.05/−.23 at depth 2. The best block of a 2-block encoder (block 1, +.022/+.047) is still below block 2 of a 6-block one.
+- **Likely mechanism.** The upper blocks absorb the SIGReg and invariance pressure, so block 2 can keep local detail while the prediction loss still trains it. On this reading, depth helps block 2 as a buffer, not by being used at readout time. The runs are consistent with this but do not isolate it.
 
 ### Embedding geometry (previous-project metrics)
 
@@ -275,11 +300,11 @@ flowchart LR
 
 ![Panel](figures/embedding-eval/panel.svg)
 
-**Figure 10. Fixed 100-spectrum panel** (robust_s401). Raw block-2 cosines are high everywhere. After mean-centring, components within multi_channel, sampled_data and labeled_data form clear blocks.
+**Figure 12. Fixed 100-spectrum panel** (robust_s401). Raw block-2 cosines are high everywhere. After mean-centring, components within multi_channel, sampled_data and labeled_data form clear blocks.
 
 ![Cosine distributions](figures/embedding-eval/sanity_cosine_distributions.svg)
 
-**Figure 11. Pairwise cosines (sanity set).** Same-stack, random and same-position pairs overlap in every space. Top-5 same-stack retrieval:
+**Figure 13. Pairwise cosines (sanity set).** Same-stack, random and same-position pairs overlap in every space. Top-5 same-stack retrieval:
 
 | Set | Input | Block-2 mean | Block-2 flat | Chance |
 |---|---|---|---|---|

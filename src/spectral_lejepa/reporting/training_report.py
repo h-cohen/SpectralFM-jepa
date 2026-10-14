@@ -217,6 +217,72 @@ def depth_profile(member_evals=None):
     return stats
 
 
+ABLATION = Path('outputs/sigreg-depth-ablation')
+
+
+def ablation_stats(root=ABLATION):
+    """Per job: design (depth, λ, seed), per-block flat-readout mean ΔR² vs raw (8 sets) and pooled isotropy."""
+    jobs = {}
+    for d in sorted(p for p in Path(root).iterdir() if (p / 'isotropy.json').exists()):
+        depth, lam, seed = json.loads((d / 'state.json').read_text())['design']
+        run = sorted((d / 'eval').glob('*_step*'))[-1]
+        flat = []
+        for k in range(depth + 1):
+            gains = []
+            for ds in DATASETS:
+                fam = json.loads((run / ds / 'nested_results.json').read_text())['families']
+                gains.append(fam[f'layer{k}/flat']['r2_mean'] - fam['raw']['r2_mean'])
+            flat.append(float(np.mean(gains)))
+        iso = json.loads((d / 'isotropy.json').read_text())['blocks']
+        jobs[d.name] = {'depth': depth, 'lam': lam, 'seed': seed, 'flat': flat,
+                        **{m: [iso[str(k)]['trained'][m] for k in range(depth + 1)]
+                           for m in ('effective_rank', 'mean_cosine', 'sigreg')}}
+    return jobs
+
+
+def ablation_criteria(jobs):
+    """Criteria registered before the runs (local spec 2026-10-14-sigreg-depth-ablation-design)."""
+    lam = {j['lam']: j for j in jobs.values() if j['depth'] == 6 and j['seed'] == 0}
+    ref, off = lam[.05], lam[0.]
+    ranks = [lam[x]['effective_rank'][6] for x in sorted(lam)]
+    by = {(j['depth'], j['seed']): j for j in jobs.values() if j['lam'] == .05}
+    return {'S1': off['effective_rank'][6] < .1 * ref['effective_rank'][6] and off['flat'][2] < ref['flat'][2],
+            'S2': all(a < b for a, b in zip(ranks, ranks[1:])),
+            'D1': all(by[(6, s)]['flat'][2] > by[(2, s)]['flat'][2] for s in (0, 1))}
+
+
+def ablations(root=ABLATION):
+    jobs = ablation_stats(root)
+    lam = sorted((j for j in jobs.values() if j['depth'] == 6 and j['seed'] == 0), key=lambda j: j['lam'])
+    x = np.arange(len(lam))
+    fig, axes = plt.subplots(1, 3, figsize=(13, 3.4))
+    for k, color in ((2, '#c0504d'), (6, '#4f81bd')):
+        axes[0].plot(x, [j['effective_rank'][k] for j in lam], marker='o', color=color, label=f'block {k}')
+        axes[1].plot(x, [j['mean_cosine'][k] for j in lam], marker='o', color=color, label=f'block {k}')
+    axes[2].bar(x, [j['flat'][2] for j in lam], color=['#888' if j['lam'] == 0 else '#c0504d' for j in lam])
+    axes[2].axhline(0, color='k', lw=.6)
+    for ax, title in zip(axes, ('pooled effective rank', 'mean pairwise cosine (pooled)',
+                                'block-2 flat: mean ΔR² vs raw (8 sets)')):
+        ax.set(title=title, xlabel='SIGReg weight λ', xticks=x, xticklabels=[f"{j['lam']:g}" for j in lam])
+    axes[0].legend(frameon=False, fontsize=7)
+    save(fig, 'fig9_sigreg_ablation.svg')
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.4))
+    colors = {2: '#9bbb59', 4: '#f79646', 6: '#c0504d'}
+    for j in sorted((j for j in jobs.values() if j['lam'] == .05), key=lambda j: (j['depth'], j['seed'])):
+        kw = dict(color=colors[j['depth']], marker='o', ms=3, ls='-' if j['seed'] == 0 else '--',
+                  label=f"depth {j['depth']}, seed {j['seed']}")
+        blocks = np.arange(j['depth'] + 1)
+        axes[0].plot(blocks, np.maximum(j['flat'], -.25), **kw)
+        axes[1].plot(blocks, j['effective_rank'], **kw)
+    axes[0].axhline(0, color='k', lw=.6)
+    axes[0].axvline(2, color='k', lw=.6, ls=':')
+    axes[0].set(title='flat readout: mean ΔR² vs raw (8 sets; clipped at −.25)', xlabel='encoder block', ylim=(-.26, .12))
+    axes[1].set(title='pooled effective rank', xlabel='encoder block')
+    axes[0].legend(frameon=False, fontsize=7)
+    save(fig, 'fig10_depth_ablation.svg')
+    return {'jobs': jobs, 'criteria': ablation_criteria(jobs)}
+
+
 def fetch():
     import wandb
     api, out = wandb.Api(), {}
@@ -242,6 +308,7 @@ def figures():
     member_heatmap(res)
     robustness(res)
     depth_profile()
+    print(json.dumps(ablations()["criteria"]))
 
 
 def main():
