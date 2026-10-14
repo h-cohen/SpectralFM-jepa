@@ -41,27 +41,36 @@ class ProductionEncoder(nn.Module):
         return x.flatten(1)
 
 
-def export(checkpoint, output):
+def script_encoder(checkpoint):
+    """TorchScript raw [B,245] -> block2-flat [B,12288] encoder, verified against the in-memory model."""
     model, ckpt = load_model(str(checkpoint))
     if ckpt['config']['data']['normalization'] != 'global':
         raise ValueError('Production export requires global input normalization')
     stats = ckpt['config']['derived']['global_stats']
-    encoder = ProductionEncoder(model.eval(), stats['mean'], stats['std']).eval()
-    compiled = torch.jit.script(encoder)
+    compiled = torch.jit.script(ProductionEncoder(model.eval(), stats['mean'], stats['std']).eval())
     for batch in (1, 3):
         raw = torch.randn(batch, 245)
         with torch.no_grad():
-            normalized = (raw - stats['mean']) / stats['std']
-            token = model.tokenizer(normalized)
+            token = model.tokenizer((raw - stats['mean']) / stats['std'])
             expected = model.encoder.blocks[1](model.encoder.blocks[0](token)).flatten(1)
             torch.testing.assert_close(compiled(raw), expected, atol=1e-5, rtol=1e-5)
-    output = Path(output); output.mkdir(parents=True, exist_ok=True)
-    compiled.save(str(output / 'encoder.pt'))
+    return compiled, ckpt
+
+
+def _sha256(path):
     digest = hashlib.sha256()
-    with open(checkpoint, 'rb') as f:
+    with open(path, 'rb') as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b''):
             digest.update(chunk)
-    metadata = {'checkpoint': str(checkpoint), 'checkpoint_sha256': digest.hexdigest(),
+    return digest.hexdigest()
+
+
+def export(checkpoint, output):
+    compiled, ckpt = script_encoder(checkpoint)
+    stats = ckpt['config']['derived']['global_stats']
+    output = Path(output); output.mkdir(parents=True, exist_ok=True)
+    compiled.save(str(output / 'encoder.pt'))
+    metadata = {'checkpoint': str(checkpoint), 'checkpoint_sha256': _sha256(checkpoint),
         'step': ckpt['step'], 'run_id': ckpt.get('wandb_run_id'),
         'training_seed': ckpt['config']['experiment']['seed'], 'readout': 'layer2/flat',
         'input': {'shape': ['B', 245], 'dtype': 'float32', 'normalization': 'included global affine'},
@@ -69,6 +78,39 @@ def export(checkpoint, output):
         'benchmark_status': 'pending fixed-readout evaluation; deployment validation still required'}
     (output / 'metadata.json').write_text(json.dumps(metadata, indent=2))
     print(f'Exported: {output / "encoder.pt"}', flush=True)
+
+
+def export_ensemble(members, output, force=False):
+    """Inference bundle: member_<name>.pt TorchScript encoders + manifest.json (see the inference spec)."""
+    output = Path(output)
+    if output.exists() and any(output.iterdir()) and not force:
+        raise FileExistsError(f'{output} is not empty; pass --force to overwrite')
+    output.mkdir(parents=True, exist_ok=True)
+    entries = []
+    for name, checkpoint in members.items():
+        compiled, ckpt = script_encoder(checkpoint)
+        file = f'member_{name}.pt'
+        compiled.save(str(output / file))
+        entries.append({'name': name, 'file': file, 'sha256': _sha256(output / file),
+                        'source_checkpoint': str(checkpoint), 'source_sha256': _sha256(checkpoint),
+                        'step': ckpt['step'], 'global_stats': ckpt['config']['derived']['global_stats']})
+    manifest = {'format_version': 1, 'readout': 'layer2/flat',
+                'input': {'length': 245, 'dtype': 'float32', 'normalization': 'inside each encoder'},
+                'output': {'shape': ['N', len(entries), 12288], 'dtype': 'float32'}, 'members': entries}
+    (output / 'manifest.json').write_text(json.dumps(manifest, indent=2))
+    print(f'Bundle: {output} ({len(entries)} members)', flush=True)
+    return manifest
+
+
+def main_ensemble(argv=None):
+    import yaml
+    p = argparse.ArgumentParser(description='Build the inference bundle from the members in a config.')
+    p.add_argument('--config', type=Path, default=Path('configs/inference.yaml'))
+    p.add_argument('--output', type=Path)
+    p.add_argument('--force', action='store_true')
+    a = p.parse_args(argv)
+    cfg = yaml.safe_load(a.config.read_text())
+    export_ensemble(cfg['members'], a.output or Path(cfg['bundle']), force=a.force)
 
 
 def main():

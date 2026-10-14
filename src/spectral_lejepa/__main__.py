@@ -6,6 +6,7 @@ COMMANDS = {
     'pretrain': 'spectral_lejepa.training.pretrain',
     'gradient-audit': 'spectral_lejepa.training.audit',
     'export': 'spectral_lejepa.models.export',
+    'export-ensemble': 'spectral_lejepa.models.export_ensemble',
     'pack': 'spectral_lejepa.data.pack_spectra',
     'pack-pickles': 'spectral_lejepa.data.pack_pickles',
     'noise-calibration': 'spectral_lejepa.data.noise_calibration',

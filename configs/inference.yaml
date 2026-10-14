@@ -1,0 +1,8 @@
+# Inference bundle: robust seed-ensemble members (stage-2 checkpoints, kept outside git).
+# Build once: python -m spectral_lejepa export-ensemble
+bundle: outputs/inference/robust-ensemble
+members:
+  robust_s401: outputs/robustness-continuation/training/robust_robust_s401_20261013-020629/checkpoint_last.pt
+  robust_p0: outputs/robust-ensemble/training/robust_p0_20261013-172822/checkpoint_last.pt
+  robust_p1: outputs/robust-ensemble/training/robust_p1_20261013-172821/checkpoint_last.pt
+  robust_s101: outputs/robust-ensemble/training/robust_s101_20261013-172822/checkpoint_last.pt
