@@ -14,6 +14,7 @@ COMMANDS = {
     'evaluate': 'spectral_lejepa.evaluation.run',
     'gate': 'spectral_lejepa.evaluation.gate',
     'ensemble': 'spectral_lejepa.evaluation.ensemble',
+    'benchmark': 'spectral_lejepa.evaluation.benchmark',
     'permutation-audit': 'spectral_lejepa.evaluation.permutation',
     'perturbation': 'spectral_lejepa.evaluation.perturbation',
     'robustness': 'spectral_lejepa.evaluation.perturbation_eval',

@@ -90,3 +90,14 @@ def test_input_figure_shows_patches_and_mask(tmp_path, monkeypatch):
     assert info['widths'] == [6] * 5 + [5] * 43
     assert all(len(m) == 36 for m in info['masked'])     # 75% of 48 patches
     assert len({tuple(m) for m in info['masked']}) == 3   # each example gets its own mask
+
+
+def test_benchmark_figure(tmp_path, monkeypatch):
+    monkeypatch.setattr(training_report, 'OUT', tmp_path)
+    arms = ('jepa', 'minirocket_s0', 'rocket', 'multirocket', 'pred_avg', 'concat')
+    res = {'sets': {ds: {'r2': {'raw': .5, **{a: .5 + .01 * i for i, a in enumerate(arms)}},
+                         'vs_raw': {a: {'delta': .01 * i, 'sd': .01} for i, a in enumerate(arms)}}
+                    for ds in ('labeled_data', 'dataset0055')}}
+    training_report.benchmark_figure(res)
+    svg = (tmp_path / 'fig_benchmark.svg').read_text()
+    assert 'MiniRocket' in svg and 'labeled_data' in svg

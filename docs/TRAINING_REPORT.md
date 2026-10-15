@@ -4,7 +4,7 @@ Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat featur
 
 ## 1. Bottom line
 
-**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet.
+**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. Against training-free ROCKET-family features (section 9), the ensemble ties MiniRocket 4–4 by set but leads by .043 on average; averaging the two models' predictions reaches +.075 over raw on 8/8.
 
 ```mermaid
 flowchart LR
@@ -300,11 +300,57 @@ flowchart LR
 | sanity (N = 100) | .080 | .087 | .091 | .091 |
 | in_dist (N = 500) | .016 | .015 | .014 | .018 |
 
-## 9. Limitations and next step
+## 9. Benchmark: ROCKET-family features
+
+**Bottom line.** Strong training-free time-series features do not replace the JEPA features. MiniRocket ties the JEPA ensemble 4–4 across the eight sets, but it loses labeled_data by .33, so its mean is .043 below. Averaging the two models' predictions gives the best result in this study: 8/8 wins vs raw, mean +.075, and 5/8 vs the JEPA ensemble alone. All three registered criteria failed, so no combination becomes the candidate.
+
+```mermaid
+flowchart LR
+    R["raw spectrum (245)"] --> M["sktime MiniRocket / ROCKET / MultiRocket<br/>random kernels, no labels"]
+    R --> J["JEPA ensemble<br/>block-2 flat"]
+    M --> P["same nested CV<br/>2×5 outer, 5 inner, 12 recipes"]
+    J --> P
+    P --> A["pred_avg: mean of JEPA and MiniRocket predictions"]
+    M --> C["concat: [block-2 flat | MiniRocket] per member"]
+```
+
+- **Arms.** MiniRocket (about 10k features; seeds 0, 1, 2), ROCKET (10,000 kernels, 20k features) and MultiRocket (about 50k features), all from sktime 1.2.0 and fit on the raw spectra without labels. Each arm uses the members' rows, folds and recipe grid, so every Δ is paired by fold. MiniRocket seed 0 was fixed as the primary baseline before the runs.
+- **Combinations.** `pred_avg` is the equal-weight mean of the JEPA ensemble's and MiniRocket's out-of-fold predictions. `concat` joins each member's block-2 flat features with MiniRocket's (22,284 features), probes them and averages the four members. Neither has tuned weights.
+- **Registered criteria** (written before the runs; a hand-written ROCKET pilot had already been seen):
+  - B1: JEPA beats MiniRocket on ≥ 5/8. **Fail** (4/8).
+  - B2: `pred_avg` beats both components on ≥ 5/8. **Fail** (4/8).
+  - B3: `concat` beats JEPA on ≥ 5/8. **Fail** (3/8).
+
+| Set | Raw | JEPA ens. | MiniRocket s0 (s1, s2) | ROCKET | MultiRocket | pred_avg | concat |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | **.959** | .634 (.640, .632) | .530 | .780 | .878 | .731 |
+| 0055 | .591 | .640 | .699 (.717, .735) | .605 | .695 | **.704** | .690 |
+| 0106 | .697 | .714 | .719 (.713, .707) | .543 | .668 | **.739** | .712 |
+| 0109 | .918 | **.943** | .903 (.902, .910) | .809 | .844 | .937 | .938 |
+| 0112 | .377 | .421 | **.679** (.704, .625) | .429 | .611 | .609 | .649 |
+| 0113 | .548 | **.702** | .468 (.469, .472) | .521 | .527 | .642 | .558 |
+| 0114 | .983 | .986 | .986 (.985, .985) | .985 | .985 | **.987** | .987 |
+| 0120 | .380 | .405 | .336 (.375, .400) | .362 | .422 | **.427** | .333 |
+| wins vs raw | | 8/8 | 4/8 | 3/8 | 4/8 | 8/8 | 6/8 |
+| mean Δ vs raw | | +.056 | +.013 | −.067 | +.026 | **+.075** | +.034 |
+
+Bold: best of the JEPA ensemble, MiniRocket s0 and the two combinations.
+
+![Benchmark](figures/training-report/fig_benchmark.svg)
+
+**Figure 17. ΔR² vs raw ridge per set** (bars ± bootstrap SD of the paired difference). MiniRocket is seed 0; ROCKET and MultiRocket are descriptive arms.
+
+- **Where each wins.** MiniRocket is far ahead on 0112 (+.26 ± .10 over JEPA) and ahead on 0055 within noise. JEPA is far ahead on labeled_data (+.33 ± .01) and 0113 (+.23 ± .08). The two capture different structure, which is why averaging helps.
+- **labeled_data.** Every ROCKET-family arm falls below raw ridge there (.53–.78). Inner-CV scores are equally low (.49–.77), so recipe choice is not the cause. These features pool kernel responses nonlinearly and appear to lose the fine linear intensity information that ridge on the raw spectrum, and the JEPA features, keep.
+- **Concat underperforms averaging.** One ridge penalty serves both feature blocks, which likely lets the MiniRocket block dominate. Averaging lets each model keep its own probe.
+- **Seeds.** MiniRocket's spread across three kernel seeds reaches .08 (0112) and .06 (0120), as large as many of the gaps above.
+
+## 10. Limitations and next step
 
 - **Retrospective choice.** The candidate was chosen after about ten studies on the same eight sets. Bootstrap SDs cover row sampling only.
 - **Small sets.** Sets have 25–230 spectra, and the gains on 0055, 0106, 0112, 0114 and 0120 are under 1 SD.
 - **Transductive evaluation.** Unseen instruments or sources are not measured.
+- **Benchmark.** `pred_avg` looks promising, but it was scored on the same eight sets as every earlier study and needs the same holdout.
 - **Noise test.** It has no raw-input reference, and its noise is seeded where the old code was not. Signal reconstruction was not run, because there is no decoder.
 
 **Bottom line.** Next, score the robust ensemble once on an independent, group-labelled holdout.
@@ -313,3 +359,6 @@ flowchart LR
 
 - Balestriero & LeCun (2025). LeJEPA. arXiv:2511.08544.
 - Assran et al. (2023). I-JEPA. CVPR.
+- Dempster, Petitjean & Webb (2020). ROCKET. Data Mining and Knowledge Discovery 34.
+- Dempster, Schmidt & Webb (2021). MiniRocket. KDD.
+- Tan, Dempster, Bergmeir & Webb (2022). MultiRocket. Data Mining and Knowledge Discovery 36.
