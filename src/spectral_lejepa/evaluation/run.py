@@ -15,6 +15,7 @@ import torch
 from spectral_lejepa.config import load_config
 from spectral_lejepa.evaluation.bank import READOUTS, extract_bank, save_bank
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
+from spectral_lejepa.evaluation.data2vec import is_data2vec, load_data2vec, random_like
 from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_for_set, paired_delta,
                                                pair_with_baseline,
                                                run_canary, run_nested, write_json)
@@ -110,7 +111,8 @@ def main(argv=None):
 
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"])
     ckpt_path = a.checkpoint
-    model, ckpt = load_model(ckpt_path)
+    d2v = is_data2vec(ckpt_path)   # the previous method: fairseq data2vec-audio
+    model, ckpt = load_data2vec(ckpt_path) if d2v else load_model(ckpt_path)
     git = wb.git_info()
     method = ckpt["config"].get("data", {}).get("normalization", "sample_zscore")
     lineage = {"pretraining_run_id": ckpt.get("wandb_run_id"), "pretraining_checkpoint": a.checkpoint,
@@ -123,12 +125,13 @@ def main(argv=None):
     if run is not None:
         run.config.update({"lineage": lineage})
 
-    backbone = EvalBackbone(model)
+    backbone = model if d2v else EvalBackbone(model)
     out_root = Path(ecfg["output_dir"]) / f"{Path(ckpt_path).parent.name}_step{ckpt['step']}"
     random_backbone = None
     if vcfg["random_control"]:
         torch.manual_seed(0)
-        random_backbone = EvalBackbone(build_model(ckpt["config"]["model"], ckpt["config"]["data"]["sequence_length"]))
+        random_backbone = random_like(model) if d2v else EvalBackbone(
+            build_model(ckpt["config"]["model"], ckpt["config"]["data"]["sequence_length"]))
     sets, ladder_block = {}, None
     for name, dirs in cfg["label_sets"].items():
         raw, y = load_labeled_data(dirs, max_samples=vcfg["max_samples"], seed=seed)
@@ -140,7 +143,7 @@ def main(argv=None):
         bank = extract_bank(backbone, model_input(raw, ckpt["config"]), device=vcfg["device"],
                             batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
                             flat_blocks=vcfg.get("flat_blocks"))
-        save_bank(out_dir / "bank.npz", bank, raw, y, {"checkpoint": a.checkpoint, "backbone": "EvalBackbone",
+        save_bank(out_dir / "bank.npz", bank, raw, y, {"checkpoint": a.checkpoint, "backbone": type(backbone).__name__,
                                                        "set": name, "model_input": method, "n": int(len(y)), "seed": seed,
                                                        "stages": tuple(bank),
                                                        "readouts": tuple(vcfg["readouts"]),
