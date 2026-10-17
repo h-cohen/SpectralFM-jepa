@@ -24,6 +24,7 @@
   - λ = 0 collapses every block and block 2 falls below raw. Block 2 gains more at depth 6 than at depth 2.
   - `training-report` regenerates figures 13–14 from these outputs.
 - **ROCKET-family benchmark (done 2026-10-15):** report section 9.
+- **data2vec comparison (done 2026-10-17):** report section 9.1. `evaluate` accepts fairseq data2vec checkpoints (`evaluation/data2vec.py`, `data2vec` extra); outputs in `outputs/data2vec/`. Recent checkpoint 0/8 vs raw, mean −.197.
   - `benchmark run|score` (sktime, `benchmark` extra); outputs in `outputs/benchmark/`, criteria in `docs/superpowers/specs/2026-10-15-rocket-benchmark.md`.
   - MiniRocket ties the ensemble 4–4 by set, mean −.043; mean-prediction average +.075 vs raw on 8/8. B1–B3 all failed.
   - MultiRocket on labeled_data needs the CPU probe (`--device cpu`); 11 GB GPUs run out of memory.

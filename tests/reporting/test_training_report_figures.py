@@ -94,10 +94,11 @@ def test_input_figure_shows_patches_and_mask(tmp_path, monkeypatch):
 
 def test_benchmark_figure(tmp_path, monkeypatch):
     monkeypatch.setattr(training_report, 'OUT', tmp_path)
-    arms = ('jepa', 'minirocket_s0', 'rocket', 'multirocket', 'pred_avg', 'concat')
+    arms = ('jepa', 'minirocket_s0', 'rocket', 'multirocket', 'pred_avg', 'concat', 'data2vec', 'data2vec_feb25')
     res = {'sets': {ds: {'r2': {'raw': .5, **{a: .5 + .01 * i for i, a in enumerate(arms)}},
                          'vs_raw': {a: {'delta': .01 * i, 'sd': .01} for i, a in enumerate(arms)}}
                     for ds in ('labeled_data', 'dataset0055')}}
     training_report.benchmark_figure(res)
     svg = (tmp_path / 'fig_benchmark.svg').read_text()
-    assert 'MiniRocket' in svg and 'labeled_data' in svg
+    assert all(t in svg for t in ('Raw spectrum', 'data2vec (Feb 25)', 'MiniRocket', 'labeled_data'))
+    assert 'ROCKET' not in svg.replace('MiniRocket', '')

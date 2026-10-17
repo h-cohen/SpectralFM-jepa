@@ -4,7 +4,7 @@ Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat featur
 
 ## 1. Bottom line
 
-**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. Against training-free ROCKET-family features (section 9), the ensemble ties MiniRocket 4–4 by set but leads by .043 on average; averaging the two models' predictions reaches +.075 over raw on 8/8.
+**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. Against training-free ROCKET-family features (section 9), the ensemble ties MiniRocket 4–4 by set but leads by .043 on average; averaging the two models' predictions reaches +.075 over raw on 8/8. The previous method, data2vec, stays below raw (recent checkpoint 0/8, mean −.197; section 9.1).
 
 ```mermaid
 flowchart LR
@@ -338,7 +338,32 @@ Bold: best of the JEPA ensemble, MiniRocket s0 and the two combinations.
 
 ![Benchmark](figures/training-report/fig_benchmark.svg)
 
-**Figure 17. ΔR² vs raw ridge per set** (bars ± bootstrap SD of the paired difference). MiniRocket is seed 0; ROCKET and MultiRocket are descriptive arms.
+**Figure 17. Nested-CV R² per set for the final comparison** (bars ± bootstrap SD of the paired difference vs raw). Arms: raw ridge, both data2vec checkpoints (the previous method), the JEPA ensemble, the JEPA + MiniRocket mean prediction, and MiniRocket seed 0.
+
+### 9.1 Comparison with the previous method (data2vec)
+
+Two data2vec-audio checkpoints from the previous project are scored with the same rows, folds and recipe grid:
+
+- **data2vec (Feb 25)** is `ref_feb25`, the earlier reference; its out-of-fold predictions are read from the previous project's nested-CV runs (mean and segment-mean readouts).
+- **data2vec (recent)** is `d2v_alldata` at 200,000 updates, pretrained on all 12.75M spectra. `evaluate` loads it with the previous project's own checkpoint loader and probes every block with the mean, segment-mean and all-token readouts.
+  - On labeled_data the full search did not fit in GPU memory, so a fast estimate is used there: mean readout of blocks 0, 6 and 12 only, without the random-weight control. This search is smaller than the other sets', so that number may be slightly low.
+
+| Set | Raw | data2vec (Feb 25) | data2vec (recent) | JEPA ens. | JEPA + MiniRocket | MiniRocket s0 |
+|---|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .853 | .805 | **.959** | .878 | .634 |
+| 0055 | .591 | .199 | .336 | .640 | **.704** | .699 |
+| 0106 | .697 | .250 | .294 | .714 | **.739** | .719 |
+| 0109 | .918 | .066 | .307 | **.943** | .937 | .903 |
+| 0112 | .377 | .233 | .274 | .421 | .609 | **.679** |
+| 0113 | .548 | .259 | .541 | **.702** | .642 | .468 |
+| 0114 | .983 | .981 | .981 | .986 | **.987** | .986 |
+| 0120 | .380 | .140 | .215 | .405 | **.427** | .336 |
+| wins vs raw | | 1/8 | 0/8 | 8/8 | 8/8 | 4/8 |
+| mean Δ vs raw | | −.293 | −.197 | +.056 | **+.075** | +.013 |
+
+- **data2vec does not beat raw.** The recent checkpoint loses all eight sets (mean −.197); the Feb 25 checkpoint wins only labeled_data (mean −.293). The recent checkpoint improves on Feb 25 on the seven small sets, mostly 0109 and 0113, but stays below raw.
+- **Random weights.** On the seven small sets the recent checkpoint beats a re-initialised copy of itself on 4/7 sets; only 0113 is a clear gain (+.18). Its features carry little label information beyond what the architecture gives.
+- **JEPA vs data2vec.** The JEPA ensemble beats both data2vec checkpoints on every set.
 
 - **Where each wins.** MiniRocket is far ahead on 0112 (+.26 ± .10 over JEPA) and ahead on 0055 within noise. JEPA is far ahead on labeled_data (+.33 ± .01) and 0113 (+.23 ± .08). The two capture different structure, which is why averaging helps.
 - **labeled_data.** Every ROCKET-family arm falls below raw ridge there (.53–.78). Inner-CV scores are equally low (.49–.77), so recipe choice is not the cause. These features pool kernel responses nonlinearly and appear to lose the fine linear intensity information that ridge on the raw spectrum, and the JEPA features, keep.

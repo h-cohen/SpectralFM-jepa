@@ -323,28 +323,26 @@ def input_figure(x, sources, name='fig0_input_patches_mask.svg', num_patches=48,
 
 
 BENCHMARK = Path('outputs/benchmark/results.json')
-BENCH_ARMS = (('jepa', 'JEPA ensemble', '#1f4e79'), ('minirocket_s0', 'MiniRocket', '#d9822b'),
-              ('rocket', 'ROCKET', '#e8b04a'), ('multirocket', 'MultiRocket', '#b5651d'),
-              ('pred_avg', 'JEPA + MiniRocket, mean prediction', '#2a9d8f'),
-              ('concat', 'JEPA + MiniRocket, joint features', '#7fb8a4'))
+BENCH_ARMS = (('raw', 'Raw spectrum', '#bdbdbd'), ('data2vec_feb25', 'data2vec (Feb 25)', '#9e9ac8'),
+              ('data2vec', 'data2vec (recent, all data)', '#6a51a3'), ('jepa', 'JEPA ensemble', '#1f4e79'),
+              ('pred_avg', 'JEPA + MiniRocket, mean prediction', '#2a9d8f'), ('minirocket_s0', 'MiniRocket', '#d9822b'))
 
 
 def benchmark_figure(res, name='fig_benchmark.svg'):
-    """ΔR² vs raw ridge per set for the JEPA ensemble, the ROCKET family and the two combinations."""
+    """Nested-CV R² per set: raw, both data2vec checkpoints, the JEPA ensemble, JEPA + MiniRocket, MiniRocket."""
     sets = list(res['sets'])
-    arms = [a for a in BENCH_ARMS if all(a[0] in res['sets'][s]['vs_raw'] for s in sets)]
+    arms = [a for a in BENCH_ARMS if all(a[0] in res['sets'][s]['r2'] for s in sets)]
     fig, ax = plt.subplots(figsize=(11, 3.6))
     w = .8 / len(arms)
     x = np.arange(len(sets))
     for i, (key, label, color) in enumerate(arms):
-        d = [res['sets'][s]['vs_raw'][key] for s in sets]
-        ax.bar(x + (i - (len(arms) - 1) / 2) * w, [v['delta'] for v in d], w, yerr=[v['sd'] for v in d],
+        ax.bar(x + (i - (len(arms) - 1) / 2) * w, [res['sets'][s]['r2'][key] for s in sets], w,
+               yerr=[res['sets'][s]['vs_raw'].get(key, {}).get('sd', 0) for s in sets],
                color=color, label=label, error_kw={'lw': .6, 'ecolor': '#555'})
-    ax.axhline(0, color='k', lw=.6)
     ax.set_xticks(x, [SHORT.get(s, s).replace('dataset', '') for s in sets])
-    ax.set_ylabel('ΔR² vs raw ridge')
-    ax.set_ylim(max(ax.get_ylim()[0], -.35), None)
-    ax.legend(frameon=False, fontsize=7, ncol=3, loc='upper left')
+    ax.set_ylabel('nested-CV R²')
+    ax.set_ylim(0, 1.05)
+    ax.legend(frameon=False, fontsize=7, ncol=3, loc='upper left', bbox_to_anchor=(0, 1.25))
     save(fig, name)
 
 
