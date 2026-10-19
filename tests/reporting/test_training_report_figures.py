@@ -102,3 +102,38 @@ def test_benchmark_figure(tmp_path, monkeypatch):
     svg = (tmp_path / 'fig_benchmark.svg').read_text()
     assert all(t in svg for t in ('Raw spectrum', 'data2vec (Feb 25)', 'MiniRocket', 'labeled_data'))
     assert 'ROCKET' not in svg.replace('MiniRocket', '')
+
+
+def test_error_figures(tmp_path, monkeypatch):
+    import numpy as np
+    from spectral_lejepa.evaluation.errors import error_metrics
+    monkeypatch.setattr(training_report, 'OUT', tmp_path)
+    rng = np.random.default_rng(0)
+    sets = ['labeled_data', 'dataset0055', 'dataset0106', 'dataset0109',
+            'dataset0112', 'dataset0113', 'dataset0114', 'dataset0120']
+    oofs = {}
+    for s in sets:
+        y = rng.normal(size=60)
+        oofs[s] = (y, {a: np.stack([y + rng.normal(size=60) * k for _ in range(2)])
+                       for a, k in (('raw', .5), ('jepa', .3), ('minirocket_s0', .4))})
+    res = {'sets': {s: {'errors': error_metrics(*oofs[s], n_boot=20)} for s in sets}}
+    training_report.error_figures(res, oofs)
+    for name in ('fig_errors_nrmse', 'fig_errors_cdf', 'fig_errors_quintile', 'fig_errors_residuals'):
+        assert 'JEPA ensemble' in (tmp_path / f'{name}.svg').read_text()
+
+
+def test_correlation_figure(tmp_path, monkeypatch):
+    import numpy as np
+    from spectral_lejepa.evaluation.bank import save_bank
+    monkeypatch.setattr(training_report, 'OUT', tmp_path)
+    rng = np.random.default_rng(0)
+    raw, y = rng.random((150, 245)) + 1, rng.normal(size=150)
+    save_bank(tmp_path / 'iso.npz', {'layer2': rng.normal(size=(150, 16))}, raw, y, {})
+    z = rng.normal(size=(150, 1))
+    save_bank(tmp_path / 'col.npz', {'layer2': z @ rng.normal(size=(1, 16)) + .01 * rng.normal(size=(150, 16))}, raw, y, {})
+    out = training_report.correlation_figure((('raw', tmp_path / 'iso.npz', None), ('iso', tmp_path / 'iso.npz', 'layer2'),
+                                              ('collapsed', tmp_path / 'col.npz', 'layer2'),
+                                              ('missing', tmp_path / 'nope.npz', 'layer2')), n_spectra=20)
+    assert set(out) == {'raw', 'iso', 'collapsed'}
+    assert out['iso']['mean_abs_offdiag'] < .2 < .9 < out['collapsed']['mean_abs_offdiag']
+    assert (tmp_path / 'fig_correlation.svg').exists()

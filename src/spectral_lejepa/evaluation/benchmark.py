@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from spectral_lejepa.evaluation.ensemble import ensemble_predictions
+from spectral_lejepa.evaluation.errors import error_metrics
 from spectral_lejepa.evaluation.nested import nested_cv, paired_delta
 from spectral_lejepa.evaluation.probe import r2
 
@@ -75,26 +76,35 @@ def _r2(y, P):
     return float(np.mean([r2(y, p) for p in P]))
 
 
+def predictions(d, members=MEMBERS):
+    """(y, {arm: OOF [R, n]}) for one set directory: raw, the JEPA ensemble, every saved arm and the
+    two combinations."""
+    d, names = Path(d), [_member_name(m) for m in members]
+    oofs = [np.load(Path(m) / d.name / 'nested_oof.npz') for m in members]
+    y = oofs[0]['y']
+    P = {'raw': oofs[0]['raw'], 'jepa': ensemble_predictions(oofs)}
+    for f in d.glob('*.npz'):
+        a = np.load(f)
+        if not np.array_equal(a['y'], y):
+            raise ValueError(f'{f}: rows differ from the members')
+        P[f.stem] = a['oof']
+    if PRIMARY in P:
+        P['pred_avg'] = (P['jepa'] + P[PRIMARY]) / 2
+    if all(f'concat_{n}' in P for n in names):
+        P['concat'] = np.mean([P[f'concat_{n}'] for n in names], 0)
+    return y, P
+
+
 def score(out=OUT, members=MEMBERS):
-    out, names = Path(out), [_member_name(m) for m in members]
+    out = Path(out)
     res = {'members': [str(m) for m in members], 'primary': PRIMARY, 'sets': {}}
     for d in (out / s for s in SETS if (out / s).is_dir()):
-        oofs = [np.load(Path(m) / d.name / 'nested_oof.npz') for m in members]
-        y = oofs[0]['y']
-        P = {'raw': oofs[0]['raw'], 'jepa': ensemble_predictions(oofs)}
-        for f in d.glob('*.npz'):
-            a = np.load(f)
-            if not np.array_equal(a['y'], y):
-                raise ValueError(f'{f}: rows differ from the members')
-            P[f.stem] = a['oof']
-        if PRIMARY in P:
-            P['pred_avg'] = (P['jepa'] + P[PRIMARY]) / 2
-        if all(f'concat_{n}' in P for n in names):
-            P['concat'] = np.mean([P[f'concat_{n}'] for n in names], 0)
+        y, P = predictions(d, members)
         res['sets'][d.name] = {'n': int(len(y)), 'r2': {k: _r2(y, p) for k, p in P.items()},
                                'vs_raw': {k: paired_delta(y, p, P['raw']) for k, p in P.items() if k != 'raw'},
                                'vs_jepa': {k: paired_delta(y, p, P['jepa']) for k, p in P.items()
-                                           if k not in ('raw', 'jepa')}}
+                                           if k not in ('raw', 'jepa')},
+                               'errors': error_metrics(y, P)}
     S = res['sets'].values()
     def wins(a, b):
         return int(sum(s['r2'][a] > s['r2'][b] for s in S if a in s['r2'] and b in s['r2']))

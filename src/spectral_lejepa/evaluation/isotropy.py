@@ -42,6 +42,23 @@ def geometry(X, batch=256, seed=0):
             'mean_cosine': float((u @ u.T).mean()), 'sigreg': float(np.mean(sig))}
 
 
+def feature_correlation(X):
+    """Pearson correlation between feature dimensions across spectra, [d, d]; an isotropic Gaussian (SIGReg's
+    target) gives the identity. Constant dimensions get correlation 0 with the rest and 1 with themselves.
+    Summary: mean |off-diagonal|; dist_to_identity = ||C - I||_F / sqrt(d(d-1)) (0 identity, 1 one direction)."""
+    X = np.asarray(X, np.float64)
+    Z = X - X.mean(0)
+    sd = Z.std(0)
+    dead = sd < 1e-12
+    Z = np.where(dead, 0., Z / np.where(dead, 1., sd))
+    C = Z.T @ Z / len(Z)
+    np.fill_diagonal(C, 1.)
+    d = len(C)
+    off = C[~np.eye(d, dtype=bool)]
+    return C, {'mean_abs_offdiag': float(np.abs(off).mean()),
+               'dist_to_identity': float(np.sqrt((off ** 2).sum() / (d * (d - 1)))), 'dead_dims': int(dead.sum())}
+
+
 @torch.no_grad()
 def _block_states(model, x, device, batch=256):
     """{block k: (pooled (N, D), tokens (N, T, D))} for k = 0..depth."""

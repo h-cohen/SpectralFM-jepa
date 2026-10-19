@@ -346,6 +346,101 @@ def benchmark_figure(res, name='fig_benchmark.svg'):
     save(fig, name)
 
 
+def error_figures(res, oofs):
+    """Error metrics beyond R² for the final-comparison arms. `res`: benchmark results.json; `oofs`:
+    {set: (y, {arm: OOF [R, n]})} from benchmark.predictions."""
+    sets = list(res['sets'])
+    arms = [a for a in BENCH_ARMS if all(a[0] in res['sets'][s]['errors'] for s in sets)]
+    lab = [SHORT.get(s, s).replace('dataset', '') for s in sets]
+    fig, ax = plt.subplots(figsize=(11, 3.6))
+    w, x = .8 / len(arms), np.arange(len(sets))
+    for i, (key, label, color) in enumerate(arms):
+        ax.bar(x + (i - (len(arms) - 1) / 2) * w, [res['sets'][s]['errors'][key]['nrmse'] for s in sets], w,
+               yerr=[res['sets'][s]['errors'][key].get('vs_raw', {}).get('sd', 0) / np.std(oofs[s][0]) for s in sets],
+               color=color, label=label, error_kw={'lw': .6, 'ecolor': '#555'})
+    ax.set_xticks(x, lab)
+    ax.set_ylabel('nRMSE = RMSE / SD(y)  (lower is better)')
+    ax.legend(frameon=False, fontsize=7, ncol=3, loc='upper left', bbox_to_anchor=(0, 1.25))
+    save(fig, 'fig_errors_nrmse.svg')
+    for name, draw in (('fig_errors_cdf.svg', _abs_error_cdf), ('fig_errors_quintile.svg', _quintile_rmse),
+                       ('fig_errors_residuals.svg', _residuals)):
+        fig, axes = plt.subplots(2, 4, figsize=(13, 5.6))
+        for ax, s, title in zip(axes.flat, sets, lab):
+            draw(ax, res['sets'][s]['errors'], *oofs[s], arms)
+            ax.set_title(title, fontsize=9)
+        axes.flat[0].legend(frameon=False, fontsize=7, markerscale=3)
+        fig.tight_layout()
+        save(fig, name)
+
+
+def _abs_error_cdf(ax, err, y, P, arms):
+    for key, label, color in arms:
+        a = np.sort(np.abs(P[key] - y).ravel())
+        ax.plot(a, np.linspace(0, 1, len(a)), color=color, lw=1.2, label=label)
+    ax.set_xlim(0, np.quantile(np.abs(P['raw'] - y), .98))
+    ax.set(xlabel='|error|', ylabel='share of spectra')
+
+
+def _quintile_rmse(ax, err, y, P, arms):
+    for key, label, color in arms:
+        ax.plot(range(1, 6), err[key]['rmse_by_quintile'], marker='o', ms=3, color=color, label=label)
+    ax.set(xlabel='label quintile (low → high)', ylabel='RMSE', xticks=range(1, 6))
+
+
+def _residuals(ax, err, y, P, arms):
+    for key, label, color in [a for a in arms if a[0] in ('raw', 'jepa')]:
+        ax.scatter(y, P[key][0] - y, s=5, alpha=.45, color='#d9822b' if key == 'raw' else color, lw=0,
+                   label=f"{label} (slope {err[key]['residual_slope']:+.2f})")
+    ax.axhline(0, color='k', lw=.6)
+    ax.set(xlabel='true value', ylabel='prediction − true')
+
+
+CORR_MODELS = (('Raw spectrum (245)', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', None),
+               ('Random weights', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/random_control/bank.npz', 'layer2'),
+               ('λ = 0 (no SIGReg)', ABLATION / 'lam0_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
+               ('λ = .05', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
+               ('Robust member (p0)', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', 'layer2'),
+               ('data2vec recent, last block', 'outputs/data2vec/eval-labeled/*/labeled_data/bank.npz', 'layer12'))
+
+
+def correlation_figure(models=CORR_MODELS, n_spectra=100, name='fig_correlation.svg'):
+    """Row 1: feature × feature correlation on labeled_data (identity = isotropic, SIGReg's target).
+    Row 2: spectrum × spectrum cosine of the same features for `n_spectra` spectra sorted by label."""
+    from glob import glob
+    from spectral_lejepa.evaluation.bank import load_bank
+    from spectral_lejepa.evaluation.isotropy import feature_correlation
+    loaded = [(t, load_bank(glob(str(p))[0]), k) for t, p, k in models if glob(str(p))]
+    fig, axes = plt.subplots(2, len(loaded) + 1, figsize=(2.6 * len(loaded) + .6, 5.6), squeeze=False,
+                             gridspec_kw={'width_ratios': [1] * len(loaded) + [.06]})
+    cax, _ = axes[:, -1]
+    axes[1, -1].axis('off')
+    axes = axes[:, :-1]
+    summary = {}
+    for j, (title, (bank, raw, y, _), key) in enumerate(loaded):
+        X = raw if key is None else bank[key]
+        C, s = feature_correlation(X)
+        summary[title] = s
+        if key is not None:                     # wavelengths keep their order; latent dims by top-PC loading
+            order = np.argsort(np.linalg.svd(X - X.mean(0), full_matrices=False)[2][0])
+            C = C[np.ix_(order, order)]
+        im = axes[0, j].imshow(C, cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
+        axes[0, j].set_title(f"{title}\n|off-diag| {s['mean_abs_offdiag']:.2f}", fontsize=8)
+        idx = np.random.default_rng(0).choice(len(y), n_spectra, replace=False)
+        idx = idx[np.argsort(y[idx])]
+        Z = X[idx] - X.mean(0)                  # centred: the shared mean direction alone gives cosine ~1
+        U = Z / (np.linalg.norm(Z, axis=1, keepdims=True) + 1e-12)
+        S = U @ U.T
+        axes[1, j].imshow(S, cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
+        axes[1, j].set_title(f"mean |off-diag| {np.abs(S[~np.eye(len(S), dtype=bool)]).mean():.2f}", fontsize=8)
+        for ax in axes[:, j]:
+            ax.set_xticks([]), ax.set_yticks([])
+    axes[0, 0].set_ylabel('feature × feature\ncorrelation', fontsize=8)
+    axes[1, 0].set_ylabel('spectrum × spectrum cosine\n(centred, sorted by label)', fontsize=8)
+    fig.colorbar(im, cax=cax)
+    save(fig, name)
+    return summary
+
+
 def ablation_stats(root=ABLATION):
     """Per job: design (depth, λ, seed), per-block flat-readout mean ΔR² vs raw (8 sets) and pooled isotropy."""
     jobs = {}
@@ -438,7 +533,11 @@ def figures():
     robustness(res)
     depth_profile()
     if BENCHMARK.exists():
-        benchmark_figure(json.loads(BENCHMARK.read_text()))
+        from spectral_lejepa.evaluation.benchmark import predictions
+        bench = json.loads(BENCHMARK.read_text())
+        benchmark_figure(bench)
+        error_figures(bench, {s: predictions(BENCHMARK.parent / s) for s in bench['sets']})
+    print(json.dumps(correlation_figure()))
     print(json.dumps(ablations()["criteria"]))
 
 

@@ -4,7 +4,7 @@ Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat featur
 
 ## 1. Bottom line
 
-**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. Against training-free ROCKET-family features (section 9), the ensemble ties MiniRocket 4–4 by set but leads by .043 on average; averaging the two models' predictions reaches +.075 over raw on 8/8. The previous method, data2vec, stays below raw (recent checkpoint 0/8, mean −.197; section 9.1).
+**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. Against training-free ROCKET-family features (section 9), the ensemble ties MiniRocket 4–4 by set but leads by .043 on average; averaging the two models' predictions reaches +.075 over raw on 8/8. The previous method, data2vec, stays below raw (recent checkpoint 0/8, mean −.197; section 9.1). RMSE agrees: the ensemble lowers it on 8/8 sets and has the flattest error across the label range (section 10). SIGReg cuts block-2 feature correlation from .90 to .46 mean |off-diagonal|, but the features stay well short of the identity matrix (section 11).
 
 ```mermaid
 flowchart LR
@@ -370,7 +370,85 @@ Two data2vec-audio checkpoints from the previous project are scored with the sam
 - **Concat underperforms averaging.** One ridge penalty serves both feature blocks, which likely lets the MiniRocket block dominate. Averaging lets each model keep its own probe.
 - **Seeds.** MiniRocket's spread across three kernel seeds reaches .08 (0112) and .06 (0120), as large as many of the gaps above.
 
-## 10. Limitations and next step
+## 10. Error metrics beyond R²
+
+**Bottom line.** RMSE tells the same story as R², with two additions. First, the JEPA ensemble lowers RMSE vs raw on 8/8 sets (mean nRMSE .471 vs .533) and has the smallest tail errors. Second, it is the only arm whose error is flat across the label range on labeled_data: raw ridge and MiniRocket shrink toward the mean and miss most at the extremes.
+
+All metrics come from the same out-of-fold predictions as section 9 (no refitting): `benchmark score` now writes them to `outputs/benchmark/results.json` (`errors` per set and arm; code in `evaluation/errors.py`). Labels are standardised per set (mean 0, SD 1), so RMSE is in label-SD units and RMSE ≈ nRMSE.
+
+- **RMSE and nRMSE** (RMSE / SD(y)): headline error, comparable across sets. ΔRMSE vs raw is paired on the same spectra, with bootstrap SD.
+- **MAE, median and 90th-percentile absolute error:** typical error vs tail error.
+- **RMSE by label quintile:** where in the label range a model fails.
+- **Bias and residual slope** (slope of prediction − true on true): 0 is ideal; negative means shrinkage toward the mean.
+- **Per-spectrum win rate:** share of spectra whose absolute error is below raw ridge's.
+
+| Set | Raw | data2vec (Feb 25) | data2vec (recent) | JEPA ens. | JEPA + MiniRocket | MiniRocket s0 |
+|---|---:|---:|---:|---:|---:|---:|
+| labeled_data | .412 | .383 | .442 | **.203** | .350 | .605 |
+| 0055 | .625 | .877 | .798 | .588 | **.533** | .537 |
+| 0106 | .546 | .859 | .833 | .531 | **.507** | .526 |
+| 0109 | .285 | .961 | .828 | **.237** | .250 | .309 |
+| 0112 | .781 | .869 | .846 | .752 | .621 | **.562** |
+| 0113 | .667 | .853 | .672 | **.542** | .594 | .724 |
+| 0114 | .130 | .136 | .138 | .120 | **.113** | .117 |
+| 0120 | .784 | .924 | .883 | .766 | **.753** | .812 |
+| lower RMSE than raw | | 1/8 | 0/8 | 8/8 | 8/8 | 4/8 |
+| mean nRMSE | .533 | .739 | .685 | .471 | **.469** | .528 |
+| mean 90th-pct abs. error | .843 | 1.189 | 1.140 | .756 | **.754** | .820 |
+| mean residual slope | −.28 | −.45 | −.43 | **−.22** | −.25 | −.27 |
+| per-spectrum win rate vs raw | | .40 | .45 | **.61** | .58 | .50 |
+
+RMSE per set (lower is better; bold is the best arm).
+
+![nRMSE](figures/training-report/fig_errors_nrmse.svg)
+
+**Figure 18. nRMSE per set** (bars ± bootstrap SD of ΔRMSE vs raw, in SD units).
+
+![Absolute-error CDF](figures/training-report/fig_errors_cdf.svg)
+
+**Figure 19. Cumulative distribution of absolute errors** (both CV repeats pooled; a curve further left and higher is better). On labeled_data the JEPA curve dominates everywhere, so its gain is not driven by a few outliers.
+
+![RMSE by quintile](figures/training-report/fig_errors_quintile.svg)
+
+**Figure 20. RMSE by label quintile.** On labeled_data JEPA's RMSE is flat (.20–.22) across quintiles, while raw ridge rises from .38 in the middle to .45 at the low end. On the small sets every arm misses most at the extremes; quintiles there hold 5–46 spectra, so single points are noisy.
+
+![Residuals](figures/training-report/fig_errors_residuals.svg)
+
+**Figure 21. Residual vs true value, raw ridge vs JEPA ensemble** (first CV repeat). The legend gives the residual slope; on labeled_data it is −.17 for raw and −.04 for JEPA, so JEPA shrinks predictions much less.
+
+- **Agreement with R².** Every arm lowers RMSE vs raw on the same sets where it raises R², as expected: on one set, nRMSE ≈ √(1 − R²) up to the R²/RMSE averaging over repeats.
+- **Where the ensemble is not best.** JEPA + MiniRocket has lower RMSE on 5 small sets, and MiniRocket alone on 0112, matching section 9.
+
+## 11. Feature correlation and SIGReg
+
+**Bottom line.** SIGReg makes block-2 features far less correlated: mean |off-diagonal| correlation drops from .90 at λ = 0 to .46 at λ = .05. It does not reach the identity matrix. One dominant direction remains, visible as a two-block pattern once dimensions are ordered by their top-PC loading.
+
+Two matrices answer different questions, so both are shown, on labeled_data, mean-pooled features (block 2 for JEPA models, 256 dims; the last block for data2vec, 768 dims; the 245 wavelengths for raw):
+
+- **(A) Feature × feature correlation** (top row): Pearson correlation between feature dimensions across all 4,716 spectra. SIGReg pushes features toward an isotropic Gaussian, whose correlation matrix is the identity, so the ideal here is a unit matrix. Latent dimensions are ordered by their top-PC loading so shared structure appears as blocks; wavelengths keep their order. Summary: mean |off-diagonal| (0 = identity, 1 = one direction).
+- **(B) Spectrum × spectrum cosine** (bottom row): cosine between 100 random spectra, sorted by label, after subtracting the mean feature vector (without centring every cosine is close to 1, Figure 15). Here the identity is **not** the ideal: spectra with similar labels should stay similar, so the best case is structure along the diagonal, not a unit matrix.
+
+![Correlation matrices](figures/training-report/fig_correlation.svg)
+
+**Figure 22. Feature × feature correlation (top) and centred spectrum × spectrum cosine (bottom).** Colour −1 (blue) to 1 (red).
+
+| Features | (A) mean abs. off-diag | (A) distance to identity | (B) mean abs. off-diag |
+|---|---:|---:|---:|
+| Raw spectrum (245 wavelengths) | .63 | .70 | .66 |
+| Random weights, block 2 | .83 | .86 | .86 |
+| λ = 0 (no SIGReg), block 2 | .90 | .91 | .69 |
+| λ = .05, block 2 | .46 | .53 | .51 |
+| Robust member (p0), block 2 | .50 | .57 | .56 |
+| data2vec recent, last block | .36 | .42 | .40 |
+
+Distance to identity is ‖C − I‖F / √(d(d − 1)).
+
+- **SIGReg weight.** Across the ablation runs (depth 6, seed 0), block-2 mean |off-diag| is .90 at λ = 0 and .46–.50 for λ from .01 to .2. At block 6, where SIGReg is applied, it is .54, .45, .42 and .38 for λ = 0, .01, .05 and .2. Stronger SIGReg moves the final block closer to the identity, but no setting gets there.
+- **Why not the identity.** SIGReg tests random 1-D projections of individual tokens, not of the mean-pooled vector. Mean pooling keeps the component shared by all tokens, which carries the dominant direction seen in the top row.
+- **data2vec is less correlated but worse.** Its last block is the closest to the identity (.36) yet predicts worst (section 9.1). Decorrelation is necessary to avoid collapse (λ = 0), not sufficient for label information.
+- **Spectrum similarity.** After centring, λ = .05 and the robust member show weaker, more varied spectrum-to-spectrum structure than raw or random weights, where most pairs remain strongly aligned or anti-aligned along one axis.
+
+## 12. Limitations and next step
 
 - **Retrospective choice.** The candidate was chosen after about ten studies on the same eight sets. Bootstrap SDs cover row sampling only.
 - **Small sets.** Sets have 25–230 spectra, and the gains on 0055, 0106, 0112, 0114 and 0120 are under 1 SD.

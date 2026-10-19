@@ -43,3 +43,21 @@ def test_isotropy_on_a_depth2_checkpoint(make_checkpoint, tmp_path):
     v = out['blocks']['2']
     assert all(np.isfinite(v[k][m]) for k in ('trained', 'random') for m in v[k])
     assert json.loads((tmp_path / 'iso.json').read_text())['n'] == 64
+
+
+def test_feature_correlation_is_identity_for_isotropic_and_full_for_collapsed():
+    from spectral_lejepa.evaluation.isotropy import feature_correlation
+    rng = np.random.default_rng(0)
+    C, s = feature_correlation(rng.normal(size=(20000, 8)))
+    assert C.shape == (8, 8) and np.allclose(np.diag(C), 1) and s['mean_abs_offdiag'] < .02
+    z = rng.normal(size=(20000, 1))
+    C, s = feature_correlation(z @ rng.normal(size=(1, 8)) + 1e-3 * rng.normal(size=(20000, 8)))
+    assert s['mean_abs_offdiag'] > .99 and s['dist_to_identity'] > .99
+
+
+def test_feature_correlation_ignores_constant_dimensions():
+    from spectral_lejepa.evaluation.isotropy import feature_correlation
+    X = np.random.default_rng(0).normal(size=(500, 4))
+    X[:, 2] = 3.0
+    C, s = feature_correlation(X)
+    assert np.isfinite(C).all() and C[2, 2] == 1 and C[2, 0] == 0 and s['dead_dims'] == 1
