@@ -4,7 +4,7 @@ Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat featur
 
 ## 1. Bottom line
 
-**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. The previous method, data2vec, stays below raw (recent checkpoint 0/8, mean −.197; section 9). Training-free ROCKET-family baselines are compared in Appendix A. RMSE agrees: the ensemble lowers it on 8/8 sets and has the flattest error across the label range (section 10). SIGReg cuts block-2 feature correlation from .90 to .46 mean |off-diagonal|, but the features stay well short of the identity matrix, and data2vec is less correlated (.38) while predicting worse (section 11).
+**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. The previous method, data2vec, stays below raw (recent checkpoint 0/8, mean −.197; section 9). Training-free ROCKET-family baselines are compared in Appendix A. RMSE agrees: the ensemble lowers it on 8/8 sets and has the flattest error across the label range (section 10). SIGReg cuts block-2 feature correlation from .90 to .46 mean |off-diagonal| and moves label information out of near-empty directions (section 11).
 
 ```mermaid
 flowchart LR
@@ -383,32 +383,30 @@ RMSE per set (lower is better; bold is the best arm).
 
 ## 11. Feature correlation and SIGReg
 
-**Bottom line.** SIGReg makes block-2 features far less correlated: mean |off-diagonal| correlation drops from .90 at λ = 0 to .46 at λ = .05, and the four robust members sit at .46–.50. No model reaches the identity matrix. data2vec's block 2 is less correlated still (.38), yet it predicts worse than raw spectra (section 9). Low correlation shows that the features have not collapsed; it does not rank useful features.
+**Bottom line.** SIGReg decorrelates the JEPA features and, more usefully, moves label information into directions that carry real variance. Without SIGReg (λ = 0), block-2 dimensions are almost perfectly correlated (mean |off-diagonal| .90) and the label is recoverable only from directions holding under 1e-5 of the variance, near the noise floor. With SIGReg, correlation drops to .46–.50 and the label is spread over directions 10–100× stronger. No setting reaches the identity matrix.
 
-**What the matrix shows.** Each panel is the Pearson correlation between feature dimensions, computed across all 4,716 labeled_data spectra on mean-pooled block-2 features (256 dims for JEPA, 768 for data2vec; the 245 wavelengths for raw).
-- SIGReg pushes features toward an isotropic Gaussian, whose correlation matrix is the identity, so a unit matrix is SIGReg's target.
-- Latent dimensions are ordered by their loading on the top principal component, so one shared direction shows up as a red/blue two-block pattern. Wavelengths keep their order.
-- Each title gives the mean |off-diagonal| (0 = identity, 1 = every dimension moves together) and the share of variance on the top principal component.
+Features are mean-pooled block-2 outputs (256 dims) on all 4,716 labeled_data spectra, for the depth-6 seed-0 ablation runs at four SIGReg weights and one robust ensemble member.
 
-![Correlation matrices](figures/training-report/fig_correlation.svg)
+![Correlation, variance and label](figures/training-report/fig_correlation.svg)
 
-**Figure 22. Feature × feature correlation, labeled_data, block 2.** Colour −1 (blue) to 1 (red).
+**Figure 22. SIGReg weight vs feature geometry, block 2, labeled_data.**
+- **Top: feature × feature correlation.** An isotropic Gaussian, SIGReg's target, gives the identity matrix. Dimensions are ordered by their loading on the top principal direction, so one shared direction shows up as a red/blue two-block pattern. Colour −1 (blue) to 1 (red).
+- **Bottom left: variance share of each principal direction** (log–log). A steep drop means collapse onto a few directions.
+- **Bottom right: label R² of a linear fit on all principal directions down to a variance floor**, with the floor decreasing to the right. The fit is in-sample on pooled features, so it is descriptive. The real probes use the all-token features with nested CV.
 
-| Features (block 2 unless noted) | mean abs. off-diag | distance to identity | top-PC variance share |
-|---|---:|---:|---:|
-| Raw spectrum (245 wavelengths) | .63 | .70 | 85% |
-| Random weights | .83 | .86 | 98% |
-| λ = 0 (no SIGReg) | .90 | .91 | 88% |
-| λ = .05 | .46 | .53 | 56% |
-| JEPA member p0 | .50 | .57 | 71% |
-| data2vec recent | .38 | .45 | 42% |
+| Run (block 2) | mean abs. off-diag | top-PC variance share | label R², directions ≥ 1e-3 | label R², directions ≥ 1e-4 |
+|---|---:|---:|---:|---:|
+| λ = 0 (no SIGReg) | .90 | 88% | .04 | .06 |
+| λ = .01 | .48 | 66% | .09 | .28 |
+| λ = .05 | .46 | 56% | .09 | .22 |
+| λ = .2 | .50 | 72% | .09 | .12 |
+| robust member p0 (λ = .05) | .50 | 71% | .19 | .24 |
 
-Distance to identity is ‖C − I‖F / √(d(d − 1)). The other three robust members score .50 (p1), .47 (s101) and .46 (s401).
-
-- **SIGReg weight.** Across the ablation runs (depth 6, seed 0), block-2 mean |off-diag| is .90 at λ = 0 and .46–.50 for λ from .01 to .2. At block 6, where SIGReg is applied, it is .54, .45, .42 and .38 for λ = 0, .01, .05 and .2. Stronger SIGReg moves the final block closer to the identity, but no setting gets there.
-- **Why not the identity.** SIGReg tests random 1-D projections of individual tokens, not of the mean-pooled vector. Mean pooling keeps the component shared by all tokens, which carries the dominant direction (56–71% of the variance).
-- **Why data2vec is lower.** data2vec is less correlated at every block (.34–.41), not only block 2; its top component carries 42% of the variance against 71% for p0. Decorrelation is necessary (λ = 0 collapses and loses to raw, section 8) but not sufficient: data2vec spreads its features over more directions that carry little label information, while JEPA's dominant directions carry the label (section 9).
-- **The deployed features are not these.** The ensemble uses block-2 flat features (48 tokens × 256 = 12,288 dims) and averages member predictions; this figure shows the mean over tokens, where SIGReg's effect is easiest to see.
+- **Collapse at λ = 0.** Variance falls 100× faster than with SIGReg; at direction 20 it is 5e-7, against 5e-5 to 8e-5 with SIGReg. The label is still present in-sample, but only in these near-empty directions. They are easily swamped by noise and heavily shrunk by a ridge penalty, which fits block 2 losing to raw at λ = 0 (section 8).
+- **SIGReg weight.** λ = .01 and .05 put the most label information into strong directions. λ = .2 decorrelates as much but carries less label information above 1e-4 (.12), matching its weaker probe gain (block-2 flat mean ΔR² vs raw +.037, against +.085 and +.082).
+- **The robust member** has the most label information in its strongest directions (.19 above 1e-3), consistent with stage 2's robustness term.
+- **The top direction carries no label.** In every run the top principal direction has |r| ≤ .03 with the label; it is the shared component of all tokens.
+- **Why not the identity.** SIGReg tests random 1-D projections of individual tokens, not of the mean-pooled vector. Mean pooling keeps the component shared by all tokens, which carries 56–88% of the variance.
 
 ## 12. Limitations and next step
 

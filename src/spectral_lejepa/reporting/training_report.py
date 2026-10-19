@@ -400,38 +400,52 @@ def _residuals(ax, err, y, P, arms):
     ax.set(xlabel='true value', ylabel='prediction − true')
 
 
-CORR_MODELS = (('Raw spectrum (245)', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', None),
-               ('Random weights, block 2', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/random_control/bank.npz', 'layer2'),
-               ('λ = 0 (no SIGReg), block 2', ABLATION / 'lam0_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
-               ('λ = .05, block 2', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
-               ('JEPA member p0, block 2', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', 'layer2'),
-               ('data2vec recent, block 2', 'outputs/data2vec/eval-labeled/*/labeled_data/bank.npz', 'layer2'))
+CORR_MODELS = (('λ = 0 (no SIGReg)', ABLATION / 'lam0_d6_s0/eval/*/labeled_data/bank.npz', '#999999'),
+               ('λ = .01', ABLATION / 'lam001_d6_s0/eval/*/labeled_data/bank.npz', '#56B4E9'),
+               ('λ = .05', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/bank.npz', '#0072B2'),
+               ('λ = .2', ABLATION / 'lam02_d6_s0/eval/*/labeled_data/bank.npz', '#E69F00'),
+               ('robust member p0 (λ = .05)', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz',
+                '#CC79A7'))
 
 
-def correlation_figure(models=CORR_MODELS, name='fig_correlation.svg'):
-    """Feature × feature correlation of mean-pooled features on labeled_data (identity = isotropic, SIGReg's
-    target). Latent dimensions are ordered by top-PC loading; wavelengths keep their order."""
+def correlation_figure(models=CORR_MODELS, key='layer2', k=50, name='fig_correlation.svg'):
+    """JEPA block-2 mean-pooled features on labeled_data across SIGReg weights. Top row: feature × feature
+    correlation (identity = isotropic, SIGReg's target; dims ordered by top-PC loading). Bottom: variance share
+    per principal direction, and in-sample label R² of the top directions down to a variance floor (descriptive)."""
     from glob import glob
     from spectral_lejepa.evaluation.bank import load_bank
-    from spectral_lejepa.evaluation.isotropy import feature_correlation
-    loaded = [(t, load_bank(glob(str(p))[0]), k) for t, p, k in models if glob(str(p))]
-    fig, axes = plt.subplots(1, len(loaded) + 1, figsize=(2.6 * len(loaded) + .6, 3.2),
-                             gridspec_kw={'width_ratios': [1] * len(loaded) + [.06]})
+    from spectral_lejepa.evaluation.isotropy import feature_correlation, label_spectrum
+    loaded = [(t, load_bank(glob(str(p))[0]), c) for t, p, c in models if glob(str(p))]
+    n = len(loaded)
+    fig = plt.figure(figsize=(2.6 * n + .6, 6.4))
+    gs = fig.add_gridspec(2, n + 1, width_ratios=[1] * n + [.06], height_ratios=[1, 1.05])
     summary = {}
-    for ax, (title, (bank, raw, y, _), key) in zip(axes, loaded):
-        X = raw if key is None else bank[key]
+    for j, (title, (bank, raw, y, _), color) in enumerate(loaded):
+        X = bank[key]
         C, s = feature_correlation(X)
-        Z = X - X.mean(0)
-        _, S, Vt = np.linalg.svd(Z, full_matrices=False)
-        s['top_pc_share'] = float(S[0] ** 2 / (S ** 2).sum())
+        var, r2 = label_spectrum(X, y, k)
+        s.update(top_pc_share=float(var[0]), label_r2_top5=float(r2[min(4, len(r2) - 1)]),
+                 label_r2_top20=float(r2[min(19, len(r2) - 1)]))
         summary[title] = s
-        if key is not None:
-            order = np.argsort(Vt[0])
-            C = C[np.ix_(order, order)]
-        im = ax.imshow(C, cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
-        ax.set_title(f"{title}\n|off-diag| {s['mean_abs_offdiag']:.2f}, top PC {s['top_pc_share']:.0%}", fontsize=8)
+        order = np.argsort(np.linalg.svd(X - X.mean(0), full_matrices=False)[2][0])
+        ax = fig.add_subplot(gs[0, j])
+        im = ax.imshow(C[np.ix_(order, order)], cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
+        ax.set_title(f"{title}\n|off-diag| {s['mean_abs_offdiag']:.2f}", fontsize=8, color=color)
         ax.set_xticks([]), ax.set_yticks([])
-    fig.colorbar(im, cax=axes[-1])
+        summary[title]['_curves'] = (var, r2, color)
+    fig.colorbar(im, cax=fig.add_subplot(gs[0, n]))
+    half = n // 2 + n % 2
+    ax_v, ax_r = fig.add_subplot(gs[1, :half]), fig.add_subplot(gs[1, half:n])
+    for title, s in summary.items():
+        var, r2, color = s.pop('_curves')
+        ax_v.plot(np.arange(1, len(var) + 1), var, color=color, lw=1.6, label=title)
+        ax_r.plot(var, r2, color=color, lw=1.6, label=title)
+    ax_v.set(yscale='log', xscale='log', xlabel='principal direction (by variance)', ylabel='variance share',
+             title='How SIGReg spreads the variance')
+    ax_r.set(xscale='log', xlabel='variance share of the weakest direction used', ylabel='label R² (in-sample)',
+             title='Label information in directions above a variance floor', ylim=(0, None))
+    ax_r.invert_xaxis()
+    ax_v.legend(frameon=False, fontsize=7)
     save(fig, name)
     return summary
 

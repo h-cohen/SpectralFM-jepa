@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pytest
 import torch
 
 from spectral_lejepa.evaluation.isotropy import geometry, isotropy
@@ -61,3 +62,13 @@ def test_feature_correlation_ignores_constant_dimensions():
     X[:, 2] = 3.0
     C, s = feature_correlation(X)
     assert np.isfinite(C).all() and C[2, 2] == 1 and C[2, 0] == 0 and s['dead_dims'] == 1
+
+
+def test_label_spectrum_finds_the_label_direction():
+    from spectral_lejepa.evaluation.isotropy import label_spectrum
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(5000, 6)) * np.array([10, 5, 3, 2, 1, .5])   # PCs = axes, decreasing variance
+    y = X[:, 4] + .1 * rng.normal(size=5000)                           # label on the 5th direction only
+    var, r2 = label_spectrum(X, y, k=6)
+    assert np.all(np.diff(var) <= 0) and var.sum() == pytest.approx(1)
+    assert r2[3] < .05 and r2[4] > .95 and np.all(np.diff(r2) >= 0)

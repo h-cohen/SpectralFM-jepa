@@ -59,6 +59,18 @@ def feature_correlation(X):
                'dist_to_identity': float(np.sqrt((off ** 2).sum() / (d * (d - 1)))), 'dead_dims': int(dead.sum())}
 
 
+def label_spectrum(X, y, k=50):
+    """(variance share of each of the top-k principal directions, in-sample label R² of a linear fit on the
+    top 1..k directions). The directions are orthogonal, so the R² is the running sum of squared correlations.
+    Descriptive only: no held-out data."""
+    Z = np.asarray(X, np.float64) - np.mean(X, 0)
+    U, S, _ = np.linalg.svd(Z, full_matrices=False)
+    yc = np.asarray(y, np.float64) - np.mean(y)
+    k = min(k, len(S))
+    r = U[:, :k].T @ yc / (np.linalg.norm(U[:, :k], axis=0) * np.linalg.norm(yc))
+    return (S ** 2 / (S ** 2).sum())[:k], np.cumsum(r ** 2)
+
+
 @torch.no_grad()
 def _block_states(model, x, device, batch=256):
     """{block k: (pooled (N, D), tokens (N, T, D))} for k = 0..depth."""

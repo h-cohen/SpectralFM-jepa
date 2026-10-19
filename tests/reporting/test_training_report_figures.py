@@ -135,10 +135,10 @@ def test_correlation_figure(tmp_path, monkeypatch):
     save_bank(tmp_path / 'iso.npz', {'layer2': rng.normal(size=(150, 16))}, raw, y, {})
     z = rng.normal(size=(150, 1))
     save_bank(tmp_path / 'col.npz', {'layer2': z @ rng.normal(size=(1, 16)) + .01 * rng.normal(size=(150, 16))}, raw, y, {})
-    out = training_report.correlation_figure((('raw', tmp_path / 'iso.npz', None), ('iso', tmp_path / 'iso.npz', 'layer2'),
-                                              ('collapsed', tmp_path / 'col.npz', 'layer2'),
-                                              ('missing', tmp_path / 'nope.npz', 'layer2')))
-    assert set(out) == {'raw', 'iso', 'collapsed'}
+    out = training_report.correlation_figure((('iso', tmp_path / 'iso.npz', '#000'), ('collapsed', tmp_path / 'col.npz', '#111'),
+                                              ('missing', tmp_path / 'nope.npz', '#222')), k=10)
+    assert set(out) == {'iso', 'collapsed'}
     assert out['iso']['mean_abs_offdiag'] < .2 < .9 < out['collapsed']['mean_abs_offdiag']
     assert out['collapsed']['top_pc_share'] > .9 > out['iso']['top_pc_share']
+    assert 0 <= out['iso']['label_r2_top5'] <= out['iso']['label_r2_top20'] <= 1
     assert (tmp_path / 'fig_correlation.svg').exists()

@@ -25,7 +25,7 @@
   - `training-report` regenerates figures 13–14 from these outputs.
 - **ROCKET-family benchmark (done 2026-10-15):** report Appendix A (main report compares JEPA with raw and data2vec only).
 - **data2vec comparison (done 2026-10-17):** report section 9. `evaluate` accepts fairseq data2vec checkpoints (`evaluation/data2vec.py`, `data2vec` extra); outputs in `outputs/data2vec/`. Recent checkpoint 0/8 vs raw, mean −.197.
-- **Error metrics and feature correlation (done 2026-10-19):** report sections 10–11. `benchmark score` adds RMSE, nRMSE, MAE, tail error, residual slope, RMSE by label quintile and per-spectrum win rate (`evaluation/errors.py`); `training-report` draws figures 18–22, including feature × feature correlation (`isotropy.feature_correlation`).
+- **Error metrics and feature correlation (done 2026-10-19):** report sections 10–11. `benchmark score` adds RMSE, nRMSE, MAE, tail error, residual slope, RMSE by label quintile and per-spectrum win rate (`evaluation/errors.py`); `training-report` draws figures 18–22, including feature × feature correlation and label R² by variance floor across SIGReg weights (`isotropy.feature_correlation`, `isotropy.label_spectrum`).
   - `benchmark run|score` (sktime, `benchmark` extra); outputs in `outputs/benchmark/`, criteria in `docs/superpowers/specs/2026-10-15-rocket-benchmark.md`.
   - MiniRocket ties the ensemble 4–4 by set, mean −.043; mean-prediction average +.075 vs raw on 8/8. B1–B3 all failed.
   - MultiRocket on labeled_data needs the CPU probe (`--device cpu`); 11 GB GPUs run out of memory.
