@@ -401,47 +401,37 @@ def _residuals(ax, err, y, P, arms):
 
 
 CORR_MODELS = (('Raw spectrum (245)', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', None),
-               ('Random weights', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/random_control/bank.npz', 'layer2'),
-               ('λ = 0 (no SIGReg)', ABLATION / 'lam0_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
-               ('λ = .05', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
-               ('Robust member (p0)', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', 'layer2'),
-               ('data2vec recent, last block', 'outputs/data2vec/eval-labeled/*/labeled_data/bank.npz', 'layer12'))
+               ('Random weights, block 2', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/random_control/bank.npz', 'layer2'),
+               ('λ = 0 (no SIGReg), block 2', ABLATION / 'lam0_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
+               ('λ = .05, block 2', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/bank.npz', 'layer2'),
+               ('JEPA member p0, block 2', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', 'layer2'),
+               ('data2vec recent, block 2', 'outputs/data2vec/eval-labeled/*/labeled_data/bank.npz', 'layer2'))
 
 
-def correlation_figure(models=CORR_MODELS, n_spectra=100, name='fig_correlation.svg'):
-    """Row 1: feature × feature correlation on labeled_data (identity = isotropic, SIGReg's target).
-    Row 2: spectrum × spectrum cosine of the same features for `n_spectra` spectra sorted by label."""
+def correlation_figure(models=CORR_MODELS, name='fig_correlation.svg'):
+    """Feature × feature correlation of mean-pooled features on labeled_data (identity = isotropic, SIGReg's
+    target). Latent dimensions are ordered by top-PC loading; wavelengths keep their order."""
     from glob import glob
     from spectral_lejepa.evaluation.bank import load_bank
     from spectral_lejepa.evaluation.isotropy import feature_correlation
     loaded = [(t, load_bank(glob(str(p))[0]), k) for t, p, k in models if glob(str(p))]
-    fig, axes = plt.subplots(2, len(loaded) + 1, figsize=(2.6 * len(loaded) + .6, 5.6), squeeze=False,
+    fig, axes = plt.subplots(1, len(loaded) + 1, figsize=(2.6 * len(loaded) + .6, 3.2),
                              gridspec_kw={'width_ratios': [1] * len(loaded) + [.06]})
-    cax, _ = axes[:, -1]
-    axes[1, -1].axis('off')
-    axes = axes[:, :-1]
     summary = {}
-    for j, (title, (bank, raw, y, _), key) in enumerate(loaded):
+    for ax, (title, (bank, raw, y, _), key) in zip(axes, loaded):
         X = raw if key is None else bank[key]
         C, s = feature_correlation(X)
+        Z = X - X.mean(0)
+        _, S, Vt = np.linalg.svd(Z, full_matrices=False)
+        s['top_pc_share'] = float(S[0] ** 2 / (S ** 2).sum())
         summary[title] = s
-        if key is not None:                     # wavelengths keep their order; latent dims by top-PC loading
-            order = np.argsort(np.linalg.svd(X - X.mean(0), full_matrices=False)[2][0])
+        if key is not None:
+            order = np.argsort(Vt[0])
             C = C[np.ix_(order, order)]
-        im = axes[0, j].imshow(C, cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
-        axes[0, j].set_title(f"{title}\n|off-diag| {s['mean_abs_offdiag']:.2f}", fontsize=8)
-        idx = np.random.default_rng(0).choice(len(y), n_spectra, replace=False)
-        idx = idx[np.argsort(y[idx])]
-        Z = X[idx] - X.mean(0)                  # centred: the shared mean direction alone gives cosine ~1
-        U = Z / (np.linalg.norm(Z, axis=1, keepdims=True) + 1e-12)
-        S = U @ U.T
-        axes[1, j].imshow(S, cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
-        axes[1, j].set_title(f"mean |off-diag| {np.abs(S[~np.eye(len(S), dtype=bool)]).mean():.2f}", fontsize=8)
-        for ax in axes[:, j]:
-            ax.set_xticks([]), ax.set_yticks([])
-    axes[0, 0].set_ylabel('feature × feature\ncorrelation', fontsize=8)
-    axes[1, 0].set_ylabel('spectrum × spectrum cosine\n(centred, sorted by label)', fontsize=8)
-    fig.colorbar(im, cax=cax)
+        im = ax.imshow(C, cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
+        ax.set_title(f"{title}\n|off-diag| {s['mean_abs_offdiag']:.2f}, top PC {s['top_pc_share']:.0%}", fontsize=8)
+        ax.set_xticks([]), ax.set_yticks([])
+    fig.colorbar(im, cax=axes[-1])
     save(fig, name)
     return summary
 
