@@ -55,7 +55,7 @@ stage 2:  L + 0.1 · mean‖h₂(x′) − h₂(x)‖² / Var(h₂(x))
 
 The ensemble beats raw spectra on 8 of 8 sets (mean ΔR² +.056) and a random-weight encoder of the same architecture on 8 of 8 (+.048). See the report for per-set R², uncertainty and limitations.
 
-Benchmark against training-free time-series features (sktime MiniRocket, ROCKET, MultiRocket; same nested CV): MiniRocket ties the ensemble 4–4 by set but averages .043 lower, losing labeled_data by .33. Averaging the ensemble's and MiniRocket's predictions gives +.075 over raw on 8/8. Run it with `python -m spectral_lejepa benchmark run --arms minirocket_s0 ...` then `benchmark score` (needs the `benchmark` extra: `uv pip install -e '.[benchmark]'`).
+Benchmark against training-free time-series features (sktime MiniRocket, ROCKET, MultiRocket; same nested CV; report Appendix A): MiniRocket ties the ensemble 4–4 by set but averages .043 lower, losing labeled_data by .33. Averaging the ensemble's and MiniRocket's predictions gives +.075 over raw on 8/8. Run it with `python -m spectral_lejepa benchmark run --arms minirocket_s0 ...` then `benchmark score` (needs the `benchmark` extra: `uv pip install -e '.[benchmark]'`).
 
 ## Robustness tests
 

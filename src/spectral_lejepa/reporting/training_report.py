@@ -323,22 +323,27 @@ def input_figure(x, sources, name='fig0_input_patches_mask.svg', num_patches=48,
 
 
 BENCHMARK = Path('outputs/benchmark/results.json')
-BENCH_ARMS = (('raw', 'Raw spectrum', '#bdbdbd'), ('data2vec_feb25', 'data2vec (Feb 25)', '#9e9ac8'),
-              ('data2vec', 'data2vec (recent, all data)', '#6a51a3'), ('jepa', 'JEPA ensemble', '#1f4e79'),
-              ('pred_avg', 'JEPA + MiniRocket, mean prediction', '#2a9d8f'), ('minirocket_s0', 'MiniRocket', '#d9822b'))
+# Okabe-Ito colour-blind-safe palette; the main report compares JEPA with raw and the previous method,
+# the appendix adds the ROCKET family and the JEPA + MiniRocket combinations
+MAIN_ARMS = (('raw', 'Raw spectrum', '#7f7f7f'), ('data2vec_feb25', 'data2vec (Feb 25)', '#E69F00'),
+             ('data2vec', 'data2vec (recent, all data)', '#CC79A7'), ('jepa', 'JEPA ensemble', '#0072B2'))
+ALL_ARMS = MAIN_ARMS + (('minirocket_s0', 'MiniRocket', '#009E73'), ('rocket', 'ROCKET', '#F0E442'),
+                        ('multirocket', 'MultiRocket', '#56B4E9'),
+                        ('pred_avg', 'JEPA + MiniRocket, mean prediction', '#000000'),
+                        ('concat', 'JEPA + MiniRocket, joint features', '#D55E00'))
 
 
-def benchmark_figure(res, name='fig_benchmark.svg'):
-    """Nested-CV R² per set: raw, both data2vec checkpoints, the JEPA ensemble, JEPA + MiniRocket, MiniRocket."""
+def benchmark_figure(res, arms=MAIN_ARMS, name='fig_benchmark.svg'):
+    """Nested-CV R² per set for `arms` (main report: raw, both data2vec checkpoints, the JEPA ensemble)."""
     sets = list(res['sets'])
-    arms = [a for a in BENCH_ARMS if all(a[0] in res['sets'][s]['r2'] for s in sets)]
-    fig, ax = plt.subplots(figsize=(11, 3.6))
+    arms = [a for a in arms if all(a[0] in res['sets'][s]['r2'] for s in sets)]
+    fig, ax = plt.subplots(figsize=(11 if len(arms) < 6 else 13, 3.6))
     w = .8 / len(arms)
     x = np.arange(len(sets))
     for i, (key, label, color) in enumerate(arms):
         ax.bar(x + (i - (len(arms) - 1) / 2) * w, [res['sets'][s]['r2'][key] for s in sets], w,
                yerr=[res['sets'][s]['vs_raw'].get(key, {}).get('sd', 0) for s in sets],
-               color=color, label=label, error_kw={'lw': .6, 'ecolor': '#555'})
+               color=color, label=label, edgecolor='#333', linewidth=.3, error_kw={'lw': .6, 'ecolor': '#555'})
     ax.set_xticks(x, [SHORT.get(s, s).replace('dataset', '') for s in sets])
     ax.set_ylabel('nested-CV R²')
     ax.set_ylim(0, 1.05)
@@ -346,18 +351,18 @@ def benchmark_figure(res, name='fig_benchmark.svg'):
     save(fig, name)
 
 
-def error_figures(res, oofs):
+def error_figures(res, oofs, arms=MAIN_ARMS):
     """Error metrics beyond R² for the final-comparison arms. `res`: benchmark results.json; `oofs`:
     {set: (y, {arm: OOF [R, n]})} from benchmark.predictions."""
     sets = list(res['sets'])
-    arms = [a for a in BENCH_ARMS if all(a[0] in res['sets'][s]['errors'] for s in sets)]
+    arms = [a for a in arms if all(a[0] in res['sets'][s]['errors'] for s in sets)]
     lab = [SHORT.get(s, s).replace('dataset', '') for s in sets]
     fig, ax = plt.subplots(figsize=(11, 3.6))
     w, x = .8 / len(arms), np.arange(len(sets))
     for i, (key, label, color) in enumerate(arms):
         ax.bar(x + (i - (len(arms) - 1) / 2) * w, [res['sets'][s]['errors'][key]['nrmse'] for s in sets], w,
                yerr=[res['sets'][s]['errors'][key].get('vs_raw', {}).get('sd', 0) / np.std(oofs[s][0]) for s in sets],
-               color=color, label=label, error_kw={'lw': .6, 'ecolor': '#555'})
+               color=color, label=label, edgecolor='#333', linewidth=.3, error_kw={'lw': .6, 'ecolor': '#555'})
     ax.set_xticks(x, lab)
     ax.set_ylabel('nRMSE = RMSE / SD(y)  (lower is better)')
     ax.legend(frameon=False, fontsize=7, ncol=3, loc='upper left', bbox_to_anchor=(0, 1.25))
@@ -389,7 +394,7 @@ def _quintile_rmse(ax, err, y, P, arms):
 
 def _residuals(ax, err, y, P, arms):
     for key, label, color in [a for a in arms if a[0] in ('raw', 'jepa')]:
-        ax.scatter(y, P[key][0] - y, s=5, alpha=.45, color='#d9822b' if key == 'raw' else color, lw=0,
+        ax.scatter(y, P[key][0] - y, s=5, alpha=.45, color=color, lw=0,
                    label=f"{label} (slope {err[key]['residual_slope']:+.2f})")
     ax.axhline(0, color='k', lw=.6)
     ax.set(xlabel='true value', ylabel='prediction − true')
@@ -536,6 +541,7 @@ def figures():
         from spectral_lejepa.evaluation.benchmark import predictions
         bench = json.loads(BENCHMARK.read_text())
         benchmark_figure(bench)
+        benchmark_figure(bench, ALL_ARMS, 'fig_appendix_benchmark.svg')
         error_figures(bench, {s: predictions(BENCHMARK.parent / s) for s in bench['sets']})
     print(json.dumps(correlation_figure()))
     print(json.dumps(ablations()["criteria"]))

@@ -100,8 +100,11 @@ def test_benchmark_figure(tmp_path, monkeypatch):
                     for ds in ('labeled_data', 'dataset0055')}}
     training_report.benchmark_figure(res)
     svg = (tmp_path / 'fig_benchmark.svg').read_text()
-    assert all(t in svg for t in ('Raw spectrum', 'data2vec (Feb 25)', 'MiniRocket', 'labeled_data'))
-    assert 'ROCKET' not in svg.replace('MiniRocket', '')
+    assert all(t in svg for t in ('Raw spectrum', 'data2vec (Feb 25)', 'JEPA ensemble', 'labeled_data'))
+    assert 'Rocket' not in svg and 'ROCKET' not in svg          # the ROCKET family lives in the appendix
+    training_report.benchmark_figure(res, training_report.ALL_ARMS, 'fig_appendix_benchmark.svg')
+    svg = (tmp_path / 'fig_appendix_benchmark.svg').read_text()
+    assert all(t in svg for t in ('MiniRocket', 'MultiRocket', 'joint features', 'data2vec (recent'))
 
 
 def test_error_figures(tmp_path, monkeypatch):
@@ -119,7 +122,8 @@ def test_error_figures(tmp_path, monkeypatch):
     res = {'sets': {s: {'errors': error_metrics(*oofs[s], n_boot=20)} for s in sets}}
     training_report.error_figures(res, oofs)
     for name in ('fig_errors_nrmse', 'fig_errors_cdf', 'fig_errors_quintile', 'fig_errors_residuals'):
-        assert 'JEPA ensemble' in (tmp_path / f'{name}.svg').read_text()
+        svg = (tmp_path / f'{name}.svg').read_text()
+        assert 'JEPA ensemble' in svg and 'MiniRocket' not in svg
 
 
 def test_correlation_figure(tmp_path, monkeypatch):
