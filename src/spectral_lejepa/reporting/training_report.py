@@ -400,7 +400,8 @@ def _residuals(ax, err, y, P, arms):
     ax.set(xlabel='true value', ylabel='prediction − true')
 
 
-CORR_MODELS = (('λ = 0 (no SIGReg)', ABLATION / 'lam0_d6_s0/eval/*/labeled_data/bank.npz', '#999999'),
+CORR_MODELS = (('raw spectrum (245 wavelengths)', 'outputs/robust-ensemble/robust_p0/eval/*/labeled_data/bank.npz', None),
+               ('λ = 0 (no SIGReg)', ABLATION / 'lam0_d6_s0/eval/*/labeled_data/bank.npz', '#999999'),
                ('λ = .01', ABLATION / 'lam001_d6_s0/eval/*/labeled_data/bank.npz', '#56B4E9'),
                ('λ = .05', ABLATION / 'lam005_d6_s0/eval/*/labeled_data/bank.npz', '#0072B2'),
                ('λ = .2', ABLATION / 'lam02_d6_s0/eval/*/labeled_data/bank.npz', '#E69F00'),
@@ -416,21 +417,22 @@ def correlation_figure(models=CORR_MODELS, key='layer2', k=50, name='fig_correla
     from spectral_lejepa.evaluation.bank import load_bank
     from spectral_lejepa.evaluation.isotropy import feature_correlation, label_spectrum
     loaded = [(t, load_bank(glob(str(p))[0]), c) for t, p, c in models if glob(str(p))]
-    n = len(loaded)
+    n = len(loaded)                       # a model with colour None is the raw input: top row only, wavelength order
     fig = plt.figure(figsize=(2.6 * n + .6, 6.4))
     gs = fig.add_gridspec(2, n + 1, width_ratios=[1] * n + [.06], height_ratios=[1, 1.05])
     summary = {}
     for j, (title, (bank, raw, y, _), color) in enumerate(loaded):
-        X = bank[key]
+        X = raw if color is None else bank[key]
         C, s = feature_correlation(X)
         var, r2 = label_spectrum(X, y, k)
         s.update(top_pc_share=float(var[0]), label_r2_top5=float(r2[min(4, len(r2) - 1)]),
                  label_r2_top20=float(r2[min(19, len(r2) - 1)]))
         summary[title] = s
-        order = np.argsort(np.linalg.svd(X - X.mean(0), full_matrices=False)[2][0])
+        order = (np.arange(X.shape[1]) if color is None
+                 else np.argsort(np.linalg.svd(X - X.mean(0), full_matrices=False)[2][0]))
         ax = fig.add_subplot(gs[0, j])
         im = ax.imshow(C[np.ix_(order, order)], cmap='RdBu_r', vmin=-1, vmax=1, interpolation='nearest')
-        ax.set_title(f"{title}\n|off-diag| {s['mean_abs_offdiag']:.2f}", fontsize=8, color=color)
+        ax.set_title(f"{title}\n|off-diag| {s['mean_abs_offdiag']:.2f}", fontsize=8, color=color or 'k')
         ax.set_xticks([]), ax.set_yticks([])
         summary[title]['_curves'] = (var, r2, color)
     fig.colorbar(im, cax=fig.add_subplot(gs[0, n]))
@@ -438,6 +440,8 @@ def correlation_figure(models=CORR_MODELS, key='layer2', k=50, name='fig_correla
     ax_v, ax_r = fig.add_subplot(gs[1, :half]), fig.add_subplot(gs[1, half:n])
     for title, s in summary.items():
         var, r2, color = s.pop('_curves')
+        if color is None:
+            continue
         ax_v.plot(np.arange(1, len(var) + 1), var, color=color, lw=1.6, label=title)
         ax_r.plot(var, r2, color=color, lw=1.6, label=title)
     ax_v.set(yscale='log', xscale='log', xlabel='principal direction (by variance)', ylabel='variance share',

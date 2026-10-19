@@ -50,10 +50,22 @@ def test_rerun_overwrites_instead_of_accumulating(tmp_path):
     assert sorted(a) == sorted(b) and all(p.read_bytes() for p in b)
 
 
-def test_panel_figure_has_two_rows_colour_scale_and_group_labels(tmp_path):
+def test_panel_figure_shows_input_and_centred_readouts_only(tmp_path):
     from spectral_lejepa.reporting import embedding_figures
     fake_run(tmp_path / 'run')
     path = embedding_figures.panel_figure(tmp_path / 'run', tmp_path / 'panel.svg')
     svg = path.read_text()
-    assert 'cosine similarity' in svg   # colour-bar label
-    assert 'after mean-centring' in svg and 'multi_channel' in svg
+    assert 'cosine similarity' in svg and 'multi_channel' in svg
+    assert 'block-2 mean, mean removed' in svg and 'block-2 flat, mean removed' in svg
+    assert 'block-2 mean\n' not in svg and '>block-2 flat<' not in svg   # uncentred panels are gone
+
+
+def test_group_contrast():
+    import numpy as np
+    from spectral_lejepa.reporting.embedding_figures import group_contrast
+    S = np.zeros((100, 100))
+    for g in range(10):
+        S[10 * g:10 * g + 10, 10 * g:10 * g + 10] = .8
+    np.fill_diagonal(S, 1)
+    assert group_contrast(S) == np.float64(.8).item()
+    assert group_contrast(np.eye(100)) == 0

@@ -6,6 +6,17 @@ Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat featur
 
 **Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. The previous method, data2vec, stays below raw (recent checkpoint 0/8, mean −.197; section 9). Training-free ROCKET-family baselines are compared in Appendix A. RMSE agrees: the ensemble lowers it on 8/8 sets and has the flattest error across the label range (section 10). SIGReg cuts block-2 feature correlation from .90 to .46 mean |off-diagonal| and moves label information out of near-empty directions (section 11).
 
+
+**Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
+
+| Model | Encoder | FLOPs per spectrum | Parameters | vs one JEPA member |
+|---|---|---:|---:|---:|
+| Raw ridge | none (readout on 245 values) | 490 | 245 | — |
+| JEPA member | tokenizer + blocks 0–1, readout on 12,288 features | 151 M | 1.6 M | 1× |
+| JEPA ensemble | 4 members, predictions averaged | 605 M | 6.4 M | 4× |
+| data2vec (recent) | conv front end + 12 transformer layers | 9.6 G | 92.6 M | 64× |
+
+data2vec is costed with its full forward pass; its probe selects a block per set, and stopping at that block would cut the cost proportionally. The JEPA encoders stop at block 2, so blocks 3–6 are never run at inference.
 ```mermaid
 flowchart LR
     A["12.76M unlabeled spectra"] --> B["Stage 1: LeJEPA<br/>498k steps"]
@@ -285,11 +296,17 @@ flowchart LR
 
 ### Embedding geometry (previous-project metrics)
 
-**Bottom line.** Block-2 features share one dominant direction. Once it is removed, spectra group by component, as in the raw input. The old stack-retrieval metric is at chance even on raw inputs, so it carries no signal here.
+**Bottom line.** Spectra from the same stack or component look more alike in block-2 features than in the input. With the shared mean removed, the within-group minus between-group cosine is .73–.81 for block 2 against .58 for the input. The previous project's stack-retrieval metric is at chance even on raw inputs, so it carries no signal here.
+
+**What is measured.** The previous project's fixed panel of 100 spectra in 10 groups of 10: 3 stacks from single_channel_all, 3 components from multi_channel, 2 from sampled_data and 2 from labeled_data. Each heat map is the cosine similarity between every pair of spectra. If a representation captures what a stack or component has in common, each group forms a bright 10×10 block on the diagonal. The score is the mean cosine within groups (diagonal excluded) minus the mean cosine between groups: 0 means groups are indistinguishable.
+
+Block-2 features are shown after subtracting the panel's mean feature vector. Without that step every block-2 cosine is .4–1, because all features share one dominant direction (section 11), and the maps carry no structure.
 
 ![Panel](figures/embedding-eval/panel.svg)
 
-**Figure 15. Fixed 100-spectrum panel** (robust_s401; colour is cosine similarity, −1 to 1). Top row: block-2 cosines are high everywhere (0.4–1), because all features share one dominant direction. Bottom row: after subtracting the mean feature vector, components within multi_channel, sampled_data and labeled_data form clear blocks, as in the input.
+**Figure 15. Fixed 100-spectrum panel, robust_s401.** Thick lines separate the four datasets, thin lines the 10-spectrum groups; colour is cosine similarity, −1 to 1.
+- **Input spectra** (per-spectrum z-scored, mean not removed): contrast .49; .58 with the mean removed, the fair comparison to the block-2 maps.
+- **Block-2 mean and flat, mean removed:** contrast .81 and .73. Groups separate more cleanly than in the input, most visibly in multi_channel and sampled_data. All four robust members agree (mean .80–.81, flat .73).
 
 ![Cosine distributions](figures/embedding-eval/sanity_cosine_distributions.svg)
 
@@ -390,7 +407,7 @@ Features are mean-pooled block-2 outputs (256 dims) on all 4,716 labeled_data sp
 ![Correlation, variance and label](figures/training-report/fig_correlation.svg)
 
 **Figure 22. SIGReg weight vs feature geometry, block 2, labeled_data.**
-- **Top: feature × feature correlation.** An isotropic Gaussian, SIGReg's target, gives the identity matrix. Dimensions are ordered by their loading on the top principal direction, so one shared direction shows up as a red/blue two-block pattern. Colour −1 (blue) to 1 (red).
+- **Top: feature × feature correlation.** An isotropic Gaussian, SIGReg's target, gives the identity matrix. The first panel is the raw spectrum's 245 wavelengths in their natural order, for reference: most wavelengths are strongly correlated with each other (mean |off-diag| .63). Dimensions are ordered by their loading on the top principal direction, so one shared direction shows up as a red/blue two-block pattern. Colour −1 (blue) to 1 (red).
 - **Bottom left: variance share of each principal direction** (log–log). A steep drop means collapse onto a few directions.
 - **Bottom right: label R² of a linear fit on all principal directions down to a variance floor**, with the floor decreasing to the right. The fit is in-sample on pooled features, so it is descriptive. The real probes use the all-token features with nested CV.
 
