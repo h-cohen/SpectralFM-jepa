@@ -44,6 +44,19 @@ def model_input(raw, ckpt_cfg):
     return normalize_like_fairseq(raw)
 
 
+def tta_config(vcfg, ckpt_cfg):
+    """extract_bank's tta dict from `evaluation.tta` ({k, seed, robust}) and the checkpoint's global stats;
+    None when unset. perturb works in raw units on globally normalized input, so other inputs are refused."""
+    t = vcfg.get("tta")
+    if not t:
+        return None
+    if ckpt_cfg.get("data", {}).get("normalization", "sample_zscore") != "global":
+        raise ValueError("evaluation.tta needs a checkpoint trained with global normalization")
+    g = ckpt_cfg["derived"]["global_stats"]
+    return {"k": int(t["k"]), "seed": int(t["seed"]), "robust": dict(t["robust"]),
+            "stats": {"mean": g["mean"], "std": g["std"]}}
+
+
 def summarize(nested, block):
     fam = nested["families"]
     return {"n": nested["protocol"]["n"],
@@ -142,12 +155,12 @@ def main(argv=None):
         out_dir.mkdir(parents=True, exist_ok=True)
         bank = extract_bank(backbone, model_input(raw, ckpt["config"]), device=vcfg["device"],
                             batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
-                            flat_blocks=vcfg.get("flat_blocks"))
+                            flat_blocks=vcfg.get("flat_blocks"), tta=tta_config(vcfg, ckpt["config"]))
         save_bank(out_dir / "bank.npz", bank, raw, y, {"checkpoint": a.checkpoint, "backbone": type(backbone).__name__,
                                                        "set": name, "model_input": method, "n": int(len(y)), "seed": seed,
                                                        "stages": tuple(bank),
                                                        "readouts": tuple(vcfg["readouts"]),
-                                                       "flat_blocks": vcfg.get("flat_blocks")})
+                                                       "flat_blocks": vcfg.get("flat_blocks"), "tta": vcfg.get("tta")})
         nested, oof = run_nested(bank, raw, y, seed=seed, **probe)
         write_json(out_dir / "nested_results.json", {**nested, "meta": lineage})
         np.savez_compressed(out_dir / "nested_oof.npz", y=y, **oof)
@@ -174,11 +187,11 @@ def main(argv=None):
             rc_dir.mkdir(exist_ok=True)
             rc_bank = extract_bank(random_backbone, model_input(raw, ckpt["config"]), device=vcfg["device"],
                                    batch_size=vcfg["batch_size"], readouts=tuple(vcfg["readouts"]),
-                                   flat_blocks=vcfg.get("flat_blocks"))
+                                   flat_blocks=vcfg.get("flat_blocks"), tta=tta_config(vcfg, ckpt["config"]))
             save_bank(rc_dir / 'bank.npz', rc_bank, raw, y,
                       {'checkpoint': a.checkpoint, 'model': 'random_init_seed0', 'seed': seed,
                        'set': name, 'model_input': method, 'readouts': tuple(vcfg['readouts']),
-                       'flat_blocks': vcfg.get('flat_blocks'), 'stages': tuple(rc_bank)})
+                       'flat_blocks': vcfg.get('flat_blocks'), 'stages': tuple(rc_bank), 'tta': vcfg.get('tta')})
             rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, **probe)
             if not np.allclose(rc_oof["raw"], oof["raw"], rtol=0, atol=1e-8):
                 raise RuntimeError("random-control raw OOFs differ from the model's: folds/rows are not paired")

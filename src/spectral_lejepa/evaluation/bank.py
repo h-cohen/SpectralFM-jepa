@@ -20,6 +20,8 @@ import os
 import numpy as np
 import torch
 
+from spectral_lejepa.data.perturb import perturb
+
 from .data import normalize_like_fairseq
 
 
@@ -47,13 +49,22 @@ def readout_arms(hidden_states, readouts, flat_blocks=None) -> dict:
 
 
 @torch.no_grad()
-def extract_bank(model, signals_z, device="cuda", batch_size=64, readouts=("mean",), flat_blocks=None) -> dict:
+def extract_bank(model, signals_z, device="cuda", batch_size=64, readouts=("mean",), flat_blocks=None, tta=None) -> dict:
+    """tta = {k, seed, robust, stats}: hidden states averaged over k perturbed copies of each batch
+    (data.perturb on globally normalized input, one CPU generator seeded once per extraction)."""
     model.eval()
     model.to(device)
     t = torch.from_numpy(np.asarray(signals_z, dtype=np.float32))
+    gen = torch.Generator().manual_seed(tta["seed"]) if tta else None
     out = None
     for i in range(0, len(t), batch_size):
-        hidden = model(input_values=t[i:i + batch_size].to(device), output_hidden_states=True).hidden_states
+        xb = t[i:i + batch_size].to(device)
+        if tta:
+            runs = [model(input_values=perturb(xb, tta["robust"], tta["stats"], gen), output_hidden_states=True).hidden_states
+                    for _ in range(tta["k"])]
+            hidden = tuple(torch.stack(hs).mean(0) for hs in zip(*runs))      # [B, T, D] per block
+        else:
+            hidden = model(input_values=xb, output_hidden_states=True).hidden_states
         arms = readout_arms(hidden, readouts, flat_blocks)
         if out is None:
             out = {k: [] for k in arms}
