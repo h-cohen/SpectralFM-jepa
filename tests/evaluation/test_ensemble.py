@@ -96,6 +96,8 @@ def test_fuse_writes_json_with_random_rows_and_weights(tmp_path):
     s = res['sets']['dataset0055']
     assert {'stack_vs_avg', 'avg_vs_raw', 'stack_vs_raw', 'avg_vs_random', 'stack_vs_random', 'mean_weights'} <= set(s)
     assert (tmp_path / 'out' / 'fusion.json').exists()
+    saved = json.loads((tmp_path / 'out' / 'fusion.json').read_text())['sets']['dataset0055']
+    assert len(saved['fold_weights']) == 10 and len(saved['fold_weights'][0]) == 6
     assert (tmp_path / 'out' / 'dataset0055' / 'fusion_oof.npz').exists()
 
 

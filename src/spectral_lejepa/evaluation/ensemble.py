@@ -98,7 +98,7 @@ def fuse(banks, output, heads=HEADS, **probe):
                            'stack_vs_raw': paired_delta(y, P['stack'], P['raw']),
                            'avg_vs_random': paired_delta(y, P['avg'], R['avg']),
                            'stack_vs_random': paired_delta(y, P['stack'], R['stack']),
-                           'mean_weights': mean_w}
+                           'mean_weights': mean_w, 'fold_weights': m['weights']}
         (output / ds).mkdir(parents=True, exist_ok=True)
         np.savez(output / ds / 'fusion_oof.npz', y=y, **P, **{f'random_{k}': v for k, v in R.items()})
     d = lambda key: [s[key]['delta'] for s in out['sets'].values()]
