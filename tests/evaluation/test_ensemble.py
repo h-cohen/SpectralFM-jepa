@@ -117,3 +117,46 @@ def test_fuse_set_refuses_mismatched_labels(tmp_path):
     make_bank_npz(b, rng.normal(size=40), 1.0, 1)
     with pytest.raises(ValueError, match='labels'):
         fuse_set([a, b])
+
+
+def make_select_bank(path, y, seed, with_layer1=True):
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    bank = {'layer2/flat': (y[:, None] + rng.normal(size=(n, 8))).astype(np.float32)}
+    if with_layer1:
+        bank['layer1/flat'] = (2 * y[:, None] + rng.normal(size=(n, 8))).astype(np.float32)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    save_bank(path, bank, rng.normal(size=(n, 245)).astype(np.float32), y, {})
+
+
+def test_fuse_set_select_picks_a_candidate_readout_per_member(tmp_path):
+    y = np.random.default_rng(0).normal(size=60)
+    files = [tmp_path / f'm{i}' / 'bank.npz' for i in range(2)]
+    for i, f in enumerate(files):
+        make_select_bank(f, y, i)
+    cands = ('layer2/flat', 'layer1/flat', 'layer1+2/flat')
+    out = fuse_set(files, heads=(), select=cands)
+    assert out['oof']['select'].shape == (2, 60)
+    picks = {c['arm'].split(':', 1)[1] for fold in out['select_chosen'] for c in fold}
+    assert picks <= set(cands)
+    assert 'stack' not in out['oof']
+
+
+def test_fuse_set_select_missing_readout_raises(tmp_path):
+    y = np.random.default_rng(0).normal(size=40)
+    f = tmp_path / 'm0' / 'bank.npz'
+    make_select_bank(f, y, 0, with_layer1=False)
+    with pytest.raises(ValueError, match='layer1/flat'):
+        fuse_set([f], heads=(), select=('layer2/flat', 'layer1+2/flat'))
+
+
+def test_fuse_with_select_reports_select_rows(tmp_path):
+    y = np.random.default_rng(0).normal(size=50)
+    runs = []
+    for i in range(2):
+        make_select_bank(tmp_path / f'm{i}' / 'dataset0055' / 'bank.npz', y, i)
+        make_select_bank(tmp_path / f'm{i}' / 'dataset0055' / 'random_control' / 'bank.npz', y, i + 50)
+        runs.append(tmp_path / f'm{i}')
+    s = fuse(runs, tmp_path / 'out', heads=(), select=('layer2/flat', 'layer1/flat'))['sets']['dataset0055']
+    assert {'select_vs_avg', 'select_vs_raw', 'select_vs_random', 'avg_vs_raw'} <= set(s)
+    assert 'stack_vs_avg' not in s
