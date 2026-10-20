@@ -2,7 +2,10 @@ import json
 
 import numpy as np
 
-from spectral_lejepa.evaluation.ensemble import ensemble_predictions, member_oof
+import pytest
+
+from spectral_lejepa.evaluation.bank import save_bank
+from spectral_lejepa.evaluation.ensemble import ensemble_predictions, fuse, fuse_set, member_oof
 
 
 def make_member(root, name, value):
@@ -56,3 +59,59 @@ def test_score_ensemble_refuses_mismatched_labels(tmp_path):
     np.savez(b / 'dataset0055' / 'nested_oof.npz', **z)
     with pytest.raises(ValueError, match='labels'):
         score_ensemble([a, b])
+
+
+def make_bank_npz(path, y, signal, seed):
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    bank = {'layer2/flat': (y[:, None] * signal + rng.normal(size=(n, 8))).astype(np.float32),
+            'layer2': rng.normal(size=(n, 4)).astype(np.float32),
+            'layer6': (y[:, None] * signal / 2 + rng.normal(size=(n, 4))).astype(np.float32)}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    save_bank(path, bank, rng.normal(size=(n, 245)).astype(np.float32), y, {})
+
+
+def make_run(root, name, y, seed):
+    run = root / name
+    make_bank_npz(run / 'dataset0055' / 'bank.npz', y, 2.0, seed)
+    make_bank_npz(run / 'dataset0055' / 'random_control' / 'bank.npz', y, 0.0, seed + 100)
+    return run
+
+
+def test_fuse_set_returns_paired_arms_and_weights(tmp_path):
+    y = np.random.default_rng(0).normal(size=60)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(2)]
+    out = fuse_set([r / 'dataset0055' / 'bank.npz' for r in runs])
+    assert set(out['oof']) == {'raw', 'avg', 'stack'} and out['oof']['stack'].shape == (2, 60)
+    w = out['weights'][0]
+    assert {d['arm'] for d in w} == {f'm{i}:{h}' for i in range(2) for h in ('layer2/flat', 'layer2', 'layer6')}
+    assert sum(d['weight'] for d in w) == pytest.approx(1.0)
+    assert out['r2']['stack'] > out['r2']['raw']
+
+
+def test_fuse_writes_json_with_random_rows_and_weights(tmp_path):
+    y = np.random.default_rng(0).normal(size=60)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(2)]
+    res = fuse(runs, tmp_path / 'out')
+    s = res['sets']['dataset0055']
+    assert {'stack_vs_avg', 'avg_vs_raw', 'stack_vs_raw', 'avg_vs_random', 'stack_vs_random', 'mean_weights'} <= set(s)
+    assert (tmp_path / 'out' / 'fusion.json').exists()
+    assert (tmp_path / 'out' / 'dataset0055' / 'fusion_oof.npz').exists()
+
+
+def test_fuse_set_missing_head_names_member_and_arm(tmp_path):
+    y = np.random.default_rng(0).normal(size=40)
+    f = tmp_path / 'm0' / 'bank.npz'
+    f.parent.mkdir(parents=True)
+    save_bank(f, {'layer2': np.zeros((40, 4), np.float32)}, np.zeros((40, 245), np.float32), y, {})
+    with pytest.raises(ValueError, match=r"layer2/flat.*m0"):
+        fuse_set([f])
+
+
+def test_fuse_set_refuses_mismatched_labels(tmp_path):
+    rng = np.random.default_rng(0)
+    a, b = tmp_path / 'a' / 'bank.npz', tmp_path / 'b' / 'bank.npz'
+    make_bank_npz(a, rng.normal(size=40), 1.0, 0)
+    make_bank_npz(b, rng.normal(size=40), 1.0, 1)
+    with pytest.raises(ValueError, match='labels'):
+        fuse_set([a, b])
