@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import functools
 import json
 import os
 
@@ -39,14 +40,29 @@ def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device=None):
     return {(norm, probe): fit_predict(T[norm][0], y_tr, T[norm][1], probe, seed) for norm, probe in recipes}
 
 
-def _inner_scores(X, y, n_inner, seed, backend="sklearn", device=None):
-    """Inner-CV R² of every recipe, on these (training) rows only."""
+def _inner_predictions(X, y, n_inner, seed, backend="sklearn", device=None):
+    """Inner-CV predictions of every recipe, on these (training) rows only: {recipe: [n]}."""
     preds = {rc: np.zeros(len(y)) for rc in RECIPES}
     for itr, ite in KFold(n_inner, shuffle=True, random_state=seed).split(X):
         P = _recipe_predictions(X[itr], y[itr], X[ite], RECIPES, seed, backend, device)
         for rc in RECIPES:
             preds[rc][ite] = P[rc]
-    return {rc: r2(y, p) for rc, p in preds.items()}
+    return preds
+
+
+def _inner_scores(X, y, n_inner, seed, backend="sklearn", device=None):
+    """Inner-CV R² of every recipe, on these (training) rows only."""
+    return {rc: r2(y, p) for rc, p in _inner_predictions(X, y, n_inner, seed, backend, device).items()}
+
+
+def nnls_weights(P, y):
+    """Convex stacking weights: non-negative least squares of centred y on centred head predictions
+    P [n, H], normalised to sum to 1 (equal weights if every weight is 0). Centring leaves the intercept
+    to the heads' own fits, so the weights only mix."""
+    from scipy.optimize import nnls
+    P = np.asarray(P, np.float64)
+    w, _ = nnls(P - P.mean(0), np.asarray(y, np.float64) - np.mean(y))
+    return w / w.sum() if w.sum() > 0 else np.full(P.shape[1], 1 / P.shape[1])
 
 
 def _single_threaded(backend):
@@ -55,11 +71,17 @@ def _single_threaded(backend):
     return threadpool_limits(limits=1) if backend == "sklearn" else contextlib.nullcontext()
 
 
-def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles, backend="sklearn", device=None):
+def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles, backend="sklearn", device=None,
+                stacks=None):
+    """stacks {name: arms}: each arm at its inner-CV best recipe, mixed by nnls_weights fitted on those
+    recipes' inner-CV predictions (training rows only), applied to the refit test predictions."""
+    stacks = stacks or {}
     with _single_threaded(backend):
         needed = sorted({a for names in families.values() for a in names}
-                        | {a for names, _ in ensembles.values() for a in names})
-        inner = {a: _inner_scores(arms[a][tr], y[tr], n_inner, seed, backend, device) for a in needed}
+                        | {a for names, _ in ensembles.values() for a in names}
+                        | {a for names in stacks.values() for a in names})
+        inner_pred = {a: _inner_predictions(arms[a][tr], y[tr], n_inner, seed, backend, device) for a in needed}
+        inner = {a: {rc: r2(y[tr], p) for rc, p in P.items()} for a, P in inner_pred.items()}
 
         # the refits this fold needs, per arm: selected recipes, ensemble members, fixed arms
         picks = {fam: max(((a, rc) for a in names for rc in RECIPES), key=lambda k: inner[k[0]][k[1]])
@@ -68,12 +90,19 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
         for name, (names, k) in ensembles.items():
             best[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
             tops[name] = sorted(names, key=lambda a: -inner[a][best[name][a]])[:k]
+        sbest, sweights = {}, {}
+        for name, names in stacks.items():
+            sbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
+            sweights[name] = nnls_weights(np.stack([inner_pred[a][sbest[name][a]] for a in names], 1), y[tr])
         wanted = collections.defaultdict(list)
         for arm, rc in picks.values():
             wanted[arm].append(rc)
         for name, top in tops.items():
             for a_ in top:
                 wanted[a_].append(best[name][a_])
+        for name, names in stacks.items():
+            for a_ in names:
+                wanted[a_].append(sbest[name][a_])
         for arm in fixed_arms:
             wanted[arm] += list(RECIPES)
         refit = {arm: _recipe_predictions(arms[arm][tr], y[tr], arms[arm][te], rcs, seed, backend, device)
@@ -87,6 +116,11 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
             chosen[name] = {"pred": np.mean([refit[a_][best[name][a_]] for a_ in tops[name]], axis=0),
                             "members": [{"arm": a_, "norm": best[name][a_][0], "probe": best[name][a_][1],
                                          "inner_r2": inner[a_][best[name][a_]]} for a_ in tops[name]]}
+        for name, names in stacks.items():
+            chosen[name] = {"pred": sum(w * refit[a_][sbest[name][a_]] for a_, w in zip(names, sweights[name])),
+                            "members": [{"arm": a_, "norm": sbest[name][a_][0], "probe": sbest[name][a_][1],
+                                         "inner_r2": inner[a_][sbest[name][a_]], "weight": float(w)}
+                                        for a_, w in zip(names, sweights[name])]}
         fixed = {(arm, norm, probe): refit[arm][(norm, probe)] for arm in fixed_arms for norm, probe in RECIPES}
     return chosen, fixed
 
@@ -111,12 +145,14 @@ def paired_delta(y, PA, PB, n_boot=1000, seed=0):
 
 
 def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
-              fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None):
+              fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None, stacks=None):
     """backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
     n_jobs concurrent folds per device (threads, one CUDA stream each)."""
     y = np.asarray(y, dtype=np.float64)
     n = len(y)
     ensembles = ensembles or {}
+    stacks = stacks or {}
+    fold_fn = functools.partial(_outer_fold, stacks=stacks)
     jobs = []
     for r in range(n_repeats):
         for f, (tr, te) in enumerate(KFold(n_folds, shuffle=True, random_state=seed + r).split(y)):
@@ -125,14 +161,14 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
             for r, f, tr, te in jobs]
     if backend == "torch":
         from .probe_torch import map_on_streams
-        outs = map_on_streams(_outer_fold, args, n_jobs, device)
+        outs = map_on_streams(fold_fn, args, n_jobs, device)
     elif n_jobs > 1:
         from joblib import Parallel, delayed
-        outs = Parallel(n_jobs=n_jobs)(delayed(_outer_fold)(*a) for a in args)
+        outs = Parallel(n_jobs=n_jobs)(delayed(fold_fn)(*a) for a in args)
     else:
-        outs = [_outer_fold(*a) for a in args]
+        outs = [fold_fn(*a) for a in args]
 
-    res = {fam: {"oof": np.zeros((n_repeats, n)), "chosen": []} for fam in [*families, *ensembles]}
+    res = {fam: {"oof": np.zeros((n_repeats, n)), "chosen": []} for fam in [*families, *ensembles, *stacks]}
     fixed = {k: np.zeros((n_repeats, n)) for k in outs[0][1]}
     test_folds = [[] for _ in range(n_repeats)]
     for (r, f, tr, te), (chosen, fx) in zip(jobs, outs):

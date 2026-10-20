@@ -139,3 +139,49 @@ def test_map_on_streams_matches_sequential_on_every_device_layout():
         got = map_on_streams(lambda *a, device: nc._recipe_predictions(*a, device=device), args, workers, devices)
         for g, s in zip(got, seq):
             assert all(np.array_equal(g[rc], s[rc]) for rc in RECIPES), devices
+
+
+def test_nnls_weights_convex_and_picks_signal():
+    rng = np.random.default_rng(0)
+    y = rng.normal(size=200)
+    P = np.stack([y + 0.1 * rng.normal(size=200), rng.normal(size=200)], 1)
+    w = nc.nnls_weights(P, y)
+    assert (w >= 0).all() and w.sum() == pytest.approx(1.0)
+    assert w[0] > 0.8
+
+
+def test_nnls_weights_zero_solution_falls_back_to_equal():
+    y = np.arange(10.)
+    P = np.stack([-y, -2 * y], 1)          # only negative weights would help
+    assert np.allclose(nc.nnls_weights(P, y), [0.5, 0.5])
+
+
+def test_nnls_weights_collinear_heads_finite():
+    y = np.random.default_rng(1).normal(size=50)
+    P = np.stack([y, y, y], 1)
+    w = nc.nnls_weights(P, y)
+    assert np.isfinite(w).all() and w.sum() == pytest.approx(1.0)
+
+
+def test_stack_of_one_head_equals_that_head():
+    X, y = synthetic()
+    res = nc.nested_cv({"a": X}, {"a": ["a"]}, y, stacks={"s": ["a"]})
+    np.testing.assert_allclose(res["s"]["oof"], res["a"]["oof"])
+    assert res["s"]["chosen"][0]["members"][0]["weight"] == pytest.approx(1.0)
+
+
+def test_stack_weights_favour_informative_head():
+    X, y = synthetic()
+    noise = np.random.default_rng(3).normal(size=X.shape).astype(np.float32)
+    res = nc.nested_cv({"good": X, "bad": noise}, {}, y, stacks={"s": ["good", "bad"]})
+    w = {m["arm"]: m["weight"] for m in res["s"]["chosen"][0]["members"]}
+    assert w["good"] > w["bad"]
+    assert res["s"]["r2_mean"] > 0.9
+
+
+def test_nested_cv_without_stacks_unchanged():
+    X, y = synthetic()
+    a = nc.nested_cv({"a": X}, {"a": ["a"]}, y)
+    b = nc.nested_cv({"a": X}, {"a": ["a"]}, y, stacks={})
+    np.testing.assert_array_equal(a["a"]["oof"], b["a"]["oof"])
+    assert set(a) == set(b)
