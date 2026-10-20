@@ -151,9 +151,10 @@ flowchart TB
     S8 -.-> X8["random 0.5 · block 0.75<br/>failed per-seed gates"]
     FM -.-> X9["readout menus · block-6 flat 2/8<br/>extra heads · LN ablation"]
     FF -.-> X10["+2 epochs, λ .05/.01: +.0006<br/>SIGReg projector: −.005/−.002"]
+    RE -.-> X11["Fusion (App. B) · NNLS stack 3/8 vs avg, +.011<br/>test-time augmentation 1/8, −.127"]
     classDef drop fill:#eee,stroke:#bbb,color:#777
     classDef keep fill:#e2f2e5,stroke:#5a9,color:#1d5a32
-    class X1,X2,X3,X4,X5,X8,X9,X10 drop
+    class X1,X2,X3,X4,X5,X8,X9,X10,X11 drop
     class RE keep
 ```
 
@@ -178,6 +179,7 @@ flowchart TB
 | Seed ensemble (10-13) | Average 4 seeds' predictions | 7/8, +.086 (random 6/8); trained features amplify 1% noise ~20× | Kept; noise sensitivity found |
 | Robustness continuation (10-13) | Block-2 invariance to measured noise | 7/8 and 8/8 vs raw, 8/8 vs random, +.044/+.047; drift .080 → .012 | Robust term kept |
 | Robust ensemble (10-13) | Robust term on all 4 seeds | 8/8 vs raw, 8/8 vs random, +.056 | Final model |
+| Ensemble fusion (10-20) | Learned head weights; test-time augmentation (Appendix B) | Stack vs average 3/8, +.011; augmentation vs average 1/8, −.127 | Plain average kept |
 
 ### Input normalization
 
@@ -496,6 +498,40 @@ RMSE, every arm (lower is better; error metrics defined in section 10):
 - **labeled_data.** Every ROCKET-family arm falls below raw ridge there (.53–.78). Inner-CV scores are equally low (.49–.77), so recipe choice is not the cause. These features pool kernel responses nonlinearly and appear to lose the fine linear intensity information that ridge on the raw spectrum, and the JEPA features, keep.
 - **Concat underperforms averaging.** One ridge penalty serves both feature blocks, which likely lets the MiniRocket block dominate. Averaging lets each model keep its own probe.
 - **Seeds.** MiniRocket's spread across three kernel seeds reaches .08 (0112) and .06 (0120), as large as many of the gaps above.
+
+## Appendix B. Methods that did not help
+
+### B1. Ensemble fusion: stacking and test-time augmentation (2026-10-20)
+
+**Bottom line.** Neither a learned combination of JEPA heads nor test-time augmentation beats the plain four-member average. The average stays the candidate.
+
+**What was tried.** Both arms fuse JEPA features only; raw spectra are a comparison row, never an input.
+- **Stacking.** 12 heads: 4 members × {block-2 flat, block-2 mean, block-6 mean}. Each head is probed with its recipe chosen in inner CV. Non-negative least-squares weights, summing to 1, are fitted on the inner-CV predictions of each outer training fold and applied to the outer-test predictions.
+- **Test-time augmentation.** Each member's hidden states are averaged over 8 perturbed copies of the input. The perturbations use the robust continuation's training settings (probability 0.5, noise up to the corpus p90, offset, slope and scale up to 5%, ±1-bin shift).
+- **Protocol.** Same nested CV as the main results (2×5 outer, 5 inner, 12 recipes, seed 42). The re-run average reproduces the published +.0556 vs raw exactly.
+- **Criteria, fixed beforehand.** Beat the average in mean ΔR² and on at least 5/8 sets, and beat raw on 8/8.
+
+| Set | raw | average | stack | aug. average | aug. stack | random-weight average |
+|---|---|---|---|---|---|---|
+| labeled_data | .830 | **.959** | .958 | .261 | .266 | .949 |
+| 0055 | .591 | .640 | .691 | **.694** | .482 | .541 |
+| 0106 | .697 | **.714** | .704 | .683 | .705 | .702 |
+| 0109 | .918 | .943 | **.947** | .824 | .829 | .933 |
+| 0112 | .377 | .421 | **.477** | .328 | .401 | .364 |
+| 0113 | .548 | **.702** | .688 | .671 | .586 | .561 |
+| 0114 | .983 | **.986** | **.986** | .981 | .980 | .983 |
+| 0120 | .380 | **.405** | .404 | .311 | .274 | .354 |
+| wins vs raw | | 8/8 | 8/8 | 2/8 | 3/8 | |
+
+- **Stacking.** Beats the average on 3/8 sets, mean +.011. The gain comes from 0055 (+.051 ± .068) and 0112 (+.056 ± .031), two small sets with wide intervals. Elsewhere the weights match the average or overfit slightly.
+- **Test-time augmentation.** Beats the average on 1/8 sets, mean −.127. labeled_data falls from .96 to .26.
+  - The augmented block-2 features differ from the plain ones by only about 6% in norm (row correlation .998). The label therefore lives in very small feature directions, which training-strength perturbations overwrite.
+  - The robust term reduces block-2 drift but does not make these label-bearing directions invariant.
+- **Code.** Both options remain available for later studies:
+  - `ensemble --stack` (`nested_cv(..., stacks=...)`);
+  - `evaluation.tta` (`configs/eval_tta.yaml`).
+
+  Outputs are in `outputs/ensemble-fusion/` (`verdict.json`).
 
 ## References
 
