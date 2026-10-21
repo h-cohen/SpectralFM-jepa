@@ -152,9 +152,10 @@ flowchart TB
     FM -.-> X9["readout menus · block-6 flat 2/8<br/>extra heads · LN ablation"]
     FF -.-> X10["+2 epochs, λ .05/.01: +.0006<br/>SIGReg projector: −.005/−.002"]
     RE -.-> X11["Fusion (App. B) · NNLS stack 3/8 vs avg, +.011<br/>test-time augmentation 1/8, −.127"]
+    RE -.-> X12["Signal squeeze (App. B) · readout by inner CV 5/8, −.013<br/>8 members 3/8, +.008 · per-set adaptation 5/8, −.001"]
     classDef drop fill:#eee,stroke:#bbb,color:#777
     classDef keep fill:#e2f2e5,stroke:#5a9,color:#1d5a32
-    class X1,X2,X3,X4,X5,X8,X9,X10,X11 drop
+    class X1,X2,X3,X4,X5,X8,X9,X10,X11,X12 drop
     class RE keep
 ```
 
@@ -180,6 +181,7 @@ flowchart TB
 | Robustness continuation (10-13) | Block-2 invariance to measured noise | 7/8 and 8/8 vs raw, 8/8 vs random, +.044/+.047; drift .080 → .012 | Robust term kept |
 | Robust ensemble (10-13) | Robust term on all 4 seeds | 8/8 vs raw, 8/8 vs random, +.056 | Final model |
 | Ensemble fusion (10-20) | Learned head weights; test-time augmentation (Appendix B) | Stack vs average 3/8, +.011; augmentation vs average 1/8, −.127 | Plain average kept |
+| Signal squeeze (10-21) | Readout by inner CV; 8 members; per-set adaptation (Appendix B) | 5/8, −.013; 3/8, +.008; 5/8, −.001 vs average | Plain 4-member average kept |
 
 ### Input normalization
 
@@ -532,6 +534,39 @@ RMSE, every arm (lower is better; error metrics defined in section 10):
   - `evaluation.tta` (`configs/eval_tta.yaml`).
 
   Outputs are in `outputs/ensemble-fusion/` (`verdict.json`).
+
+### B2. Signal squeeze: readout selection, eight members, per-set adaptation (2026-10-21)
+
+**Bottom line.** None of the three ways to extract more from the frozen features beats the current four-member average under the criteria fixed beforehand.
+- The eight-member average reaches +.063 vs raw on 8/8 (current: +.056), but the whole gain is one set, 0112.
+- Four seeds with a linear probe on block-2 flat features look like the ceiling of this model family.
+
+**What was tried.** Every arm is paired with the current average on the same outer folds.
+- **A. Readout chosen in inner CV.** For each member and fold, inner CV picks among block-2 flat, block-1 flat, flat blocks 1 and 2 concatenated (24,576 dimensions) and block-2 seg4.
+- **B. Eight members.** Four new seeds (103–106), each with stage 1 (`final_model.yaml`) and the stage-2 robust continuation.
+- **C. Per-set adaptation.** Each member continues for 5,000 steps with half of its batches drawn from the target set's own unlabeled spectra and half from the rest of the corpus. Labels are never used. Block-2 flat probes; 32 runs.
+- **Criteria.** Beat the average in mean ΔR² and on at least 5/8 sets, and beat raw on 8/8.
+
+| Set | raw | average (4) | A: selection | B: 8 members | C: adapted | random-weight (8) |
+|---|---|---|---|---|---|---|
+| labeled_data | .830 | .959 | .960 | **.960** | **.960** | .949 |
+| 0055 | .591 | **.640** | .543 | .632 | .646 | .541 |
+| 0106 | .697 | .714 | **.728** | .713 | .709 | .702 |
+| 0109 | .918 | .943 | .943 | .942 | **.950** | .933 |
+| 0112 | .377 | .421 | .438 | **.489** | .399 | .364 |
+| 0113 | .548 | .702 | .672 | .698 | **.727** | .561 |
+| 0114 | .983 | **.986** | **.986** | **.986** | **.986** | .982 |
+| 0120 | .380 | .405 | .393 | **.411** | .385 | .354 |
+| wins vs average | | | 5/8 | 3/8 | 5/8 | |
+| mean Δ vs average | | | −.013 | +.008 | −.001 | |
+
+- **A.** Inner CV on 25–70 spectra picks unstable readouts. 0055 loses .097 and 0113 loses .030. Where the pick is stable it helps a little: 0106 picks block-2 seg4 in every fold (+.015), and labeled_data picks block 1 or blocks 1+2 (+.001).
+- **B.** The four new seeds score .525 on 0112, against .421 for the original four. They change nothing elsewhere, so the average has saturated on seven sets. 0112's swing tracks the seed draw.
+- **C.** Adaptation helps 0113 (+.026) and 0109 (+.007) but hurts the two weak sets it targeted, 0112 (−.022) and 0120 (−.019). More self-supervised training on a set's own spectra does not recover the structure MiniRocket finds on 0112.
+- **Code and outputs.**
+  - `ensemble --stack --select <readouts> --no-stack-heads` runs arm A.
+  - Arm C needs only config: a per-run `data.source_weights` with `training.max_steps`.
+  - Outputs are in `outputs/signal-squeeze/`, including `verdict.json`.
 
 ## References
 
