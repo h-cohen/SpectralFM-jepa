@@ -9,14 +9,15 @@ from lightly.loss import SIGReg
 
 class LeJEPAObjective(nn.Module):
     def __init__(self, lambda_sigreg: float, num_slices: int = 1024, knots: int = 17, t_max: float = 3.0,
-                 global_weight: float = 0.0, robust_weight: float = 0.0):
+                 global_weight: float = 0.0, robust_weight: float = 0.0, preserve_weight: float = 0.0):
         super().__init__()
+        self.preserve_weight = preserve_weight
         self.robust_weight = robust_weight
         self.lambda_sigreg = lambda_sigreg
         self.global_weight = global_weight
         self.sigreg = SIGReg(knots=knots, t_max=t_max, num_vectors=num_slices)
 
-    def forward(self, predicted, target_masked, target, views=None, robust=None) -> dict:
+    def forward(self, predicted, target_masked, target, views=None, robust=None, preserve=None) -> dict:
         with torch.autocast(device_type=target.device.type, enabled=False):
             mse = F.mse_loss(predicted.float(), target_masked.float())
             lam = self.lambda_sigreg
@@ -35,4 +36,9 @@ class LeJEPAObjective(nn.Module):
                 rob = (perturbed - clean).pow(2).mean() / clean.detach().var(0).mean().clamp_min(1e-8)
                 loss = loss + self.robust_weight * rob
                 out["robust_loss"] = rob
+            if preserve is not None:   # student vs frozen stage-1 teacher block-k tokens, same scale-free form
+                student, teacher = (h.float() for h in preserve)
+                pres = (student - teacher.detach()).pow(2).mean() / teacher.detach().var(0).mean().clamp_min(1e-8)
+                loss = loss + self.preserve_weight * pres
+                out["preserve_loss"] = pres
         return {"loss": loss, **out}

@@ -22,7 +22,7 @@ from ..models.masking import make_mask, random_mask
 from ..models.vit_1d import build_model, core_model_config
 from ..utils import wandb as wb
 from . import diagnostics as diag
-from .checkpoint import load_checkpoint, save_checkpoint, sha256_file
+from .checkpoint import load_checkpoint, load_model, save_checkpoint, sha256_file
 from .loss import LeJEPAObjective
 
 RECOMMENDED_MIN_BATCH = 256   # SIGReg's Epps-Pulley statistic is estimated from the batch
@@ -75,9 +75,18 @@ def draw_views(global_cfg, batch_size, num_patches, generator, device):
     return [random_mask(batch_size, num_patches, 1 - keep, generator, device)[1] for _ in range(n)]
 
 
+def teacher_pair(teacher, x, out, preserve_cfg):
+    """(student, teacher) clean block-k tokens [B, T, D]; the frozen teacher runs under no_grad. None when off."""
+    if not preserve_cfg:
+        return None
+    with torch.no_grad():
+        reference = teacher.encoder.prefix(teacher.tokenizer(x), preserve_cfg["block"])
+    return out["clean_block"], reference
+
+
 @torch.no_grad()
 def validation_losses(model, objective, signals, num_patches, masking_cfg, batch_size, seed, device, amp, global_cfg=None,
-                      robust_cfg=None, stats=None):
+                      robust_cfg=None, stats=None, preserve_cfg=None, teacher=None):
     """Mean losses over full batches of the fixed valid set; the mask seed is fixed so values
     are comparable across steps."""
     model.eval()
@@ -89,6 +98,8 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
         totals.update(global_inv_loss=0.0, global_sigreg_loss=0.0, global_loss=0.0)
     if robust_cfg:
         totals["robust_loss"] = 0.0
+    if preserve_cfg:
+        totals["preserve_loss"] = 0.0
     n_batches = 0
     for i in range(0, len(signals) - batch_size + 1, batch_size):
         x = signals[i:i + batch_size].to(device)
@@ -96,9 +107,11 @@ def validation_losses(model, objective, signals, num_patches, masking_cfg, batch
         view_idxs = draw_views(global_cfg, len(x), num_patches, generator, device)
         robust_x = perturb(x, robust_cfg, stats, robust_generator) if robust_cfg else None
         with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-            out = model(x, masked_idx, visible_idx, view_idxs, robust_x, (robust_cfg or {}).get("block", 2))
+            out = model(x, masked_idx, visible_idx, view_idxs, robust_x, (robust_cfg or {}).get("block", 2),
+                        return_block=(preserve_cfg or {}).get("block"))
+            preserve = teacher_pair(teacher, x, out, preserve_cfg)
         losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
-                           robust=out.get("robust"))
+                           robust=out.get("robust"), preserve=preserve)
         for k in totals:
             totals[k] += losses[k].item()
         n_batches += 1
@@ -207,6 +220,14 @@ def train(cfg: dict) -> dict:
         check_config(robust_cfg)
         if dcfg["normalization"] != "global":
             raise ValueError("training.robust perturbs raw values and needs global normalization")
+    preserve_cfg = tcfg.get("preserve")   # optional frozen stage-1 reference at block k; absent = no term
+    if preserve_cfg:
+        if not tcfg.get("init_checkpoint") and not tcfg.get("resume"):   # a resumed run reads it from its checkpoint
+            raise ValueError("training.preserve needs training.init_checkpoint (the frozen reference)")
+        if preserve_cfg["weight"] < 0:
+            raise ValueError(f"training.preserve.weight={preserve_cfg['weight']} must be >= 0")
+        if not 1 <= preserve_cfg["block"] <= mcfg["depth"]:
+            raise ValueError(f"training.preserve.block={preserve_cfg['block']} must lie in [1, depth={mcfg['depth']}]")
     seed = ecfg["seed"]
     set_seed(seed)
     device = resolve_device(tcfg["device"])
@@ -290,9 +311,17 @@ def train(cfg: dict) -> dict:
     if init:
         model.load_state_dict(init["ckpt"]["model"])
     model = model.to(device)
+    teacher = None
+    if preserve_cfg:   # frozen reference rebuilt from the init checkpoint (also on resume); never saved
+        reference_path = resume["ckpt"]["config"]["training"]["init_checkpoint"] if resume else tcfg["init_checkpoint"]
+        if not reference_path:
+            raise ValueError("training.preserve: the resumed checkpoint has no init_checkpoint to rebuild the reference")
+        teacher = load_model(reference_path)[0]
+        teacher = teacher.to(device).eval().requires_grad_(False)
     objective = LeJEPAObjective(tcfg["lambda_sigreg"], tcfg["sigreg_num_slices"],
                                 tcfg["sigreg_knots"], tcfg["sigreg_t_max"], tcfg["global_weight"],
-                                (robust_cfg or {}).get("weight", 0.0)).to(device)
+                                (robust_cfg or {}).get("weight", 0.0),
+                                (preserve_cfg or {}).get("weight", 0.0)).to(device)
     optimizer = torch.optim.AdamW(param_groups(model, tcfg["weight_decay"]), lr=tcfg["learning_rate"])
     scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
     scaler = torch.amp.GradScaler(device.type, enabled=amp)
@@ -354,9 +383,11 @@ def train(cfg: dict) -> dict:
             view_idxs = draw_views(global_cfg, len(x), num_patches, mask_generator, device)
             robust_x = perturb(x, robust_cfg, global_stats, robust_generator) if robust_cfg else None
             with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                out = model(x, masked_idx, visible_idx, view_idxs, robust_x, robust_block)
+                out = model(x, masked_idx, visible_idx, view_idxs, robust_x, robust_block,
+                            return_block=(preserve_cfg or {}).get("block"))
+                preserve = teacher_pair(teacher, x, out, preserve_cfg)
             losses = objective(out["predicted"], out["target_masked"], out["target"], out.get("views"),
-                               robust=out.get("robust"))
+                               robust=out.get("robust"), preserve=preserve)
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(losses["loss"]).backward()
             scaler.unscale_(optimizer)
@@ -387,7 +418,7 @@ def train(cfg: dict) -> dict:
             if step % tcfg["val_every"] == 0 or last:
                 valid = validation_losses(model, objective, valid_signals, num_patches, kcfg,
                                           batch_size, seed + 2, device, amp, global_cfg,
-                                          robust_cfg, data_derived.get("global_stats"))
+                                          robust_cfg, data_derived.get("global_stats"), preserve_cfg, teacher)
                 latest.update(valid)
                 wb.log(run, valid, step=step)
             if step % tcfg["diag_every"] == 0 or last:

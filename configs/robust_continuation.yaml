@@ -58,6 +58,7 @@ training:
   device: cuda
   resume: null
   stop_step: null              # stop early at this step; the LR schedule keeps the full max_steps length
+  preserve: null               # {weight, block}: pull block-k tokens toward the frozen init_checkpoint model
   save_steps: []               # extra checkpoint_step<N>.pt at these steps (0 = the init weights)
   init_checkpoint: null
   robust:
