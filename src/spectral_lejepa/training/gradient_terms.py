@@ -69,11 +69,14 @@ def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, devi
             block_metrics[group] = {"gradient_norms": {n: float(vectors[n][group].norm().item()) for n in (*terms, *extra)},
                 "gradient_norm_total": float(sum(grads.values()).norm().item()),
                 "cosine_prediction_vs_other": float(torch.dot(prediction, other).item() / denom.item()) if denom else 0.0}
-            if groups is not None:   # cosine of every unordered term pair; zero-norm vectors report 0.0
+            if groups is not None:
+                # Cosines over the weighted terms plus robustness_unweighted. Cosine is scale-invariant, so the
+                # robustness_unweighted pairs are the ones to compare across arms (also at robust weight 0).
+                # A zero-norm vector (e.g. the weighted robustness term at weight 0) gives None, never 0.0.
                 pair = {}
-                for a, b in itertools.combinations(terms, 2):
+                for a, b in itertools.combinations([*terms, *extra], 2):
                     d = vectors[a][group].norm() * vectors[b][group].norm()
-                    pair[f"{a}|{b}"] = float(torch.dot(vectors[a][group], vectors[b][group]).item() / d.item()) if d else 0.0
+                    pair[f"{a}|{b}"] = float(torch.dot(vectors[a][group], vectors[b][group]).item() / d.item()) if d else None
                 block_metrics[group]["pairwise_cosine"] = pair
         term_values = {name: float(value.detach().item()) for name, value in terms.items()}
         total = float(losses["loss"].detach().item())

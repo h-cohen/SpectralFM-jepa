@@ -35,7 +35,8 @@ def _block2(model, x, device, batch=64):
 def _mean_nested(items):
     if isinstance(items[0], dict):
         return {k: _mean_nested([i[k] for i in items]) for k in items[0]}
-    return float(np.mean(items))
+    items = [i for i in items if i is not None]   # None = zero-norm cosine, left out of the mean
+    return float(np.mean(items)) if items else None
 
 
 def diag(checkpoint, reference, output, device='cuda'):
