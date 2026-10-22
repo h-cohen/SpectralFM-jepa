@@ -531,6 +531,37 @@ def fetch():
     HIST.write_text(json.dumps(out))
 
 
+def stage2_figure(root=Path('outputs/stage2-robustness'), name='fig_stage2_trajectory.svg'):
+    """Appendix C: block-2 effective rank, distance from stage 1 and JEPA/robustness gradient cosine over the
+    first Stage-2 steps; one line per arm (A-D), solid p0, dashed p1. Missing diag files skip the arm or point."""
+    diag, steps = Path(root) / 'diag', (0, 100, 1000, 5000)
+    if not diag.is_dir():
+        return
+    colors = {'A': '#E69F00', 'B': '#0072B2', 'C': '#009E73', 'D': '#CC79A7'}
+    getters = (('Block-2 effective rank', lambda d: d['features']['effective_rank']),
+               ('Distance from stage-1 features', lambda d: d['features']['displacement']),
+               ('cos(JEPA grad, robustness grad)',
+                lambda d: d['gradients']['early']['pairwise_cosine']['mse|robustness_unweighted']))
+    fig, axes = plt.subplots(1, 3, figsize=(10, 3))
+    for arm, color in colors.items():
+        for lin, ls in (('p0', '-'), ('p1', '--')):
+            files = [diag / f'{arm}_{lin}_step{s}.json' for s in steps]
+            if not all(f.exists() for f in files):
+                continue
+            docs = [json.loads(f.read_text()) for f in files]
+            for ax, (_, get) in zip(axes, getters):
+                pts = [(s, get(d)) for s, d in zip(steps, docs) if get(d) is not None]
+                if pts:
+                    ax.plot(*zip(*pts), ls, color=color, marker='o', ms=3, label=f'{arm} {lin}')
+    for ax, (title, _) in zip(axes, getters):
+        ax.set_xscale('symlog', linthresh=100)
+        ax.set_xticks(steps, [str(s) for s in steps])
+        ax.set_xlabel('Stage-2 step'), ax.set_title(title, fontsize=9)
+    axes[2].axhline(0, color='#888', lw=.6)
+    axes[0].legend(fontsize=7, ncol=2, frameon=False)
+    save(fig, name)
+
+
 def figures():
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / 'fig0_architecture.svg').write_text(block_diagram())
@@ -551,6 +582,7 @@ def figures():
         benchmark_figure(bench)
         benchmark_figure(bench, ALL_ARMS, 'fig_appendix_benchmark.svg')
         error_figures(bench, {s: predictions(BENCHMARK.parent / s) for s in bench['sets']})
+    stage2_figure()
     print(json.dumps(correlation_figure()))
     print(json.dumps(ablations()["criteria"]))
 

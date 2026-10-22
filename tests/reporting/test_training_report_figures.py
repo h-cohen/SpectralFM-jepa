@@ -142,3 +142,22 @@ def test_correlation_figure(tmp_path, monkeypatch):
     assert out['collapsed']['top_pc_share'] > .9 > out['iso']['top_pc_share']
     assert 0 <= out['iso']['label_r2_top5'] <= out['iso']['label_r2_top20'] <= 1
     assert (tmp_path / 'fig_correlation.svg').exists()
+
+
+def test_stage2_figure(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr(training_report, 'OUT', tmp_path)
+    diag = tmp_path / 'root' / 'diag'
+    diag.mkdir(parents=True)
+    for arm in 'AB':                                   # C and D missing: skipped
+        for lin in ('p0', 'p1'):
+            for s in (0, 100, 1000, 5000):
+                cos = None if s == 0 else -.3
+                (diag / f'{arm}_{lin}_step{s}.json').write_text(json.dumps(
+                    {'features': {'effective_rank': 50 - s / 500, 'displacement': s / 1000},
+                     'gradients': {'early': {'pairwise_cosine': {'mse|robustness_unweighted': cos}}}}))
+    training_report.stage2_figure(tmp_path / 'root')
+    assert (tmp_path / 'fig_stage2_trajectory.svg').exists()
+    (tmp_path / 'fig_stage2_trajectory.svg').unlink()
+    training_report.stage2_figure(tmp_path / 'absent')
+    assert not (tmp_path / 'fig_stage2_trajectory.svg').exists()

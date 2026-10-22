@@ -182,6 +182,7 @@ flowchart TB
 | Robust ensemble (10-13) | Robust term on all 4 seeds | 8/8 vs raw, 8/8 vs random, +.056 | Final model |
 | Ensemble fusion (10-20) | Learned head weights; test-time augmentation (Appendix B) | Stack vs average 3/8, +.011; augmentation vs average 1/8, −.127 | Plain average kept |
 | Signal squeeze (10-21) | Readout by inner CV; 8 members; per-set adaptation (Appendix B) | 5/8, −.013; 3/8, +.008; 5/8, −.001 vs average | Plain 4-member average kept |
+| Stage 2 robustness (10-22) | Which part of Stage 2 drives the trade-off (Appendix C) | Continuation alone: no change; robustness term: 0112 −.07/−.10, 0106 +.03, block-2 rank −30% | Next: frozen stage-1 reference at block 2 |
 
 ### Input normalization
 
@@ -567,6 +568,82 @@ RMSE, every arm (lower is better; error metrics defined in section 10):
   - `ensemble --stack --select <readouts> --no-stack-heads` runs arm A.
   - Arm C needs only config: a per-run `data.source_weights` with `training.max_steps`.
   - Outputs are in `outputs/signal-squeeze/`, including `verdict.json`.
+
+## Appendix C. Stage 2 robustness investigation (2026-10-22)
+
+**Bottom line.** The Stage-2 trade-off (0106 up, 0112 down, much better noise robustness) is caused by the robustness term itself, not by restarting training. Within the first 1,000 steps the term compresses block 2: effective rank falls by about a third, and the lowest-variance feature directions shrink by half. Noise consistency alone is enough to produce this. A five-fold lower weight halves the compression and recovers 0112 on one lineage, but loses some robustness and does not reproduce on the second. The recommended next experiment is a frozen stage-1 reference at block 2. All results are exploratory: the benchmark has been inspected before, and release evidence still needs independent group-labelled data.
+
+**Loss and data flow (verified against the code).**
+
+```mermaid
+flowchart LR
+    X["clean spectrum x"] --> T["tokenizer"]
+    XP["perturb(x): noise, offset, slope,<br/>scale, ±1-bin shift (own RNG stream)"] --> TP["tokenizer"]
+    T --> E["encoder blocks 1–6 (full pass)"]
+    E -->|"hidden[1] = exported block-2 readout"| HC["h_clean (block 2)"]
+    TP --> EP["encoder.prefix: blocks 1–2"]
+    EP --> HP["h_pert (block 2)"]
+    HC --> R["robust = mean((h_pert − h_clean)²)<br/>/ mean(var_batch(h_clean)) [denominator detached]"]
+    HP --> R
+    E --> J["JEPA prediction + SIGReg + pooled-view terms"]
+    R -->|"× weight 0.1"| L["total loss"]
+    J --> L
+```
+
+- Gradients flow through **both** the clean and the perturbed branch. Only the variance denominator is detached, so the term has no stop-gradient and no frozen teacher.
+- Perturbation draws come from their own generator, so setting the weight to 0 leaves masks and batch order unchanged. That makes arms A–D exactly matched.
+
+**Sanity checks** (tests in `tests/training/test_robust_paths.py`):
+- an identity perturbation returns the input;
+- the prefix pass equals the full pass at block 2;
+- the training block index is the exported readout;
+- identical inputs give a robustness loss of 0;
+- weight 0 reproduces the base loss and gradients;
+- two clean passes in train mode differ by 0 (dropout is 0).
+
+**Runs.**
+- Starting points: the stage-1 checkpoints `p48_s0` (p0) and `p48_s1` (p1).
+- Training: the stage-2 optimizer and full 49,799-step schedule, stopped at 5,000 steps (`training.stop_step`), with checkpoints at 0, 100, 1,000 and 5,000.
+- Seeds: 410 and 411, identical across arms.
+- Arms:
+  - **A:** robustness weight 0.
+  - **B:** current recipe, weight 0.1.
+  - **C:** noise only (offset, slope, scale and shift off).
+  - **D:** weight 0.02.
+- Manifest with SHA-256s: `outputs/stage2-robustness/manifest.json`.
+
+**Scores.**
+- All scores are development (inner-CV) R² on outer-training rows, using block-2 flat features with the production probe.
+- Noise robustness is the fixed-ridge R² at 3% noise (three draws), with probes fitted on clean rows only.
+- Raw and random-weight rows come from the same tool.
+
+| Arm (p0 / p1) | 0112 clean | 0106 clean | noise 3%, mean of 0112 and 0106 | macro Δ vs A | block-2 effective rank | lowest-decile variance | distance from stage 1 |
+|---|---|---|---|---|---|---|---|
+| step 0 (stage 1) | .594 / .599 | .621 / .623 | | | 66.5 / 67.9 | .018 / .019 | 0 |
+| A: continuation only | .618 / .615 | .629 / .632 | −.15 / .03 | 0 | 69.1 / 71.0 | .019 / .021 | .20 / .20 |
+| B: current recipe | .546 / .516 | .658 / .663 | .52 / .49 | −.001 / −.011 | 46.1 / 44.7 | .004 / .004 | .68 / .67 |
+| C: noise only | .557 / .503 | .657 / .661 | .52 / .49 | +.001 / −.013 | 53.5 / 50.7 | .006 / .006 | .60 / .60 |
+| D: weight .02 | .614 / .537 | .641 / .648 | .45 / .45 | +.006 / −.009 | 60.9 / 60.0 | .010 / .010 | .40 / .40 |
+| raw spectra (control) | .366 | .679 | | | | | |
+| random weights (control) | .375 | .685 | | | | | |
+
+- **Continuation is not the cause.** Restarting the learning rate and resetting the optimizer (A) changes clean R² by at most .025 on any set, and slightly raises effective rank.
+- **The term compresses block 2.** In B, rank and the low-variance directions fall within 1,000 steps. The term's gradient points against the JEPA prediction gradient at every saved step (cosine −.11 to −.84 over the shared early encoder).
+- **The pattern reproduces on both lineages**: 0106 gains (+.03), 0112 loses (−.07 / −.10), and 0112's noise robustness more than doubles.
+- **Noise alone suffices.** C reproduces B's trade-off with slightly less compression.
+- **Dose matters.** D halves the compression and the feature displacement. It recovers 0112 on p0 but not on p1, and gives up about .06 of the noise robustness.
+- **Pre-fixed criteria.** The macro rules (degrade / no change) did not fire; the effect is set-specific. Under the set-level criterion written before C and D were scored, neither passes on both lineages.
+- **Measurement caveat.** On labeled_data, every arm's corrupted R² is hugely negative, including raw ridge (about −5×10⁴ at 1% noise). Perturbation strengths relative to each spectrum's SD exceed that set's label-relevant scale. Its corrupted scores were excluded, and future stress tests need per-set strengths.
+- **Open confounds.**
+  - The evidence covers 5,000 of 49,799 steps; the full-run endpoints (`robust_p0`, `robust_p1`) show the same direction.
+  - C changes total consistency pressure as well as perturbation type.
+  - Two lineages are not independent spectra.
+
+![Stage 2 trajectory](figures/training-report/fig_stage2_trajectory.svg)
+
+**Figure C1.** Block-2 effective rank, distance from stage-1 features, and cosine between the JEPA and robustness gradients over the first 5,000 Stage-2 steps (solid p0, dashed p1).
+
+**Recommended next experiment.** Keep the current robustness term and add a frozen stage-1 reference at the exported block-2 readout: `mu · ||h2_student(clean) − h2_stage1(clean)||²`, with deterministic matching outputs. Choose the coefficient grid from unlabeled loss and gradient scales before looking at labels. This targets the observed mechanism, compression of block 2 away from the stage-1 features, while keeping the term that buys noise robustness. Code and outputs: `stage2-diag` and `stress` commands, `training.stop_step` and `training.save_steps`; `outputs/stage2-robustness/`.
 
 ## References
 
