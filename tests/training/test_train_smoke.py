@@ -303,3 +303,57 @@ def test_legacy_resume_scheduler_keeps_cosine_position():
     fresh.step()
     schedule.step()
     assert fresh.param_groups[0]['lr'] == pytest.approx(.001 * lr_factor(5, 2, 10, .001))
+
+
+def _stop_cfg(data_dir, tmp_path, name, **training):
+    cfg = tiny_cfg(data_dir, tmp_path / name, name)
+    cfg["training"].update(max_steps=20, ckpt_every=1000, log_every=4, val_every=1000,
+                           diag_every=1000, **training)
+    return cfg
+
+
+def test_stop_step_keeps_full_schedule(data_dir, tmp_path):
+    cfg = _stop_cfg(data_dir, tmp_path, "stop", stop_step=8, save_steps=[0, 4])
+    with pytest.warns(UserWarning):
+        result = train(cfg)
+    out = Path(result["output_dir"])
+    for n in (0, 4, 8):
+        assert (out / f"checkpoint_step{n}.pt").exists()
+    ckpt = load_checkpoint(out / "checkpoint_last.pt")
+    assert ckpt["step"] == 8
+    warmup = ckpt["config"]["derived"]["warmup_steps"]
+    expected = cfg["training"]["learning_rate"] * lr_factor(8, warmup, 20, cfg["training"]["final_lr_ratio"])
+    assert result["history"][-1]["train/learning_rate"] == pytest.approx(expected)
+    assert ckpt["scheduler"]["last_epoch"] == 8
+
+
+def test_save_step0_equals_init(data_dir, tmp_path):
+    with pytest.warns(UserWarning):
+        base = train(_stop_cfg(data_dir, tmp_path, "base", stop_step=4))
+    init = base["final_checkpoint"]
+    cfg = _stop_cfg(data_dir, tmp_path, "cont", stop_step=4, save_steps=[0], init_checkpoint=init)
+    with pytest.warns(UserWarning):
+        result = train(cfg)
+    a = load_checkpoint(init)["model"]
+    b = load_checkpoint(Path(result["output_dir"]) / "checkpoint_step0.pt")["model"]
+    assert a.keys() == b.keys() and all(torch.equal(a[k], b[k]) for k in a)
+
+
+def test_resume_past_stop_step(data_dir, tmp_path):
+    with pytest.warns(UserWarning):
+        first = train(_stop_cfg(data_dir, tmp_path, "first", stop_step=8))
+    cfg = _stop_cfg(data_dir, tmp_path, "second", stop_step=12, resume=first["final_checkpoint"])
+    with pytest.warns(UserWarning):
+        second = train(cfg)
+    with pytest.warns(UserWarning):
+        direct = train(_stop_cfg(data_dir, tmp_path, "direct", stop_step=12))
+    r, d = (load_checkpoint(x["final_checkpoint"]) for x in (second, direct))
+    assert r["step"] == d["step"] == 12
+    assert r["scheduler"]["_last_lr"] == pytest.approx(d["scheduler"]["_last_lr"])
+
+
+def test_defaults_unchanged(data_dir, tmp_path):
+    with pytest.warns(UserWarning):
+        result = train(_stop_cfg(data_dir, tmp_path, "plain"))
+    names = {p.name for p in Path(result["output_dir"]).glob("checkpoint*.pt")}
+    assert names == {"checkpoint_last.pt", "checkpoint_step20.pt"}

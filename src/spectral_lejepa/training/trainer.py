@@ -156,7 +156,8 @@ def load_resume_checkpoint(path, cfg):
         return None
     result = load_init_checkpoint(path, cfg)
     old = result["ckpt"]["config"]
-    ignored = {"resume", "init_checkpoint", "device", "log_every", "val_every", "diag_every", "ckpt_every"}
+    ignored = {"resume", "init_checkpoint", "device", "log_every", "val_every", "diag_every", "ckpt_every",
+               "stop_step", "save_steps"}
     for section in ("model", "data", "masking", "training"):
         for key in set(old[section]) | set(cfg[section]):
             if section == "training" and key in ignored:
@@ -256,6 +257,13 @@ def train(cfg: dict) -> dict:
             raise ValueError("training.resume incompatible schedule/data length")
         if not 0 <= resume["ckpt"]["step"] < total_steps:
             raise ValueError("training.resume step must precede total_steps")
+    # stop_step ends the run early while the LR schedule keeps the full total_steps length.
+    stop = tcfg.get("stop_step") or total_steps
+    save_steps = set(tcfg.get("save_steps") or [])
+    if not 0 < stop <= total_steps:
+        raise ValueError(f"training.stop_step={stop} must lie in (0, total_steps={total_steps}]")
+    if resume and resume["ckpt"]["step"] >= stop:
+        raise ValueError("training.resume step must precede training.stop_step")
     below = batch_size < RECOMMENDED_MIN_BATCH
     if below:
         warnings.warn(f"batch_size={batch_size} < {RECOMMENDED_MIN_BATCH}: SIGReg's batch statistic is "
@@ -327,8 +335,10 @@ def train(cfg: dict) -> dict:
         else:
             warnings.warn("Legacy resume checkpoint has no RNG state; stochastic sequence restarts")
         print(f"Resuming step {step}/{total_steps}, lr={optimizer.param_groups[0]['lr']:.8g}", flush=True)
+    if 0 in save_steps and step == 0:
+        checkpoint(0, 0.0)
     model.train()
-    while step < total_steps:
+    while step < stop:
         if sampler is not None:
             sampler.set_epoch(epoch_pass)
         epoch_pass += 1
@@ -357,7 +367,7 @@ def train(cfg: dict) -> dict:
             step += 1
             samples_seen += len(x)
             epoch = step / steps_per_epoch
-            last = step == total_steps
+            last = step == stop
 
             if step % tcfg["log_every"] == 0 or last:
                 record = {f"train/{k}": v.item() for k, v in losses.items()}
@@ -382,6 +392,8 @@ def train(cfg: dict) -> dict:
                                                           seed, device, reference_rank)
                 latest.update(metrics)
             if step % tcfg["ckpt_every"] == 0 or last:
+                checkpoint(step, epoch)
+            elif step in save_steps:
                 checkpoint(step, epoch)
             if last:
                 break
