@@ -18,6 +18,7 @@ COMMANDS = {
     'permutation-audit': 'spectral_lejepa.evaluation.permutation',
     'perturbation': 'spectral_lejepa.evaluation.perturbation',
     'robustness': 'spectral_lejepa.evaluation.perturbation_eval',
+    'stress': 'spectral_lejepa.evaluation.stress',
     'isotropy': 'spectral_lejepa.evaluation.isotropy',
     'report': 'spectral_lejepa.reporting.results',
     'training-report': 'spectral_lejepa.reporting.training_report',
