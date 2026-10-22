@@ -1,5 +1,7 @@
 """Per-term encoder gradient measurements with preserved weights, gradients and RNG."""
 import hashlib
+import itertools
+import numpy as np
 import torch
 from ..data.perturb import perturb
 from ..models.masking import make_mask, random_mask
@@ -16,13 +18,17 @@ def _hash_tensors(values):
     return h.hexdigest()
 def _vector(grads, params):
     return torch.cat([(torch.zeros_like(p) if g is None else g).detach().reshape(-1) for p, g in zip(params, grads)])
-def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, device="cpu", robust_cfg=None, stats=None):
+def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, device="cpu", robust_cfg=None, stats=None, groups=None):
+    """groups=None: block2/block6 groups. groups={name: [params]}: those groups, plus pairwise_cosine between terms."""
     if model.training:
         raise ValueError("model must be in eval mode for the frozen gradient audit")
     device = torch.device(device)
     x = x.to(device)
-    params = {"block2": list(model.encoder.blocks[1].parameters()), "block6": list(model.encoder.blocks[5].parameters())}
-    flat_params = params["block2"] + params["block6"]
+    if groups is None:
+        params = {"block2": list(model.encoder.blocks[1].parameters()), "block6": list(model.encoder.blocks[5].parameters())}
+    else:
+        params = {name: list(ps) for name, ps in groups.items()}
+    flat_params = [p for ps in params.values() for p in ps]
     weight_before = _hash_tensors(list(model.parameters()))
     grad_before = _hash_tensors([p.grad for p in model.parameters()])
     devices = [device.index if device.index is not None else torch.cuda.current_device()] if device.type == "cuda" else []
@@ -52,8 +58,8 @@ def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, devi
         vectors = {}
         for name, term in {**terms, **extra}.items():
             grads = torch.autograd.grad(term, flat_params, retain_graph=True, allow_unused=True)
-            vectors[name] = {g: _vector(grads[o:o + len(ps)], ps) for g, ps, o in (
-                ("block2", params["block2"], 0), ("block6", params["block6"], len(params["block2"]))) }
+            offsets = np.cumsum([0] + [len(ps) for ps in params.values()])
+            vectors[name] = {g: _vector(grads[o:o + len(ps)], ps) for (g, ps), o in zip(params.items(), offsets)}
         block_metrics = {}
         for group in params:
             grads = {name: vectors[name][group] for name in terms}
@@ -63,6 +69,12 @@ def audit_batch(model, objective, x, masking_cfg, global_cfg, *, seed=SEED, devi
             block_metrics[group] = {"gradient_norms": {n: float(vectors[n][group].norm().item()) for n in (*terms, *extra)},
                 "gradient_norm_total": float(sum(grads.values()).norm().item()),
                 "cosine_prediction_vs_other": float(torch.dot(prediction, other).item() / denom.item()) if denom else 0.0}
+            if groups is not None:   # cosine of every unordered term pair; zero-norm vectors report 0.0
+                pair = {}
+                for a, b in itertools.combinations(terms, 2):
+                    d = vectors[a][group].norm() * vectors[b][group].norm()
+                    pair[f"{a}|{b}"] = float(torch.dot(vectors[a][group], vectors[b][group]).item() / d.item()) if d else 0.0
+                block_metrics[group]["pairwise_cosine"] = pair
         term_values = {name: float(value.detach().item()) for name, value in terms.items()}
         total = float(losses["loss"].detach().item())
         if abs(sum(term_values.values()) - total) > 1e-5 * max(1.0, abs(total)):

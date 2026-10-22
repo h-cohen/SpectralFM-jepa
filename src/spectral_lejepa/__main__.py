@@ -5,6 +5,7 @@ import sys
 COMMANDS = {
     'pretrain': 'spectral_lejepa.training.pretrain',
     'gradient-audit': 'spectral_lejepa.training.audit',
+    'stage2-diag': 'spectral_lejepa.training.stage2_diag',
     'export': 'spectral_lejepa.models.export',
     'export-ensemble': 'spectral_lejepa.models.export_ensemble',
     'embed': 'spectral_lejepa.inference',
