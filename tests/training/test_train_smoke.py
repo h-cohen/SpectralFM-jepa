@@ -357,3 +357,16 @@ def test_defaults_unchanged(data_dir, tmp_path):
         result = train(_stop_cfg(data_dir, tmp_path, "plain"))
     names = {p.name for p in Path(result["output_dir"]).glob("checkpoint*.pt")}
     assert names == {"checkpoint_last.pt", "checkpoint_step20.pt"}
+
+
+def test_stop_step_zero_fails(data_dir, tmp_path):
+    cfg = _stop_cfg(data_dir, tmp_path, "stop0", stop_step=0)
+    with pytest.raises(ValueError, match="stop_step"):
+        train(cfg)
+
+
+@pytest.mark.parametrize("bad", [-1, 9])
+def test_save_steps_outside_run_fail(data_dir, tmp_path, bad):
+    cfg = _stop_cfg(data_dir, tmp_path, "badsave", stop_step=8, save_steps=[4, bad])
+    with pytest.raises(ValueError, match="save_steps"):
+        train(cfg)

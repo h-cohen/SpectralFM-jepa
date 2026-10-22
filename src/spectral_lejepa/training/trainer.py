@@ -258,10 +258,13 @@ def train(cfg: dict) -> dict:
         if not 0 <= resume["ckpt"]["step"] < total_steps:
             raise ValueError("training.resume step must precede total_steps")
     # stop_step ends the run early while the LR schedule keeps the full total_steps length.
-    stop = tcfg.get("stop_step") or total_steps
+    stop = tcfg.get("stop_step")
+    stop = total_steps if stop is None else stop
     save_steps = set(tcfg.get("save_steps") or [])
     if not 0 < stop <= total_steps:
         raise ValueError(f"training.stop_step={stop} must lie in (0, total_steps={total_steps}]")
+    if any(n < 0 or n > stop for n in save_steps):
+        raise ValueError(f"training.save_steps={sorted(save_steps)} must lie in [0, stop_step={stop}]")
     if resume and resume["ckpt"]["step"] >= stop:
         raise ValueError("training.resume step must precede training.stop_step")
     below = batch_size < RECOMMENDED_MIN_BATCH
