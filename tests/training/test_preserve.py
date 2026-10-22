@@ -117,3 +117,16 @@ def test_preserve_needs_init_checkpoint(data_dir, tmp_path):
     cfg["training"]["preserve"] = {"weight": 1.0, "block": K}
     with pytest.raises(ValueError, match="init_checkpoint"):
         train(cfg)
+
+
+def test_preserve_survives_chained_resume(data_dir, tmp_path):
+    base = _base(data_dir, tmp_path)
+    with pytest.warns(UserWarning):
+        full = train(_cfg(data_dir, tmp_path, "full", base))
+    mid = Path(full["output_dir"]) / "checkpoint_step3.pt"
+    with pytest.warns(UserWarning):
+        first = train(_cfg(data_dir, tmp_path, "res1", None, resume=str(mid), stop_step=5, save_steps=[4]))
+    again = Path(first["output_dir"]) / "checkpoint_step4.pt"
+    with pytest.warns(UserWarning):
+        second = train(_cfg(data_dir, tmp_path, "res2", None, resume=str(again)))
+    assert [h["train/global_step"] for h in second["history"]] == [5, 6]

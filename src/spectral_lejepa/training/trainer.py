@@ -302,6 +302,10 @@ def train(cfg: dict) -> dict:
         "batch_size_below_256": below, "output_dir": str(out_dir), **data_derived}}
     if init:
         derived["derived"]["resume" if resume else "init_checkpoint"] = init["info"]
+    if preserve_cfg:   # persisted so a checkpoint of a resumed run can itself be resumed
+        derived["derived"]["preserve_reference"] = (
+            (resume["ckpt"]["config"].get("derived", {}).get("preserve_reference")
+             or resume["ckpt"]["config"]["training"].get("init_checkpoint")) if resume else tcfg["init_checkpoint"])
     resolved = {**cfg, **derived}
     (out_dir / "config.yaml").write_text(yaml.safe_dump(resolved, sort_keys=False))
     run = wb.init_run(cfg, job_type=cfg["wandb"]["job_type"], extra_config=derived, name=run_name)
@@ -313,7 +317,11 @@ def train(cfg: dict) -> dict:
     model = model.to(device)
     teacher = None
     if preserve_cfg:   # frozen reference rebuilt from the init checkpoint (also on resume); never saved
-        reference_path = resume["ckpt"]["config"]["training"]["init_checkpoint"] if resume else tcfg["init_checkpoint"]
+        reference_path = tcfg["init_checkpoint"]
+        if resume:   # chained resumes: the first resume saved init_checkpoint=null, so read derived first
+            saved = resume["ckpt"]["config"]
+            reference_path = (saved.get("derived", {}).get("preserve_reference")
+                              or saved["training"].get("init_checkpoint"))
         if not reference_path:
             raise ValueError("training.preserve: the resumed checkpoint has no init_checkpoint to rebuild the reference")
         teacher = load_model(reference_path)[0]
