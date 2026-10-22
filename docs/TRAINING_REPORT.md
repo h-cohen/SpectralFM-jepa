@@ -183,6 +183,7 @@ flowchart TB
 | Ensemble fusion (10-20) | Learned head weights; test-time augmentation (Appendix B) | Stack vs average 3/8, +.011; augmentation vs average 1/8, −.127 | Plain average kept |
 | Signal squeeze (10-21) | Readout by inner CV; 8 members; per-set adaptation (Appendix B) | 5/8, −.013; 3/8, +.008; 5/8, −.001 vs average | Plain 4-member average kept |
 | Stage 2 robustness (10-22) | Which part of Stage 2 drives the trade-off (Appendix C) | Continuation alone: no change; robustness term: 0112 −.07/−.10, 0106 +.03, block-2 rank −30% | Next: frozen stage-1 reference at block 2 |
+| Stage 2 reference (10-22) | Frozen stage-1 reference at block 2 (Appendix C2) | mu .01/.04/.16: distance .68 → .18, 0112 +.01 to +.03 vs B; fails on both lineages | Next: whitened (low-variance-weighted) reference |
 
 ### Input normalization
 
@@ -641,9 +642,33 @@ flowchart LR
 
 ![Stage 2 trajectory](figures/training-report/fig_stage2_trajectory.svg)
 
-**Figure C1.** Block-2 effective rank, distance from stage-1 features, and cosine between the JEPA and robustness gradients over the first 5,000 Stage-2 steps (solid p0, dashed p1).
+**Figure C1.** Block-2 effective rank, distance from stage-1 features, and cosine between the JEPA and robustness gradients over the first 5,000 Stage-2 steps (solid p0, dashed p1). Includes the E arms (frozen stage-1 reference at block 2, mu .01/.04/.16; Appendix C2).
 
 **Recommended next experiment.** Keep the current robustness term and add a frozen stage-1 reference at the exported block-2 readout: `mu · ||h2_student(clean) − h2_stage1(clean)||²`, with deterministic matching outputs. Choose the coefficient grid from unlabeled loss and gradient scales before looking at labels. This targets the observed mechanism, compression of block 2 away from the stage-1 features, while keeping the term that buys noise robustness. Code and outputs: `stage2-diag` and `stress` commands, `training.stop_step` and `training.save_steps`; `outputs/stage2-robustness/`.
+
+### C2. Frozen stage-1 reference at block 2 (2026-10-22)
+
+**Bottom line.** Pulling block 2 back towards its stage-1 features does not undo the 0112 loss. At the strongest weight, the features end as close to stage 1 as continuation alone (distance .18 vs .20), yet 0112 is still .04–.09 below continuation alone. No weight passes the criterion fixed beforehand on both lineages. The loss is therefore not a general drift away from stage 1: the robustness term removes specific low-variance directions, and a plain distance to the teacher, dominated by high-variance directions, does not protect them.
+
+**What was tried.**
+- B's recipe plus `mu · mean((h2_student − h2_stage1)²) / mean(var_batch(h2_stage1))`, with the stage-1 encoder frozen as teacher (`training.preserve`).
+- Three weights, fixed from unlabeled loss scales before any label score: mu = .01, .04 and .16. They make the term ¼×, 1× and 4× the weighted robustness loss at B's 1k-step distance.
+- Same seeds, data order and 5,000-step protocol as Appendix C.
+- **Criterion:** beat B on 0112 clean dev R² by at least .03; keep the 0112/0106 noise robustness within .05 of B; keep the macro clean dev R² within .005 of continuation alone (A); reproduce on both lineages.
+
+| Arm (p0 / p1) | 0112 clean | 0106 clean | noise 3%, mean of 0112 and 0106 | macro Δ vs A | block-2 effective rank | lowest-decile variance | distance from stage 1 |
+|---|---|---|---|---|---|---|---|
+| A: continuation only | .618 / .615 | .629 / .632 | −.15 / .03 | 0 | 69.1 / 71.0 | .019 / .021 | .20 / .20 |
+| B: current recipe | .546 / .516 | .658 / .663 | .52 / .49 | −.001 / −.011 | 46.1 / 44.7 | .004 / .004 | .68 / .67 |
+| E, mu .01 | .570 / .498 | .659 / .658 | .51 / .47 | +.002 / −.014 | 46.8 / 45.4 | .006 / .006 | .52 / .51 |
+| E, mu .04 | .567 / .507 | .656 / .662 | .49 / .48 | +.002 / −.010 | 48.1 / 47.3 | .009 / .010 | .34 / .35 |
+| E, mu .16 | .578 / .524 | .652 / .653 | .44 / .47 | +.003 / −.007 | 54.2 / 53.8 | .014 / .014 | .18 / .19 |
+
+- **Distance falls with mu, but 0112 barely moves.** At mu .16 the features are back at continuation-only distance. 0112 gains only +.03 on p0 and +.01 on p1 over B, while noise robustness drops by .08 on p0.
+- **Rank recovers only partly** (45 → 54 against 70 for A). The lowest-decile variance recovers more, but the label-relevant 0112 directions evidently are not among those the teacher distance weights heavily.
+- **Verdict.** No mu passes on both lineages. p0 mu .16 meets the 0112 test but loses too much noise robustness; p1 fails the 0112 and macro tests at every mu.
+
+**Recommended next experiment.** Make the reference term sensitive to low-variance directions. Measure the student–teacher distance after whitening by the teacher's fixed per-dimension (or PCA) variances, with a floor and a cap, so that the small directions that carry 0112's signal count as much as the dominant ones. An alternative is to apply the robustness term to block-2 features projected away from the teacher's lowest-variance PCA subspace. Choose the coefficient grid the same way, from unlabeled scales.
 
 ## References
 

@@ -533,11 +533,14 @@ def fetch():
 
 def stage2_figure(root=Path('outputs/stage2-robustness'), name='fig_stage2_trajectory.svg'):
     """Appendix C: block-2 effective rank, distance from stage 1 and JEPA/robustness gradient cosine over the
-    first Stage-2 steps; one line per arm (A-D), solid p0, dashed p1. Missing diag files skip the arm or point."""
+    first Stage-2 steps; one line per arm (A-D, E01/E04/E16), solid p0, dashed p1. Missing diag files skip the arm or point."""
     diag, steps = Path(root) / 'diag', (0, 100, 1000, 5000)
     if not diag.is_dir():
         return
-    colors = {'A': '#E69F00', 'B': '#0072B2', 'C': '#009E73', 'D': '#CC79A7'}
+    # E arms (frozen stage-1 reference, mu .01/.04/.16) take the Okabe-Ito colours A-D leave free
+    colors = {'A': '#E69F00', 'B': '#0072B2', 'C': '#009E73', 'D': '#CC79A7',
+              'E01': '#56B4E9', 'E04': '#D55E00', 'E16': '#000000'}
+    labels = {'E01': 'E mu .01', 'E04': 'E mu .04', 'E16': 'E mu .16'}
     getters = (('Block-2 effective rank', lambda d: d['features']['effective_rank']),
                ('Distance from stage-1 features', lambda d: d['features']['displacement']),
                ('cos(JEPA grad, robustness grad)',
@@ -552,7 +555,7 @@ def stage2_figure(root=Path('outputs/stage2-robustness'), name='fig_stage2_traje
             for ax, (_, get) in zip(axes, getters):
                 pts = [(s, get(d)) for s, d in zip(steps, docs) if get(d) is not None]
                 if pts:
-                    ax.plot(*zip(*pts), ls, color=color, marker='o', ms=3, label=f'{arm} {lin}')
+                    ax.plot(*zip(*pts), ls, color=color, marker='o', ms=3, label=f'{labels.get(arm, arm)} {lin}')
     for ax, (title, _) in zip(axes, getters):
         ax.set_xscale('symlog', linthresh=100)
         ax.set_xticks(steps, [str(s) for s in steps])

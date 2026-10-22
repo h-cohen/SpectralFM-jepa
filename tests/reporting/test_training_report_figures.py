@@ -149,14 +149,18 @@ def test_stage2_figure(tmp_path, monkeypatch):
     monkeypatch.setattr(training_report, 'OUT', tmp_path)
     diag = tmp_path / 'root' / 'diag'
     diag.mkdir(parents=True)
-    for arm in 'AB':                                   # C and D missing: skipped
+    for arm in ('A', 'B', 'E04'):                      # C, D, E01, E16 missing: skipped
         for lin in ('p0', 'p1'):
             for s in (0, 100, 1000, 5000):
                 cos = None if s == 0 else -.3
                 (diag / f'{arm}_{lin}_step{s}.json').write_text(json.dumps(
                     {'features': {'effective_rank': 50 - s / 500, 'displacement': s / 1000},
                      'gradients': {'early': {'pairwise_cosine': {'mse|robustness_unweighted': cos}}}}))
+    drawn = []
+    monkeypatch.setattr(training_report, 'save', lambda fig, name: (
+        drawn.append([t.get_text() for t in fig.axes[0].get_legend().get_texts()]), fig.savefig(tmp_path / name)))
     training_report.stage2_figure(tmp_path / 'root')
+    assert 'E mu .04 p0' in drawn[0] and not any(t.startswith(('C', 'D', 'E mu .01')) for t in drawn[0])
     assert (tmp_path / 'fig_stage2_trajectory.svg').exists()
     (tmp_path / 'fig_stage2_trajectory.svg').unlink()
     training_report.stage2_figure(tmp_path / 'absent')
