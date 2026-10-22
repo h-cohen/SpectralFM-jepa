@@ -2,7 +2,7 @@
 
 ## Aim and evaluation rules
 
-- Aim: frozen spectral features whose nested-CV `parameter_0` R² exceeds raw spectra on as many as possible of the eight sets: labeled_data, 0055, 0106, 0109, 0112, 0113, 0114, 0120.
+- Aim: frozen spectral features with the highest mean nested-CV `parameter_0` R² gain over raw spectra across the eight sets (labeled_data, 0055, 0106, 0109, 0112, 0113, 0114, 0120). Since 2026-10-23 accuracy comes first: a set may fall at most .01 below raw. Robustness is deferred.
 - Every results table shows raw R², alongside a random-weight encoder of the same architecture and readout.
 - Labels never enter pretraining. All eligible spectra, including evaluation spectra, may be used; evaluation is transductive.
 - Probe recipes are chosen inside inner CV. Never pick checkpoints, readouts or seeds from outer-test scores. Write down study criteria before seeing results.
