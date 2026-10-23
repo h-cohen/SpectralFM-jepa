@@ -22,6 +22,7 @@ from threadpoolctl import threadpool_limits
 from .probe import RECIPES, fit_predict, fold_transforms, r2
 
 ENSEMBLE_K = 3      # the block-average readout: the 3 best blocks by inner CV, predictions averaged
+MIX_GRID = (0, .25, .5, .75, 1)   # weight on family A in a family mix
 MIN_N = 20          # below this, inner folds would fit on a handful of rows; such sets are skipped
 LADDER_N = (10, 20, 50, 100, 200, 500, 1000, 2000)
 
@@ -72,14 +73,19 @@ def _single_threaded(backend):
 
 
 def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles, backend="sklearn", device=None,
-                stacks=None):
+                stacks=None, mixes=None):
     """stacks {name: arms}: each arm at its inner-CV best recipe, mixed by nnls_weights fitted on those
-    recipes' inner-CV predictions (training rows only), applied to the refit test predictions."""
+    recipes' inner-CV predictions (training rows only), applied to the refit test predictions.
+    mixes {name: (arms_a, arms_b)}: each arm at its inner-CV best recipe, a family's prediction is the mean
+    of its arms'; weight w in MIX_GRID on family A is the best inner-CV R² of w*A + (1-w)*B (ties: w closest
+    to .5), applied to the refit test predictions."""
     stacks = stacks or {}
+    mixes = mixes or {}
     with _single_threaded(backend):
         needed = sorted({a for names in families.values() for a in names}
                         | {a for names, _ in ensembles.values() for a in names}
-                        | {a for names in stacks.values() for a in names})
+                        | {a for names in stacks.values() for a in names}
+                        | {a for pair in mixes.values() for names in pair for a in names})
         inner_pred = {a: _inner_predictions(arms[a][tr], y[tr], n_inner, seed, backend, device) for a in needed}
         inner = {a: {rc: r2(y[tr], p) for rc, p in P.items()} for a, P in inner_pred.items()}
 
@@ -94,6 +100,13 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
         for name, names in stacks.items():
             sbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
             sweights[name] = nnls_weights(np.stack([inner_pred[a][sbest[name][a]] for a in names], 1), y[tr])
+        mbest, mweight, minner = {}, {}, {}
+        for name, pair in mixes.items():
+            mbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for names in pair for a in names}
+            fam_pred = [np.mean([inner_pred[a][mbest[name][a]] for a in names], axis=0) for names in pair]
+            scores = {w: r2(y[tr], w * fam_pred[0] + (1 - w) * fam_pred[1]) for w in MIX_GRID}
+            mweight[name] = max(MIX_GRID, key=lambda w: (scores[w], -abs(w - .5)))
+            minner[name] = scores[mweight[name]]
         wanted = collections.defaultdict(list)
         for arm, rc in picks.values():
             wanted[arm].append(rc)
@@ -103,6 +116,9 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
         for name, names in stacks.items():
             for a_ in names:
                 wanted[a_].append(sbest[name][a_])
+        for name, pair in mixes.items():
+            for a_ in (a for names in pair for a in names):
+                wanted[a_].append(mbest[name][a_])
         for arm in fixed_arms:
             wanted[arm] += list(RECIPES)
         refit = {arm: _recipe_predictions(arms[arm][tr], y[tr], arms[arm][te], rcs, seed, backend, device)
@@ -121,6 +137,14 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
                             "members": [{"arm": a_, "norm": sbest[name][a_][0], "probe": sbest[name][a_][1],
                                          "inner_r2": inner[a_][sbest[name][a_]], "weight": float(w)}
                                         for a_, w in zip(names, sweights[name])]}
+        for name, (names_a, names_b) in mixes.items():
+            fam = [np.mean([refit[a_][mbest[name][a_]] for a_ in names], axis=0) for names in (names_a, names_b)]
+            w = mweight[name]
+            chosen[name] = {"pred": w * fam[0] + (1 - w) * fam[1], "weight_a": float(w), "inner_r2": minner[name],
+                            "members_a": [{"arm": a_, "norm": mbest[name][a_][0], "probe": mbest[name][a_][1]}
+                                          for a_ in names_a],
+                            "members_b": [{"arm": a_, "norm": mbest[name][a_][0], "probe": mbest[name][a_][1]}
+                                          for a_ in names_b]}
         fixed = {(arm, norm, probe): refit[arm][(norm, probe)] for arm in fixed_arms for norm, probe in RECIPES}
     return chosen, fixed
 
@@ -145,14 +169,16 @@ def paired_delta(y, PA, PB, n_boot=1000, seed=0):
 
 
 def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
-              fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None, stacks=None):
+              fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None, stacks=None,
+              mixes=None):
     """backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
     n_jobs concurrent folds per device (threads, one CUDA stream each)."""
     y = np.asarray(y, dtype=np.float64)
     n = len(y)
     ensembles = ensembles or {}
     stacks = stacks or {}
-    fold_fn = functools.partial(_outer_fold, stacks=stacks)
+    mixes = mixes or {}
+    fold_fn = functools.partial(_outer_fold, stacks=stacks, mixes=mixes)
     jobs = []
     for r in range(n_repeats):
         for f, (tr, te) in enumerate(KFold(n_folds, shuffle=True, random_state=seed + r).split(y)):
@@ -168,7 +194,7 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
     else:
         outs = [fold_fn(*a) for a in args]
 
-    res = {fam: {"oof": np.zeros((n_repeats, n)), "chosen": []} for fam in [*families, *ensembles, *stacks]}
+    res = {fam: {"oof": np.zeros((n_repeats, n)), "chosen": []} for fam in [*families, *ensembles, *stacks, *mixes]}
     fixed = {k: np.zeros((n_repeats, n)) for k in outs[0][1]}
     test_folds = [[] for _ in range(n_repeats)]
     for (r, f, tr, te), (chosen, fx) in zip(jobs, outs):

@@ -67,10 +67,14 @@ def _readout(bank, name, f):
     return np.hstack([bank[p] for p in parts]) if len(parts) > 1 else bank[parts[0]]
 
 
-def fuse_set(bank_files, heads=HEADS, avg_head='layer2/flat', select=None, **probe):
+def fuse_set(bank_files, heads=HEADS, avg_head='layer2/flat', select=None, mix_groups=None, **probe):
     """One set: raw, avg, stack (when heads) and select (when select) on the same outer folds.
     select: candidate readouts; each member's readout and recipe are picked together by inner CV
-    (one nested_cv family per member) and the members' picks are averaged."""
+    (one nested_cv family per member) and the members' picks are averaged.
+    mix_groups: family label ('a' or 'b') per bank file; adds avg_a, avg_b and mix (one inner-CV weight
+    between the two family averages) and returns the per-fold weight on family a as mix_weights."""
+    if mix_groups is not None and (len(mix_groups) != len(bank_files) or set(mix_groups) != {'a', 'b'}):
+        raise ValueError("mix_groups needs one 'a' or 'b' label per bank file, with both families present")
     arms, y = {}, None
     for i, f in enumerate(bank_files):
         bank, raw, yi, _ = load_bank(f, readouts=('mean', 'seg4', 'flat'))
@@ -84,11 +88,18 @@ def fuse_set(bank_files, heads=HEADS, avg_head='layer2/flat', select=None, **pro
     families = {'raw': ['raw'], **{f'sel{i}': [f'm{i}:{c}' for c in select] for i in range(n) if select}}
     stacks = {'stack': [f'm{i}:{h}' for i in range(n) for h in heads]} if heads else {}
     flat = [f'm{i}:{avg_head}' for i in range(n)]
-    res = nested_cv(arms, families, y, ensembles={'avg': (flat, n)}, stacks=stacks, **probe)
-    keys = ['raw', 'avg', *stacks]
+    ensembles, mixes = {'avg': (flat, n)}, {}
+    if mix_groups:
+        fam = {g: [f for f, lab in zip(flat, mix_groups) if lab == g] for g in 'ab'}
+        ensembles |= {'avg_a': (fam['a'], len(fam['a'])), 'avg_b': (fam['b'], len(fam['b']))}
+        mixes = {'mix': (fam['a'], fam['b'])}
+    res = nested_cv(arms, families, y, ensembles=ensembles, stacks=stacks, mixes=mixes, **probe)
+    keys = ['raw', 'avg', *ensembles.keys() - {'avg'}, *stacks, *mixes]
     out = {'y': y, 'oof': {k: res[k]['oof'] for k in keys}, 'r2': {k: res[k]['r2_mean'] for k in keys}}
     if heads:
         out['weights'] = [[{'arm': m['arm'], 'weight': m['weight']} for m in c['members']] for c in res['stack']['chosen']]
+    if mixes:
+        out['mix_weights'] = [c['weight_a'] for c in res['mix']['chosen']]
     if select:
         out['oof']['select'] = np.mean([res[f'sel{i}']['oof'] for i in range(n)], 0)
         out['r2']['select'] = float(np.mean([r2(y, p) for p in out['oof']['select']]))
@@ -96,18 +107,31 @@ def fuse_set(bank_files, heads=HEADS, avg_head='layer2/flat', select=None, **pro
     return out
 
 
-def fuse(banks, output, heads=HEADS, select=None, **probe):
+def fuse(banks, output, heads=HEADS, select=None, mix_groups=None, **probe):
     """Every set all members share; random-weight controls fused the same way. Each fused arm X gets
-    X_vs_raw and X_vs_random; arms other than avg also get X_vs_avg."""
+    X_vs_raw and X_vs_random; arms other than avg also get X_vs_avg. A member without
+    random_control/bank.npz skips the random fuse of that set: the random row is then the mean of the
+    members' random_control/nested_oof.npz layer2/flat (entry['random_source'] 'nested_oof', else 'bank')."""
     banks, output = [Path(b) for b in banks], Path(output)
     sets = sorted(set.intersection(*({p.parent.name for p in b.glob('*/bank.npz')} for b in banks)))
-    out = {'members': [str(b) for b in banks], 'heads': list(heads), 'select': list(select or ()), 'sets': {}}
+    out = {'members': [str(b) for b in banks], 'heads': list(heads), 'mix_groups': mix_groups, 'select': list(select or ()), 'sets': {}}
     for ds in sets:
-        m = fuse_set([b / ds / 'bank.npz' for b in banks], heads, select=select, **probe)
-        rc = fuse_set([b / ds / 'random_control' / 'bank.npz' for b in banks], heads, select=select, **probe)
-        y, P, R = m['y'], m['oof'], rc['oof']
+        m = fuse_set([b / ds / 'bank.npz' for b in banks], heads, select=select, mix_groups=mix_groups, **probe)
+        rand_banks = [b / ds / 'random_control' / 'bank.npz' for b in banks]
+        y, P = m['y'], m['oof']
         fused = [k for k in P if k != 'raw']
-        entry = {'r2': m['r2'], 'random': {'r2': {k: rc['r2'][k] for k in fused}}}
+        if all(f.exists() for f in rand_banks):
+            rc = fuse_set(rand_banks, heads, select=select, mix_groups=mix_groups, **probe)
+            R, rand_r2, source = rc['oof'], {k: rc['r2'][k] for k in fused}, 'bank'
+        else:
+            oofs = [np.load(b / ds / 'random_control' / 'nested_oof.npz') for b in banks]
+            if any(not np.array_equal(o['y'], y) for o in oofs):
+                raise ValueError(f'{ds}: random controls were evaluated on different labels or row order')
+            mean = np.mean([o['layer2/flat'] for o in oofs], 0)      # [R, n], one row for every fused arm
+            R = {k: mean for k in fused}
+            rand_r2 = {k: float(np.mean([r2(y, p) for p in mean])) for k in fused}
+            source = 'nested_oof'
+        entry = {'r2': m['r2'], 'random': {'r2': rand_r2}, 'random_source': source}
         for k in fused:
             entry[f'{k}_vs_raw'] = paired_delta(y, P[k], P['raw'])
             entry[f'{k}_vs_random'] = paired_delta(y, P[k], R[k])
@@ -119,6 +143,8 @@ def fuse(banks, output, heads=HEADS, select=None, **probe):
                 for d in fold:
                     mean_w[d['arm']] = mean_w.get(d['arm'], 0.) + d['weight'] / len(m['weights'])
             entry.update(mean_weights=mean_w, fold_weights=m['weights'])
+        if 'mix_weights' in m:
+            entry['mix_weights'] = m['mix_weights']
         if 'select_chosen' in m:
             entry['select_chosen'] = m['select_chosen']
         out['sets'][ds] = entry
@@ -146,9 +172,12 @@ def main(argv=None):
     ap.add_argument('--n-jobs', type=int, default=1)
     ap.add_argument('--select', nargs='+', help='--stack: candidate readouts chosen per member in inner CV')
     ap.add_argument('--no-stack-heads', action='store_true', help='--stack: skip the NNLS stack arm')
+    ap.add_argument('--mix-groups', nargs='+', choices=['a', 'b'],
+                    help='--stack: family label per bank, in --banks order; adds avg_a, avg_b and mix')
     a = ap.parse_args(argv)
     if a.stack:
         out = fuse(a.banks, a.output_dir, heads=() if a.no_stack_heads else HEADS, select=a.select,
+                   mix_groups=a.mix_groups,
                    backend=a.backend, device=a.device, n_jobs=a.n_jobs)
         for ds, s in out['sets'].items():
             print(f"{ds:14s} " + ' '.join(f"{k} {v:.4f}" for k, v in s['r2'].items()))

@@ -160,3 +160,34 @@ def test_fuse_with_select_reports_select_rows(tmp_path):
     s = fuse(runs, tmp_path / 'out', heads=(), select=('layer2/flat', 'layer1/flat'))['sets']['dataset0055']
     assert {'select_vs_avg', 'select_vs_raw', 'select_vs_random', 'avg_vs_raw'} <= set(s)
     assert 'stack_vs_avg' not in s
+
+
+def test_fuse_set_mix_groups_returns_family_arms_and_weights(tmp_path):
+    y = np.random.default_rng(0).normal(size=60)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(4)]
+    out = fuse_set([r / 'dataset0055' / 'bank.npz' for r in runs], heads=(), mix_groups=['a', 'a', 'b', 'b'])
+    assert {'raw', 'avg', 'avg_a', 'avg_b', 'mix'} <= set(out['oof'])
+    assert len(out['mix_weights']) == 10 and all(0 <= w <= 1 for w in out['mix_weights'])
+
+
+def test_fuse_mix_groups_writes_json_and_random_fallback(tmp_path):
+    y = np.random.default_rng(0).normal(size=60)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(4)]
+    # member 3 has no random-control bank, only its nested_oof.npz
+    (runs[3] / 'dataset0055' / 'random_control' / 'bank.npz').unlink()
+    rng = np.random.default_rng(1)
+    for r in runs:
+        np.savez(r / 'dataset0055' / 'random_control' / 'nested_oof.npz', y=y,
+                 **{'layer2/flat': np.stack([rng.normal(size=60)] * 2)})
+    res = fuse(runs, tmp_path / 'out', heads=(), mix_groups=['a', 'a', 'b', 'b'])
+    s = res['sets']['dataset0055']
+    assert {'mix_vs_avg', 'mix_vs_raw', 'mix_vs_random', 'avg_vs_raw', 'mix_weights'} <= set(s)
+    assert s['random_source'] == 'nested_oof'
+    saved = json.loads((tmp_path / 'out' / 'fusion.json').read_text())['sets']['dataset0055']
+    assert len(saved['mix_weights']) == 10 and saved['random_source'] == 'nested_oof'
+
+
+def test_fuse_random_source_is_bank_when_all_present(tmp_path):
+    y = np.random.default_rng(0).normal(size=60)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(2)]
+    assert fuse(runs, tmp_path / 'out')['sets']['dataset0055']['random_source'] == 'bank'

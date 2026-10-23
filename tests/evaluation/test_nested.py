@@ -185,3 +185,32 @@ def test_nested_cv_without_stacks_unchanged():
     b = nc.nested_cv({"a": X}, {"a": ["a"]}, y, stacks={})
     np.testing.assert_array_equal(a["a"]["oof"], b["a"]["oof"])
     assert set(a) == set(b)
+
+
+def test_mix_prefers_informative_family():
+    X, y = synthetic()
+    rng = np.random.default_rng(3)
+    arms = {"a0": X, "a1": X + 0.01 * rng.normal(size=X.shape).astype(np.float32),
+            "b0": rng.normal(size=X.shape).astype(np.float32), "b1": rng.normal(size=X.shape).astype(np.float32)}
+    res = nc.nested_cv(arms, {}, y, mixes={"m": (["a0", "a1"], ["b0", "b1"])})
+    ws = [c["weight_a"] for c in res["m"]["chosen"]]
+    assert len(ws) == 10 and set(ws) <= set(nc.MIX_GRID)
+    assert sum(w == 1 for w in ws) >= 6
+    assert res["m"]["r2_mean"] > 0.9
+    c = res["m"]["chosen"][0]
+    assert c["members_a"] and c["members_b"] and "inner_r2" in c
+
+
+def test_mix_of_identical_families_equals_their_average():
+    X, y = synthetic()
+    res = nc.nested_cv({"a": X, "b": X}, {}, y, ensembles={"avg": (["a", "b"], 2)},
+                       mixes={"m": (["a"], ["b"])})
+    np.testing.assert_allclose(res["m"]["oof"], res["avg"]["oof"], atol=1e-8)
+
+
+def test_nested_cv_without_mixes_unchanged():
+    X, y = synthetic()
+    a = nc.nested_cv({"a": X}, {"a": ["a"]}, y)
+    b = nc.nested_cv({"a": X}, {"a": ["a"]}, y, mixes={})
+    np.testing.assert_array_equal(a["a"]["oof"], b["a"]["oof"])
+    assert set(a) == set(b)
