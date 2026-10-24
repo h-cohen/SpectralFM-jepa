@@ -731,6 +731,35 @@ These are adaptive choices on the same eight sets, so the gain over R4 is explor
 
 **Cost.** 16 encoders instead of 4: 2.4 GFLOPs per spectrum. The non-robust members are not noise-robust (Appendix C), so robustness has to be revisited before deployment.
 
+### D1. Shrunk mix and a 24-patch third family (2026-10-24)
+
+**Bottom line.** Neither shrinking the mix weight towards equal weights nor adding a third family of five 24-patch encoders beats the adopted family mix (MIX2). Ensemble combination has plateaued at about +.095 mean ΔR² vs raw.
+
+**What was tried.**
+- **Shrinkage:** the tuned weight is kept only if its inner-CV gain over equal weights exceeds 2 bootstrap SDs (200 resamples of outer-training rows).
+- **Third family:** five 24-patch runs (`p24_s0`, `p24_s1`, `p24_s2`, `lr50_s0`, `lr50_s1`) as family c, with weights from a .25 simplex grid.
+- **Run:** one paired run in which MIX2 reproduces the adopted predictions exactly.
+- **Rule, fixed beforehand:** a higher mean, no set more than .01 below raw, and wins over MIX2 on at least 5/8 sets.
+
+| Set | raw | MIX2 | MIX2s | MIX3 | MIX3s | 24-patch mean |
+|---|---|---|---|---|---|---|
+| labeled_data | .830 | .962 | .963 | .963 | .964 | .963 |
+| 0055 | .591 | .596 | .656 | .605 | .671 | .652 |
+| 0106 | .697 | .706 | .679 | .698 | .672 | .637 |
+| 0109 | .918 | .942 | .942 | .941 | .942 | .898 |
+| 0112 | .377 | .715 | .656 | .714 | .698 | .721 |
+| 0113 | .548 | .739 | .732 | .723 | .734 | .674 |
+| 0114 | .983 | .985 | .985 | .985 | .986 | .985 |
+| 0120 | .380 | .439 | .451 | .440 | .434 | .401 |
+| mean Δ vs raw | | +.095 | +.092 | +.093 | +.097 | |
+| worst set vs raw | | +.002 | −.017 | +.002 | −.025 | |
+| wins vs MIX2 | | | 3/8 | 3/8 | 4/8 | |
+
+- **Shrinkage** repairs 0055 (.60 → .66) but also fires where the tuned weight was right. It pushes 0106 below raw and costs 0112 up to .06.
+- **The 24-patch family** is strong only where the non-robust family already is (0112, 0055), and weak on 0106, 0109 and 0113.
+- **No arm passes.** MIX2 stays the candidate. Code: `ensemble --mix-specs NAME:a,b[,c][:shrink]`. Outputs: `outputs/accuracy-ensemble/mix3`, `results_mix3.json`.
+- **Next lever:** a better encoder rather than a better combination, for example a full-length wider model as a new family.
+
 ## References
 
 - Balestriero & LeCun (2025). LeJEPA. arXiv:2511.08544.
