@@ -710,7 +710,7 @@ flowchart LR
 | 0114 | .983 | .986 | .984 | .986 | .985 | .985 | .08 |
 | 0120 | .380 | .405 | .446 | .411 | .451 | .439 | .40 |
 | mean Δ vs raw | | +.056 | +.088 | +.063 | +.092 | **+.095** | |
-| worst set vs raw | | +.003 | −.092 | +.002 | −.018 | +.002 | |
+| worst set vs raw | | +.002 | −.092 | +.002 | −.018 | +.002 | |
 
 **Family mix.**
 - In each outer fold, each member's recipe is chosen in inner CV.
@@ -724,7 +724,8 @@ flowchart LR
 2. **Second rule, set by the user after seeing those scores, applied forward:** highest mean ΔR² vs raw; beat R4 on at least 5/8 sets head to head; no set more than .01 below raw.
    - M16 failed the tolerance (0106 −.018).
    - The family mix met the mean and tolerance tests but beat R4 on 4/8 sets, not 5. Its losses were 0055 −.044 (the inner CV on 25 spectra picks an unstable weight), 0106 −.007, 0109 −.002 and 0114 −.0002.
-3. **Waiver:** the user then waived the head-to-head test, on the grounds that the mix has the highest mean and beats raw everywhere. The family mix was adopted.
+3. **Added arm:** the family-mix arm and its weight grid were defined after the M16, NR8 and R8 scores had been seen.
+4. **Waiver:** the user then waived the head-to-head test, on the grounds that the mix has the highest mean and beats raw everywhere. The family mix was adopted.
 
 These are adaptive choices on the same eight sets, so the gain over R4 is exploratory. Confirmation needs an independent group-labelled holdout.
 
