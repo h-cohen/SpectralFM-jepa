@@ -191,3 +191,22 @@ def test_fuse_random_source_is_bank_when_all_present(tmp_path):
     y = np.random.default_rng(0).normal(size=60)
     runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(2)]
     assert fuse(runs, tmp_path / 'out')['sets']['dataset0055']['random_source'] == 'bank'
+
+
+def test_fuse_mix_specs_writes_arms_and_paired_deltas(tmp_path):
+    y = np.random.default_rng(0).normal(size=60)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(6)]
+    specs = {'MIX2': (['a', 'b'], False), 'MIX2s': (['a', 'b'], True),
+             'MIX3': (['a', 'b', 'c'], False), 'MIX3s': (['a', 'b', 'c'], True)}
+    groups = ['a', 'a', 'b', 'b', 'c', 'c']
+    out = fuse_set([r / 'dataset0055' / 'bank.npz' for r in runs], heads=(), mix_groups=groups, mix_specs=specs)
+    assert set(specs) <= set(out['oof'])
+    assert len(out['mix_weights']['MIX3']) == 10 and len(out['mix_weights']['MIX3'][0]) == 3
+    assert len(out['mix_shrunk']['MIX3s']) == 10
+    res = fuse(runs, tmp_path / 'out', heads=(), mix_groups=groups, mix_specs=specs)
+    s = res['sets']['dataset0055']
+    for arm in specs:
+        assert {f'{arm}_vs_raw', f'{arm}_vs_random', f'{arm}_vs_avg'} <= set(s)
+    assert {'MIX3_vs_MIX2', 'MIX3s_vs_MIX2', 'MIX2s_vs_MIX2'} <= set(s) and 'MIX2_vs_MIX2' not in s
+    assert len(s['mix_weights']['MIX3s']) == 10 and len(s['mix_shrunk']['MIX3s']) == 10
+    assert 'MIX3_vs_MIX2_wins' in res['summary']

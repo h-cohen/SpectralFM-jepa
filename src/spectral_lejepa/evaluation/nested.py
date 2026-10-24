@@ -23,8 +23,54 @@ from .probe import RECIPES, fit_predict, fold_transforms, r2
 
 ENSEMBLE_K = 3      # the block-average readout: the 3 best blocks by inner CV, predictions averaged
 MIX_GRID = (0, .25, .5, .75, 1)   # weight on family A in a family mix
+MIX_BOOT = 200      # bootstrap resamples of the outer-training rows for the mix shrinkage test
 MIN_N = 20          # below this, inner folds would fit on a handful of rows; such sets are skipped
 LADDER_N = (10, 20, 50, 100, 200, 500, 1000, 2000)
+
+
+def mix_grid(k):
+    """Every weight vector of K families in multiples of .25 that sums to 1, in lexicographic order
+    (5 points for K = 2, 15 for K = 3); for K = 2 the first weight runs over MIX_GRID."""
+    steps = len(MIX_GRID) - 1
+    def rec(left, slots):
+        if slots == 1:
+            return [(left,)]
+        return [(i,) + rest for i in range(left + 1) for rest in rec(left - i, slots - 1)]
+    return [tuple(i / steps for i in v) for v in rec(steps, k)]
+
+
+def _mix_spec(value):
+    """(families [K lists of arms], shrink) from a legacy (arms_a, arms_b), a list of K arm lists, or
+    {'families': [...], 'shrink': bool}."""
+    if isinstance(value, dict):
+        fams, shrink = value["families"], bool(value.get("shrink", False))
+    else:
+        fams, shrink = value, False
+    fams = [list(f) for f in fams]
+    if len(fams) < 2:
+        raise ValueError("a mix needs at least two families")
+    return fams, shrink
+
+
+def _choose_mix(fam_pred, y, shrink, seed):
+    """Grid weights with the best R² of the weighted family predictions on y (ties: closest to equal
+    weights), and the shrinkage test: keep them only if their mean gain over equal weights on MIX_BOOT
+    bootstrap resamples of the rows exceeds 2 SD of that gain. Returns (weights, inner R², shrunk)."""
+    k = len(fam_pred)
+    equal = np.full(k, 1 / k)
+    mix = lambda w: sum(wi * p for wi, p in zip(w, fam_pred))
+    scores = {w: r2(y, mix(w)) for w in mix_grid(k)}
+    w = max(scores, key=lambda v: (scores[v], -float(np.sum((np.array(v) - equal) ** 2))))
+    shrunk = False
+    if shrink and not np.allclose(w, equal):
+        rng = np.random.default_rng(seed)
+        p_w, p_eq = mix(w), mix(equal)
+        gains = np.array([r2(y[i], p_w[i]) - r2(y[i], p_eq[i])
+                          for i in (rng.integers(0, len(y), len(y)) for _ in range(MIX_BOOT))])
+        shrunk = not gains.mean() > 2 * gains.std()
+    if shrunk:
+        return tuple(float(x) for x in equal), r2(y, mix(equal)), True
+    return w, scores[w], False
 
 
 def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device=None):
@@ -76,16 +122,18 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
                 stacks=None, mixes=None):
     """stacks {name: arms}: each arm at its inner-CV best recipe, mixed by nnls_weights fitted on those
     recipes' inner-CV predictions (training rows only), applied to the refit test predictions.
-    mixes {name: (arms_a, arms_b)}: each arm at its inner-CV best recipe, a family's prediction is the mean
-    of its arms'; weight w in MIX_GRID on family A is the best inner-CV R² of w*A + (1-w)*B (ties: w closest
-    to .5), applied to the refit test predictions."""
+    mixes {name: [arms_1..arms_K]} (or the legacy (arms_a, arms_b), or {'families': [...], 'shrink': bool}):
+    each arm at its inner-CV best recipe, a family's prediction is the mean of its arms'; the weights on the
+    K families are the mix_grid point with the best inner-CV R² (ties: closest to equal weights), applied to
+    the refit test predictions. shrink: fall back to equal weights unless the gain over them is > 2 bootstrap
+    SD (see _choose_mix); the chosen weights use the fold's probe seed."""
     stacks = stacks or {}
-    mixes = mixes or {}
+    mixes = {name: _mix_spec(v) for name, v in (mixes or {}).items()}
     with _single_threaded(backend):
         needed = sorted({a for names in families.values() for a in names}
                         | {a for names, _ in ensembles.values() for a in names}
                         | {a for names in stacks.values() for a in names}
-                        | {a for pair in mixes.values() for names in pair for a in names})
+                        | {a for fams, _ in mixes.values() for names in fams for a in names})
         inner_pred = {a: _inner_predictions(arms[a][tr], y[tr], n_inner, seed, backend, device) for a in needed}
         inner = {a: {rc: r2(y[tr], p) for rc, p in P.items()} for a, P in inner_pred.items()}
 
@@ -100,13 +148,11 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
         for name, names in stacks.items():
             sbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
             sweights[name] = nnls_weights(np.stack([inner_pred[a][sbest[name][a]] for a in names], 1), y[tr])
-        mbest, mweight, minner = {}, {}, {}
-        for name, pair in mixes.items():
-            mbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for names in pair for a in names}
-            fam_pred = [np.mean([inner_pred[a][mbest[name][a]] for a in names], axis=0) for names in pair]
-            scores = {w: r2(y[tr], w * fam_pred[0] + (1 - w) * fam_pred[1]) for w in MIX_GRID}
-            mweight[name] = max(MIX_GRID, key=lambda w: (scores[w], -abs(w - .5)))
-            minner[name] = scores[mweight[name]]
+        mbest, mweight, minner, mshrunk = {}, {}, {}, {}
+        for name, (fams, shrink) in mixes.items():
+            mbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for names in fams for a in names}
+            fam_pred = [np.mean([inner_pred[a][mbest[name][a]] for a in names], axis=0) for names in fams]
+            mweight[name], minner[name], mshrunk[name] = _choose_mix(fam_pred, y[tr], shrink, seed)
         wanted = collections.defaultdict(list)
         for arm, rc in picks.values():
             wanted[arm].append(rc)
@@ -116,8 +162,8 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
         for name, names in stacks.items():
             for a_ in names:
                 wanted[a_].append(sbest[name][a_])
-        for name, pair in mixes.items():
-            for a_ in (a for names in pair for a in names):
+        for name, (fams, _) in mixes.items():
+            for a_ in (a for names in fams for a in names):
                 wanted[a_].append(mbest[name][a_])
         for arm in fixed_arms:
             wanted[arm] += list(RECIPES)
@@ -137,14 +183,15 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
                             "members": [{"arm": a_, "norm": sbest[name][a_][0], "probe": sbest[name][a_][1],
                                          "inner_r2": inner[a_][sbest[name][a_]], "weight": float(w)}
                                         for a_, w in zip(names, sweights[name])]}
-        for name, (names_a, names_b) in mixes.items():
-            fam = [np.mean([refit[a_][mbest[name][a_]] for a_ in names], axis=0) for names in (names_a, names_b)]
+        for name, (fams, _) in mixes.items():
+            fam = [np.mean([refit[a_][mbest[name][a_]] for a_ in names], axis=0) for names in fams]
             w = mweight[name]
-            chosen[name] = {"pred": w * fam[0] + (1 - w) * fam[1], "weight_a": float(w), "inner_r2": minner[name],
-                            "members_a": [{"arm": a_, "norm": mbest[name][a_][0], "probe": mbest[name][a_][1]}
-                                          for a_ in names_a],
-                            "members_b": [{"arm": a_, "norm": mbest[name][a_][0], "probe": mbest[name][a_][1]}
-                                          for a_ in names_b]}
+            members = [[{"arm": a_, "norm": mbest[name][a_][0], "probe": mbest[name][a_][1]} for a_ in names]
+                       for names in fams]
+            chosen[name] = {"pred": sum(wi * f for wi, f in zip(w, fam)), "weights": [float(x) for x in w],
+                            "shrunk": mshrunk[name], "inner_r2": minner[name], "family_members": members}
+            if len(fams) == 2:
+                chosen[name] |= {"weight_a": float(w[0]), "members_a": members[0], "members_b": members[1]}
         fixed = {(arm, norm, probe): refit[arm][(norm, probe)] for arm in fixed_arms for norm, probe in RECIPES}
     return chosen, fixed
 

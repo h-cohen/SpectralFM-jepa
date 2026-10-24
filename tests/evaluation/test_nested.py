@@ -214,3 +214,66 @@ def test_nested_cv_without_mixes_unchanged():
     b = nc.nested_cv({"a": X}, {"a": ["a"]}, y, mixes={})
     np.testing.assert_array_equal(a["a"]["oof"], b["a"]["oof"])
     assert set(a) == set(b)
+
+
+def test_mix_grid_sizes():
+    assert len(nc.mix_grid(2)) == 5 and len(nc.mix_grid(3)) == 15
+    assert all(abs(sum(w) - 1) < 1e-12 for w in nc.mix_grid(3))
+    assert nc.mix_grid(2) == [(w, 1 - w) for w in nc.MIX_GRID]
+
+
+def test_mix_legacy_two_tuple_matches_stored_expectation():
+    # values from the pre-generalisation code on this fixed case
+    X, y = synthetic()
+    rng = np.random.default_rng(3)
+    arms = {"a0": X, "a1": X + 0.01 * rng.normal(size=X.shape).astype(np.float32),
+            "b0": rng.normal(size=X.shape).astype(np.float32), "b1": rng.normal(size=X.shape).astype(np.float32)}
+    r = nc.nested_cv(arms, {}, y, mixes={"m": (["a0", "a1"], ["b0", "b1"])})["m"]
+    assert r["r2_mean"] == pytest.approx(0.9955940517513133, abs=1e-12)
+    assert float(r["oof"].sum()) == pytest.approx(40.71476669805168, abs=1e-9)
+    np.testing.assert_allclose(r["oof"][0, :3], [0.29651474952697754, -4.682342913720108, 1.7927823121605546], atol=1e-10)
+
+    n, d = X.shape
+    rng = np.random.default_rng(5)
+    A = np.stack([y + rng.normal(size=n) * 2] + [rng.normal(size=n) for _ in range(d - 1)], 1).astype(np.float32)
+    B = np.stack([y + rng.normal(size=n) * 2] + [rng.normal(size=n) for _ in range(d - 1)], 1).astype(np.float32)
+    r = nc.nested_cv({"a": A, "b": B}, {}, y, mixes={"m": (["a"], ["b"])})["m"]
+    assert [c["weight_a"] for c in r["chosen"]] == [.5, .5, .5, .5, .5, .5, .5, .75, .5, .25]
+    assert r["r2_mean"] == pytest.approx(0.5058091638444773, abs=1e-12)
+    assert float(r["oof"].sum()) == pytest.approx(45.00528952709628, abs=1e-9)
+    assert [c["weights"] for c in r["chosen"]][7] == [.75, .25]
+    # list form and dict form give the same result as the tuple
+    r2_ = nc.nested_cv({"a": A, "b": B}, {}, y, mixes={"m": {"families": [["a"], ["b"]], "shrink": False}})["m"]
+    np.testing.assert_array_equal(r["oof"], r2_["oof"])
+
+
+def _three_family(n=200, informative=0, seed=1):
+    rng = np.random.default_rng(seed)
+    X = rng.normal(size=(n, 12)).astype(np.float32)
+    y = X[:, 0] * 2 + 0.1 * rng.normal(size=n)
+    arms = {f"f{k}": (X if k == informative else rng.normal(size=X.shape).astype(np.float32)) for k in range(3)}
+    return arms, y
+
+
+def test_mix_k3_picks_informative_family():
+    arms, y = _three_family(n=100, informative=1)
+    res = nc.nested_cv(arms, {}, y, mixes={"m": [["f0"], ["f1"], ["f2"]]})["m"]
+    assert len(res["chosen"]) == 10 and all(len(c["weights"]) == 3 for c in res["chosen"])
+    assert sum(c["weights"][1] == 1 for c in res["chosen"]) >= 8
+    assert res["r2_mean"] > 0.9 and "weight_a" not in res["chosen"][0]
+
+
+def test_mix_shrink_fires_on_noise_and_not_on_signal():
+    rng = np.random.default_rng(2)
+    n = 80
+    y = rng.normal(size=n)
+    arms = {f"f{k}": rng.normal(size=(n, 12)).astype(np.float32) for k in range(3)}
+    res = nc.nested_cv(arms, {}, y, mixes={"s": {"families": [["f0"], ["f1"], ["f2"]], "shrink": True},
+                                            "u": [["f0"], ["f1"], ["f2"]]})
+    ch = res["s"]["chosen"]
+    assert sum(c["shrunk"] for c in ch) >= 7
+    assert all(np.allclose(c["weights"], 1 / 3) for c in ch if c["shrunk"])
+    assert not any(c["shrunk"] for c in res["u"]["chosen"])
+    arms, y = _three_family(n=200, informative=0)
+    ch = nc.nested_cv(arms, {}, y, mixes={"s": {"families": [["f0"], ["f1"], ["f2"]], "shrink": True}})["s"]["chosen"]
+    assert sum(c["shrunk"] for c in ch) == 0 and all(c["weights"][0] == 1 for c in ch)
