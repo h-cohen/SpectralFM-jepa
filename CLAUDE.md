@@ -7,11 +7,11 @@
 - Labels never enter pretraining. All eligible spectra, including evaluation spectra, may be used; evaluation is transductive.
 - Probe recipes are chosen inside inner CV. Never pick checkpoints, readouts or seeds from outer-test scores. Write down study criteria before seeing results.
 
-## Current state (2026-10-14)
+## Current state (2026-10-24)
 
-- **Candidate:** robust seed ensemble. Four members, each a stage-1 LeJEPA run plus a stage-2 robust continuation. Block-2 flat features (12,288); predictions are averaged.
-  - It beats raw on 8/8 sets (+.0556) and random weights on 8/8 (+.0478).
-  - Member evaluations live in `outputs/robust-ensemble/*/eval` and `outputs/robustness-continuation/robust_s401/eval`.
+- **Candidate:** family-mix ensemble of 16 frozen encoders — 8 non-robust (stage 1) and 8 robust (stage 2) members, block-2 flat features; family means mixed with one inner-CV weight. Mean ΔR² +.095 vs raw, 8/8 sets (report section 1, Appendix D). Adopted 2026-10-24 with the 5/8 head-to-head test vs the robust ensemble waived by the user.
+  - Members and scores: `outputs/accuracy-ensemble/` (`mix/`, `results_mix.json`, `mix_banks.txt`, `mix_groups.txt`); run with `ensemble --stack --no-stack-heads --mix-groups ... --banks ...`.
+  - Previous candidate: robust four-seed ensemble (+.056, 8/8), still the noise-robust option. No inference export exists yet for the family mix (`export-ensemble` builds the robust four).
 - **Exported single model:** `outputs/final-model/production` (seed101, 5/8). It is not gate-qualified, because the 0120 single-shuffle canary scored .0204 against a .020 limit.
 - **Blocker:** no independent group-labelled holdout exists. No benchmark result is release approval.
 - **Where things are documented:**

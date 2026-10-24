@@ -1,10 +1,22 @@
 # SpectralFM-LeJEPA training report
 
-Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat features. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
+Status 2026-10-24. Candidate: **family-mix ensemble** of 16 frozen encoders (8 non-robust, 8 robust), block-2 flat features; the robust four-seed ensemble is the previous candidate. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
 
 ## 1. Bottom line
 
-**Bottom line.** Frozen block-2 features beat raw spectra on 8 of 8 labeled sets, mean ΔR² +.056, and beat a random-weight encoder on 8 of 8, mean ΔR² +.048. Their 1%-noise drift is about 6× lower than before the robust continuation. Five of the eight gains are within bootstrap noise, and no independent holdout exists yet. The previous method, data2vec, stays below raw (recent checkpoint 0/8, mean −.197; section 9). Training-free ROCKET-family baselines are compared in Appendix A. RMSE agrees: the ensemble lowers it on 8/8 sets and has the flattest error across the label range (section 10). SIGReg cuts block-2 feature correlation from .90 to .46 mean |off-diagonal| and moves label information out of near-empty directions (section 11).
+**Bottom line.** Since 2026-10-23 accuracy comes first, and robustness is deferred. The candidate averages the predictions of 8 non-robust and 8 robust encoders as two families, mixed with one weight chosen in inner CV.
+- **Against raw:** it beats raw spectra on 8 of 8 labeled sets, mean ΔR² +.095. The previous robust four-seed ensemble gave +.056.
+- **Against random weights:** it beats a random-weight encoder average on 8 of 8, mean +.087.
+- **Main gain:** 0112 rises from .42 to .72.
+- **How it was adopted:** under a rule written after part of the evidence was seen, with one criterion waived (Appendix D). Four of the eight gains are within bootstrap noise, and no independent holdout exists yet.
+- **Previous method:** data2vec stays below raw (recent checkpoint 0/8, mean −.197; section 9).
+- **Other comparisons and analyses:**
+  - Training-free ROCKET-family baselines: Appendix A.
+  - Error metrics: section 10.
+  - SIGReg geometry: section 11.
+  - Robustness: Appendix C. The robust term trades 0112 accuracy for noise robustness.
+
+  Sections 7–11 describe the robust four-member ensemble.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -14,29 +26,34 @@ Status 2026-10-14. Candidate: **robust four-seed ensemble**, block-2 flat featur
 | Raw ridge | none (readout on 245 values) | 490 | 245 | — |
 | JEPA member | tokenizer + blocks 0–1, readout on 12,288 features | 151 M | 1.6 M | 1× |
 | JEPA ensemble | 4 members, predictions averaged | 605 M | 6.4 M | 4× |
+| Family-mix ensemble (candidate) | 16 members, two family means mixed | 2.4 G | 25.6 M | 16× |
 | data2vec (recent) | conv front end + 12 transformer layers | 9.6 G | 92.6 M | 64× |
 
 data2vec is costed with its full forward pass; its probe selects a block per set, and stopping at that block would cut the cost proportionally. The JEPA encoders stop at block 2, so blocks 3–6 are never run at inference.
 ```mermaid
 flowchart LR
     A["12.76M unlabeled spectra"] --> B["Stage 1: LeJEPA<br/>498k steps"]
+    B --> NR["8 non-robust encoders"]
     B --> C["Stage 2: + block-2 robust term<br/>50k steps"]
-    C --> D["4 frozen encoders<br/>block-2 flat, 12,288 features"]
-    D --> E["Linear probe per member<br/>(nested CV)"]
-    E --> F["Average predictions"]
-    F --> G["8/8 vs raw · 8/8 vs random"]
+    C --> R["8 robust encoders"]
+    NR --> P["Linear probe per member, block-2 flat<br/>(nested CV)"]
+    R --> P
+    P --> M["Family means, mixed by one weight<br/>chosen in inner CV (0, .25, .5, .75, 1)"]
+    M --> G["8/8 vs raw · 8/8 vs random · +.095"]
 ```
 
-| Set | n | Raw R² | Random-weight R² | Robust ensemble R² | Δ vs raw (± SD) |
-|---|---:|---:|---:|---:|---:|
-| labeled_data | 4,716 | .830 | .949 | .959 | +.129 ± .004 |
-| 0055 | 25 | .591 | .541 | .640 | +.049 ± .127 |
-| 0106 | 64 | .697 | .702 | .714 | +.017 ± .022 |
-| 0109 | 96 | .918 | .933 | .943 | +.026 ± .011 |
-| 0112 | 68 | .377 | .364 | .421 | +.044 ± .117 |
-| 0113 | 70 | .548 | .561 | .702 | +.154 ± .060 |
-| 0114 | 230 | .983 | .982 | .986 | +.002 ± .001 |
-| 0120 | 125 | .380 | .354 | .405 | +.025 ± .054 |
+| Set | n | Raw R² | Random-weight R² | Previous: robust ensemble R² | Family-mix R² | Δ vs raw (± SD) |
+|---|---:|---:|---:|---:|---:|---:|
+| labeled_data | 4,716 | .830 | .949 | .959 | .962 | +.132 ± .004 |
+| 0055 | 25 | .591 | .541 | .640 | .596 | +.005 ± .119 |
+| 0106 | 64 | .697 | .702 | .714 | .706 | +.010 ± .023 |
+| 0109 | 96 | .918 | .933 | .943 | .942 | +.024 ± .012 |
+| 0112 | 68 | .377 | .364 | .421 | .715 | +.338 ± .115 |
+| 0113 | 70 | .548 | .561 | .702 | .739 | +.190 ± .054 |
+| 0114 | 230 | .983 | .982 | .986 | .985 | +.002 ± .001 |
+| 0120 | 125 | .380 | .354 | .405 | .439 | +.059 ± .053 |
+
+The random-weight column is the mean over the 16 members' random-weight controls.
 
 Shaded cells (HTML): the robust ensemble beats raw on that set.
 
@@ -184,6 +201,7 @@ flowchart TB
 | Signal squeeze (10-21) | Readout by inner CV; 8 members; per-set adaptation (Appendix B) | 5/8, −.013; 3/8, +.008; 5/8, −.001 vs average | Plain 4-member average kept |
 | Stage 2 robustness (10-22) | Which part of Stage 2 drives the trade-off (Appendix C) | Continuation alone: no change; robustness term: 0112 −.07/−.10, 0106 +.03, block-2 rank −30% | Next: frozen stage-1 reference at block 2 |
 | Stage 2 reference (10-22) | Frozen stage-1 reference at block 2 (Appendix C2) | mu .01/.04/.16: distance .68 → .18, 0112 vs B: p0 +.02 to +.03, p1 −.02 to +.01; fails on both lineages | Next: whitened (low-variance-weighted) reference |
+| Accuracy-first ensemble (10-23) | Mix non-robust and robust members (Appendix D) | M16 +.092 but 0106 −.018 vs raw; family mix +.095, 8/8 vs raw, 4/8 vs R4 | Family mix adopted (5/8 head-to-head waived) |
 
 ### Input normalization
 
@@ -669,6 +687,48 @@ flowchart LR
 - **Verdict.** No mu passes on both lineages. p0 mu .16 meets the 0112 test but loses too much noise robustness; p1 fails the 0112 and macro tests at every mu.
 
 **Recommended next experiment.** Make the reference term sensitive to low-variance directions. Measure the student–teacher distance after whitening by the teacher's fixed per-dimension (or PCA) variances, with a floor and a cap, so that the small directions that carry 0112's signal count as much as the dominant ones. An alternative is to apply the robustness term to block-2 features projected away from the teacher's lowest-variance PCA subspace. Choose the coefficient grid the same way, from unlabeled scales.
+
+## Appendix D. Accuracy-first ensemble (2026-10-23)
+
+**Bottom line.** Mixing non-robust and robust members gives the most accurate model so far. The family mix reaches a mean ΔR² of +.095 vs raw on 8/8 sets, against +.056 for the robust four-member ensemble. It is the candidate, adopted with one criterion waived (see below).
+
+**Why mix.** The two families err differently. Non-robust members are strong on 0112 (.72) and weak on 0106 (.60); robust members are the reverse. This matches Appendix C: the robust term buys 0106 and noise robustness at 0112's expense.
+
+**Members.**
+- **Non-robust (8):** stage-1 runs `p48_s0`, `p48_s1`, `p48_s2`, `s101`, plus seeds 107–110 (`configs/final_model.yaml`; `outputs/accuracy-ensemble/members`).
+- **Robust (8):** the four previous candidate members plus seeds 103–106 (`outputs/signal-squeeze/members`).
+- All banks share labels, rows, raw OOF and folds.
+
+| Set | raw | R4 (previous) | NR8 mean | R8 mean | M16 (all 16 averaged) | family mix | mean non-robust weight |
+|---|---|---|---|---|---|---|---|
+| labeled_data | .830 | .959 | .963 | .960 | .963 | .962 | .73 |
+| 0055 | .591 | .640 | .640 | .632 | .656 | .596 | .55 |
+| 0106 | .697 | .714 | .604 | .713 | .678 | .706 | .13 |
+| 0109 | .918 | .943 | .926 | .942 | .942 | .942 | .33 |
+| 0112 | .377 | .421 | .723 | .489 | .653 | .715 | .85 |
+| 0113 | .548 | .702 | .747 | .698 | .732 | .739 | .95 |
+| 0114 | .983 | .986 | .984 | .986 | .985 | .985 | .08 |
+| 0120 | .380 | .405 | .446 | .411 | .451 | .439 | .40 |
+| mean Δ vs raw | | +.056 | +.088 | +.063 | +.092 | **+.095** | |
+| worst set vs raw | | +.003 | −.092 | +.002 | −.018 | +.002 | |
+
+**Family mix.**
+- In each outer fold, each member's recipe is chosen in inner CV.
+- The family predictions are the means of their members.
+- One weight w ∈ {0, .25, .5, .75, 1} on the non-robust family is chosen by the inner-CV R² of the mix on outer-training rows only.
+- The weight goes robust where robust helps (0106 .13, 0114 .08) and non-robust where that helps (0113 .95, 0112 .85).
+- Code: `ensemble --stack --no-stack-heads --mix-groups ...` (`nested_cv(..., mixes=...)`).
+
+**Decision history.** This is stated in full because the rule changed during the study.
+1. **First rule, fixed before any score:** beat R4 on at least 5/8 sets with a positive mean, and beat raw on 8/8. M8 and M12 failed it, because 0106 fell below raw.
+2. **Second rule, set by the user after seeing those scores, applied forward:** highest mean ΔR² vs raw; beat R4 on at least 5/8 sets head to head; no set more than .01 below raw.
+   - M16 failed the tolerance (0106 −.018).
+   - The family mix met the mean and tolerance tests but beat R4 on 4/8 sets, not 5. Its losses were 0055 −.044 (the inner CV on 25 spectra picks an unstable weight), 0106 −.007, 0109 −.002 and 0114 −.0002.
+3. **Waiver:** the user then waived the head-to-head test, on the grounds that the mix has the highest mean and beats raw everywhere. The family mix was adopted.
+
+These are adaptive choices on the same eight sets, so the gain over R4 is exploratory. Confirmation needs an independent group-labelled holdout.
+
+**Cost.** 16 encoders instead of 4: 2.4 GFLOPs per spectrum. The non-robust members are not noise-robust (Appendix C), so robustness has to be revisited before deployment.
 
 ## References
 
