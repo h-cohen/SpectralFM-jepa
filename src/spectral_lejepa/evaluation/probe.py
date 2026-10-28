@@ -12,9 +12,9 @@ import warnings
 
 import numpy as np
 from scipy.linalg import LinAlgWarning
+from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.cross_decomposition import PLSRegression
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LinearRegression, RidgeCV
 from sklearn.metrics.pairwise import euclidean_distances
@@ -29,6 +29,8 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 NORMALIZERS = ("none", "standardize", "whiten", "whiten8", "whiten32", "whiten128")
 PROBES = ("ridgecv", "ols")
 RECIPES = tuple((n, p) for n in NORMALIZERS for p in PROBES)
+WHITEN_SAMPLES_PER_DIRECTION = 2
+EXACT_SVD_MAX_DIM = 6000
 NONLINEAR_PROBES = ("pls", "krr", "mlp")
 NONLINEAR_NORMALIZERS = ("standardize", "whiten128")
 EXTENDED_RECIPES = RECIPES + tuple((n, p) for n in NONLINEAR_NORMALIZERS for p in NONLINEAR_PROBES)
@@ -53,7 +55,9 @@ def _inner_cv(n, seed):
 
 
 def _fit_nonlinear(X_tr, y_tr, X_te, probe, seed):
-    """Nonlinear probes; every hyperparameter chosen by internal CV on (X_tr, y_tr) only."""
+    """Nonlinear probes; every hyperparameter chosen by internal CV on (X_tr, y_tr) only.
+
+    MLP early stopping is off for n < 20 (the 10% validation split would be under 2 rows)."""
     X_tr = np.asarray(X_tr, np.float64); X_te = np.asarray(X_te, np.float64); y_tr = np.asarray(y_tr, np.float64)
     n = len(y_tr)
     if np.ptp(y_tr) == 0 or n < 4:
@@ -68,6 +72,7 @@ def _fit_nonlinear(X_tr, y_tr, X_te, probe, seed):
         k = min(KRR_PCA_DIM, n - 1, X_tr.shape[1])
         pca = PCA(n_components=k, random_state=seed).fit(X_tr)
         Z_tr, Z_te = pca.transform(X_tr), pca.transform(X_te)
+        # gamma = 1/(2 sigma^2) with sigma = scale * sqrt(median d^2) over training pairs
         d2 = euclidean_distances(Z_tr, squared=True)      # (n, n), not (n, n, k)
         med = np.median(d2[np.triu_indices(n, 1)]) or 1.0
         gammas = [1.0 / (2 * s * s * med) for s in KRR_BANDWIDTH_SCALES]
@@ -84,8 +89,6 @@ def _fit_nonlinear(X_tr, y_tr, X_te, probe, seed):
             preds.append(m.fit(X_tr, (y_tr - mu) / sd).predict(X_te) * sd + mu)
         return np.mean(preds, axis=0).ravel()
     raise ValueError(f"unknown probe {probe!r}")
-WHITEN_SAMPLES_PER_DIRECTION = 2
-EXACT_SVD_MAX_DIM = 6000
 
 
 def r2(y_true, y_pred) -> float:

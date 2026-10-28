@@ -49,3 +49,20 @@ def test_recipe_sets():
     assert len(EXTENDED_RECIPES) == 18 and EXTENDED_RECIPES[:12] == RECIPES
     with pytest.raises(ValueError):
         recipe_set("nope")
+
+
+@pytest.mark.parametrize("probe", ["pls", "krr", "mlp"])
+def test_cv_fold_with_constant_target_gives_finite_predictions(probe):
+    rng = np.random.default_rng(4)
+    X = rng.normal(size=(30, 8))
+    y = np.ones(30); y[0] = 2.0              # most inner folds see a constant target
+    p = fit_predict(X[:25], y[:25], X[25:], probe, 0)
+    assert p.shape == (5,) and np.isfinite(p).all()
+
+
+@pytest.mark.parametrize("probe", ["pls", "krr", "mlp"])
+def test_tiny_training_set_gives_finite_predictions(probe):
+    rng = np.random.default_rng(5)
+    X = rng.normal(size=(16, 50)); y = rng.normal(size=16)
+    p = fit_predict(X[:12], y[:12], X[12:], probe, 0)
+    assert p.shape == (4,) and np.isfinite(p).all()
