@@ -1,8 +1,10 @@
+import json
+
 import numpy as np
 import pytest
 
 from spectral_lejepa.evaluation import nested as nc
-from spectral_lejepa.evaluation.probe import RECIPES, fold_transforms, r2
+from spectral_lejepa.evaluation.probe import EXTENDED_RECIPES, RECIPES, fold_transforms, r2
 
 
 def synthetic(n=60, d=12, seed=0):
@@ -277,3 +279,31 @@ def test_mix_shrink_fires_on_noise_and_not_on_signal():
     arms, y = _three_family(n=200, informative=0)
     ch = nc.nested_cv(arms, {}, y, mixes={"s": {"families": [["f0"], ["f1"], ["f2"]], "shrink": True}})["s"]["chosen"]
     assert sum(c["shrunk"] for c in ch) == 0 and all(c["weights"][0] == 1 for c in ch)
+
+
+def _toy_arms(n=60, seed=0):
+    rng = np.random.default_rng(seed)
+    X = rng.normal(size=(n, 6)); y = np.sin(2 * X[:, 0]) + X[:, 1] ** 2
+    return {"raw": X, "a": X + 0.01 * rng.normal(size=X.shape)}, {"raw": ["raw"], "a": ["a"]}, y
+
+
+def test_default_recipes_unchanged():
+    arms, fams, y = _toy_arms()
+    r1 = nc.nested_cv(arms, fams, y, n_repeats=1)
+    r2_ = nc.nested_cv(arms, fams, y, n_repeats=1, recipes=RECIPES)
+    assert json.dumps(r1, sort_keys=True, default=str) == json.dumps(r2_, sort_keys=True, default=str)
+
+
+def test_extended_recipes_can_be_chosen_and_recorded():
+    arms, fams, y = _toy_arms()
+    res = nc.nested_cv(arms, fams, y, n_repeats=1, recipes=EXTENDED_RECIPES)
+    chosen = {c["probe"] for c in res["a"]["chosen"]}
+    assert chosen & {"pls", "krr", "mlp"}
+    assert len(res["protocol"]["recipes"]) == 18
+
+
+def test_extended_recipes_with_torch_backend_merge():
+    pytest.importorskip("torch")
+    arms, fams, y = _toy_arms()
+    res = nc.nested_cv(arms, fams, y, n_repeats=1, recipes=EXTENDED_RECIPES, backend="torch", device="cpu")
+    assert set(res) >= {"raw", "a"}

@@ -19,7 +19,7 @@ import numpy as np
 from sklearn.model_selection import KFold
 from threadpoolctl import threadpool_limits
 
-from .probe import RECIPES, fit_predict, fold_transforms, r2
+from .probe import NONLINEAR_PROBES, RECIPES, fit_predict, fold_transforms, r2
 
 ENSEMBLE_K = 3      # the block-average readout: the 3 best blocks by inner CV, predictions averaged
 MIX_GRID = (0, .25, .5, .75, 1)   # weight on family A in a family mix
@@ -78,28 +78,37 @@ def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device=None):
     fit on (X_tr', y_tr). backend "sklearn" is the reference (probe.py); "torch" runs the
     float64 port (probe_torch.py) on `device`."""
     recipes = list(dict.fromkeys(recipes))
-    if backend == "torch":
-        from .probe_torch import recipe_predictions
-        return recipe_predictions(X_tr, y_tr, X_te, recipes, seed=seed, device=device)
-    if backend != "sklearn":
+    if backend not in ("torch", "sklearn"):
         raise ValueError(f"unknown probe backend {backend!r}; choose 'sklearn' or 'torch'")
-    T = fold_transforms(X_tr, X_te, seed=seed)
-    return {(norm, probe): fit_predict(T[norm][0], y_tr, T[norm][1], probe, seed) for norm, probe in recipes}
+    # nonlinear probes (pls, krr, mlp) have no torch port: they always run via sklearn on CPU
+    lin = [rc for rc in recipes if rc[1] not in NONLINEAR_PROBES]
+    nl = [rc for rc in recipes if rc[1] in NONLINEAR_PROBES]
+    out = {}
+    if lin and backend == "torch":
+        from .probe_torch import recipe_predictions
+        out = recipe_predictions(X_tr, y_tr, X_te, lin, seed=seed, device=device)
+    elif lin:
+        T = fold_transforms(X_tr, X_te, seed=seed)
+        out = {(norm, probe): fit_predict(T[norm][0], y_tr, T[norm][1], probe, seed) for norm, probe in lin}
+    if nl:
+        T = fold_transforms(X_tr, X_te, seed=seed)
+        out |= {(norm, probe): fit_predict(T[norm][0], y_tr, T[norm][1], probe, seed) for norm, probe in nl}
+    return out
 
 
-def _inner_predictions(X, y, n_inner, seed, backend="sklearn", device=None):
+def _inner_predictions(X, y, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES):
     """Inner-CV predictions of every recipe, on these (training) rows only: {recipe: [n]}."""
-    preds = {rc: np.zeros(len(y)) for rc in RECIPES}
+    preds = {rc: np.zeros(len(y)) for rc in recipes}
     for itr, ite in KFold(n_inner, shuffle=True, random_state=seed).split(X):
-        P = _recipe_predictions(X[itr], y[itr], X[ite], RECIPES, seed, backend, device)
-        for rc in RECIPES:
+        P = _recipe_predictions(X[itr], y[itr], X[ite], recipes, seed, backend, device)
+        for rc in recipes:
             preds[rc][ite] = P[rc]
     return preds
 
 
-def _inner_scores(X, y, n_inner, seed, backend="sklearn", device=None):
+def _inner_scores(X, y, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES):
     """Inner-CV R² of every recipe, on these (training) rows only."""
-    return {rc: r2(y, p) for rc, p in _inner_predictions(X, y, n_inner, seed, backend, device).items()}
+    return {rc: r2(y, p) for rc, p in _inner_predictions(X, y, n_inner, seed, backend, device, recipes).items()}
 
 
 def nnls_weights(P, y):
@@ -119,7 +128,7 @@ def _single_threaded(backend):
 
 
 def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles, backend="sklearn", device=None,
-                stacks=None, mixes=None):
+                stacks=None, mixes=None, recipes=RECIPES):
     """stacks {name: arms}: each arm at its inner-CV best recipe, mixed by nnls_weights fitted on those
     recipes' inner-CV predictions (training rows only), applied to the refit test predictions.
     mixes {name: [arms_1..arms_K]} (or the legacy (arms_a, arms_b), or {'families': [...], 'shrink': bool}):
@@ -134,23 +143,23 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
                         | {a for names, _ in ensembles.values() for a in names}
                         | {a for names in stacks.values() for a in names}
                         | {a for fams, _ in mixes.values() for names in fams for a in names})
-        inner_pred = {a: _inner_predictions(arms[a][tr], y[tr], n_inner, seed, backend, device) for a in needed}
+        inner_pred = {a: _inner_predictions(arms[a][tr], y[tr], n_inner, seed, backend, device, recipes) for a in needed}
         inner = {a: {rc: r2(y[tr], p) for rc, p in P.items()} for a, P in inner_pred.items()}
 
         # the refits this fold needs, per arm: selected recipes, ensemble members, fixed arms
-        picks = {fam: max(((a, rc) for a in names for rc in RECIPES), key=lambda k: inner[k[0]][k[1]])
+        picks = {fam: max(((a, rc) for a in names for rc in recipes), key=lambda k: inner[k[0]][k[1]])
                  for fam, names in families.items()}
         best, tops = {}, {}
         for name, (names, k) in ensembles.items():
-            best[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
+            best[name] = {a: max(recipes, key=lambda rc: inner[a][rc]) for a in names}
             tops[name] = sorted(names, key=lambda a: -inner[a][best[name][a]])[:k]
         sbest, sweights = {}, {}
         for name, names in stacks.items():
-            sbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for a in names}
+            sbest[name] = {a: max(recipes, key=lambda rc: inner[a][rc]) for a in names}
             sweights[name] = nnls_weights(np.stack([inner_pred[a][sbest[name][a]] for a in names], 1), y[tr])
         mbest, mweight, minner, mshrunk = {}, {}, {}, {}
         for name, (fams, shrink) in mixes.items():
-            mbest[name] = {a: max(RECIPES, key=lambda rc: inner[a][rc]) for names in fams for a in names}
+            mbest[name] = {a: max(recipes, key=lambda rc: inner[a][rc]) for names in fams for a in names}
             fam_pred = [np.mean([inner_pred[a][mbest[name][a]] for a in names], axis=0) for names in fams]
             mweight[name], minner[name], mshrunk[name] = _choose_mix(fam_pred, y[tr], shrink, seed)
         wanted = collections.defaultdict(list)
@@ -166,7 +175,7 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
             for a_ in (a for names in fams for a in names):
                 wanted[a_].append(mbest[name][a_])
         for arm in fixed_arms:
-            wanted[arm] += list(RECIPES)
+            wanted[arm] += list(recipes)
         refit = {arm: _recipe_predictions(arms[arm][tr], y[tr], arms[arm][te], rcs, seed, backend, device)
                  for arm, rcs in wanted.items()}
 
@@ -192,7 +201,7 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
                             "shrunk": mshrunk[name], "inner_r2": minner[name], "family_members": members}
             if len(fams) == 2:
                 chosen[name] |= {"weight_a": float(w[0]), "members_a": members[0], "members_b": members[1]}
-        fixed = {(arm, norm, probe): refit[arm][(norm, probe)] for arm in fixed_arms for norm, probe in RECIPES}
+        fixed = {(arm, norm, probe): refit[arm][(norm, probe)] for arm in fixed_arms for norm, probe in recipes}
     return chosen, fixed
 
 
@@ -217,7 +226,7 @@ def paired_delta(y, PA, PB, n_boot=1000, seed=0):
 
 def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
               fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None, stacks=None,
-              mixes=None):
+              mixes=None, recipes=RECIPES):
     """backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
     n_jobs concurrent folds per device (threads, one CUDA stream each)."""
     y = np.asarray(y, dtype=np.float64)
@@ -225,7 +234,7 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
     ensembles = ensembles or {}
     stacks = stacks or {}
     mixes = mixes or {}
-    fold_fn = functools.partial(_outer_fold, stacks=stacks, mixes=mixes)
+    fold_fn = functools.partial(_outer_fold, stacks=stacks, mixes=mixes, recipes=tuple(recipes))
     jobs = []
     for r in range(n_repeats):
         for f, (tr, te) in enumerate(KFold(n_folds, shuffle=True, random_state=seed + r).split(y)):
@@ -257,6 +266,7 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
         v["bootstrap_sd"] = bootstrap_sd(y, v["oof"])
     res["fixed"] = fixed
     res["test_folds"] = test_folds
+    res["protocol"] = {"recipes": [f"{a}+{b}" for a, b in recipes]}
     return res
 
 

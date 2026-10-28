@@ -5,6 +5,8 @@ import numpy as np
 import pytest
 
 from spectral_lejepa.evaluation.bank import save_bank
+from spectral_lejepa.evaluation import ensemble
+from spectral_lejepa.evaluation.probe import EXTENDED_RECIPES
 from spectral_lejepa.evaluation.ensemble import ensemble_predictions, fuse, fuse_set, member_oof
 
 
@@ -210,3 +212,11 @@ def test_fuse_mix_specs_writes_arms_and_paired_deltas(tmp_path):
     assert {'MIX3_vs_MIX2', 'MIX3s_vs_MIX2', 'MIX2s_vs_MIX2'} <= set(s) and 'MIX2_vs_MIX2' not in s
     assert len(s['mix_weights']['MIX3s']) == 10 and len(s['mix_shrunk']['MIX3s']) == 10
     assert 'MIX3_vs_MIX2_wins' in res['summary']
+
+
+def test_cli_probes_flag_reaches_fuse(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(ensemble, "fuse", lambda *a, **k: seen.update(k) or {"sets": {}, "summary": {}})
+    ensemble.main(["--banks", str(tmp_path), "--stack", "--output-dir", str(tmp_path), "--probes", "extended",
+                   "--backend", "sklearn"])
+    assert seen["recipes"] == EXTENDED_RECIPES

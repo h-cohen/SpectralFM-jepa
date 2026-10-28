@@ -20,7 +20,7 @@ import numpy as np
 
 from spectral_lejepa.evaluation.bank import load_bank
 from spectral_lejepa.evaluation.nested import nested_cv, paired_delta
-from spectral_lejepa.evaluation.probe import r2
+from spectral_lejepa.evaluation.probe import r2, recipe_set
 
 HEADS = ('layer2/flat', 'layer2', 'layer6')
 
@@ -202,6 +202,8 @@ def main(argv=None):
     ap.add_argument('--backend', default='torch')
     ap.add_argument('--device', default='cuda')
     ap.add_argument('--n-jobs', type=int, default=1)
+    ap.add_argument('--probes', choices=['linear', 'extended'], default='linear',
+                    help='--stack: recipe set (extended adds PLS, RBF kernel ridge and MLP probes)')
     ap.add_argument('--select', nargs='+', help='--stack: candidate readouts chosen per member in inner CV')
     ap.add_argument('--no-stack-heads', action='store_true', help='--stack: skip the NNLS stack arm')
     ap.add_argument('--mix-groups', nargs='+',
@@ -214,7 +216,7 @@ def main(argv=None):
         specs = parse_mix_specs(a.mix_specs) if a.mix_specs else None
         out = fuse(a.banks, a.output_dir, heads=() if a.no_stack_heads else HEADS, select=a.select,
                    mix_groups=a.mix_groups, mix_specs=specs,
-                   backend=a.backend, device=a.device, n_jobs=a.n_jobs)
+                   backend=a.backend, device=a.device, n_jobs=a.n_jobs, recipes=recipe_set(a.probes))
         for ds, s in out['sets'].items():
             print(f"{ds:14s} " + ' '.join(f"{k} {v:.4f}" for k, v in s['r2'].items()))
         print(json.dumps(out['summary']))
