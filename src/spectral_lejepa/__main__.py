@@ -23,6 +23,7 @@ COMMANDS = {
     'stress': 'spectral_lejepa.evaluation.stress',
     'isotropy': 'spectral_lejepa.evaluation.isotropy',
     'report': 'spectral_lejepa.reporting.results',
+    'stage1-curve': 'spectral_lejepa.reporting.curve',
     'training-report': 'spectral_lejepa.reporting.training_report',
     'training-report-html': 'spectral_lejepa.reporting.training_report_html',
     'embedding-figures': 'spectral_lejepa.reporting.embedding_figures',
