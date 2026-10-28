@@ -14,7 +14,12 @@ import numpy as np
 from scipy.linalg import LinAlgWarning
 from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.cross_decomposition import PLSRegression
+from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LinearRegression, RidgeCV
+from sklearn.metrics.pairwise import euclidean_distances
+from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.neural_network import MLPRegressor
 
 # RidgeCV's small-alpha end is ill-conditioned by construction at high p/n; CV picks a
 # well-conditioned alpha. Silence the warnings, not the numerics (as the parent does).
@@ -24,6 +29,61 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 NORMALIZERS = ("none", "standardize", "whiten", "whiten8", "whiten32", "whiten128")
 PROBES = ("ridgecv", "ols")
 RECIPES = tuple((n, p) for n in NORMALIZERS for p in PROBES)
+NONLINEAR_PROBES = ("pls", "krr", "mlp")
+NONLINEAR_NORMALIZERS = ("standardize", "whiten128")
+EXTENDED_RECIPES = RECIPES + tuple((n, p) for n in NONLINEAR_NORMALIZERS for p in NONLINEAR_PROBES)
+PLS_COMPONENTS = (2, 4, 8, 16, 32)
+KRR_PCA_DIM = 256
+KRR_BANDWIDTH_SCALES = (0.5, 1.0, 2.0)
+KRR_ALPHAS = (1e-3, 1e-2, 1e-1, 1.0, 10.0)
+MLP_WEIGHT_DECAYS = (1e-3, 1e-2)
+MLP_SEEDS = 3
+
+
+def recipe_set(name):
+    if name == "linear":
+        return RECIPES
+    if name == "extended":
+        return EXTENDED_RECIPES
+    raise ValueError(f"unknown recipe set {name!r}; choose 'linear' or 'extended'")
+
+
+def _inner_cv(n, seed):
+    return KFold(min(5, n), shuffle=True, random_state=seed)
+
+
+def _fit_nonlinear(X_tr, y_tr, X_te, probe, seed):
+    """Nonlinear probes; every hyperparameter chosen by internal CV on (X_tr, y_tr) only."""
+    X_tr = np.asarray(X_tr, np.float64); X_te = np.asarray(X_te, np.float64); y_tr = np.asarray(y_tr, np.float64)
+    n = len(y_tr)
+    if np.ptp(y_tr) == 0 or n < 4:
+        return np.full(len(X_te), y_tr.mean())
+    cv = _inner_cv(n, seed)
+    if probe == "pls":
+        cap = min(X_tr.shape[1], n - n // cv.get_n_splits() - 1)
+        grid = [k for k in PLS_COMPONENTS if k <= cap] or [1]
+        m = GridSearchCV(PLSRegression(scale=False), {"n_components": grid}, cv=cv, scoring="r2")
+        return np.asarray(m.fit(X_tr, y_tr).predict(X_te)).ravel()
+    if probe == "krr":
+        k = min(KRR_PCA_DIM, n - 1, X_tr.shape[1])
+        pca = PCA(n_components=k, random_state=seed).fit(X_tr)
+        Z_tr, Z_te = pca.transform(X_tr), pca.transform(X_te)
+        d2 = euclidean_distances(Z_tr, squared=True)      # (n, n), not (n, n, k)
+        med = np.median(d2[np.triu_indices(n, 1)]) or 1.0
+        gammas = [1.0 / (2 * s * s * med) for s in KRR_BANDWIDTH_SCALES]
+        m = GridSearchCV(KernelRidge(kernel="rbf"), {"gamma": gammas, "alpha": list(KRR_ALPHAS)}, cv=cv, scoring="r2")
+        return np.asarray(m.fit(Z_tr, y_tr).predict(Z_te)).ravel()
+    if probe == "mlp":
+        mu, sd = y_tr.mean(), y_tr.std()
+        early = n >= 20                       # MLPRegressor's 10% validation split needs >= 2 rows
+        preds = []
+        for s in range(MLP_SEEDS):
+            base = MLPRegressor(hidden_layer_sizes=(256,), early_stopping=early, validation_fraction=0.1,
+                                max_iter=500, random_state=seed + s)
+            m = GridSearchCV(base, {"alpha": list(MLP_WEIGHT_DECAYS)}, cv=cv, scoring="r2")
+            preds.append(m.fit(X_tr, (y_tr - mu) / sd).predict(X_te) * sd + mu)
+        return np.mean(preds, axis=0).ravel()
+    raise ValueError(f"unknown probe {probe!r}")
 WHITEN_SAMPLES_PER_DIRECTION = 2
 EXACT_SVD_MAX_DIM = 6000
 
@@ -79,6 +139,8 @@ def make_regressor(name):
 
 
 def fit_predict(X_tr, y_tr, X_te, probe, seed):
+    if probe in NONLINEAR_PROBES:
+        return _fit_nonlinear(X_tr, y_tr, X_te, probe, seed)
     m = make_regressor(probe)
     m.fit(X_tr, y_tr)
     return np.asarray(m.predict(X_te)).ravel()
