@@ -1,0 +1,73 @@
+# Per-set adaptation of a stage-1 member: constant tiny LR on one set (or the pooled eight), otherwise the final_model recipe.
+experiment:
+  name: production_p48_s101
+  seed: 101
+  output_dir: outputs/final-model
+data:
+  source: packed
+  packed_dir: /mnt5/home/hadar/nova/data/spectra_all
+  normalization: global
+  manifest_dir: /mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one
+  sequence_length: 245
+  max_train_samples: null
+  num_workers: 4
+  sources: null                # set per run, e.g. [labeled_regression/dataset0112]; the pooled run lists all eight
+  source_weights: null
+model:
+  num_patches: 48
+  dim: 256
+  depth: 6
+  heads: 8
+  mlp_dim: 1024
+  dropout: 0.0
+  predictor_dim: 192
+  predictor_depth: 4
+  predictor_heads: 6
+  predictor_mlp_dim: 768
+masking:
+  strategy: random
+  mask_ratio: 0.75
+  num_blocks: 3
+training:
+  batch_size: 256
+  epochs: 10
+  max_steps: 2000
+  optimizer: adamw
+  learning_rate: 5.0e-06       # final cosine LR (5e-4 x 0.001) x 10
+  weight_decay: 0.05
+  warmup_epochs: 0.0
+  final_lr_ratio: 0.001
+  lambda_sigreg: 0.05
+  sigreg_num_slices: 1024
+  sigreg_knots: 17
+  sigreg_t_max: 3.0
+  global_weight: 1.0
+  global_views: 2
+  global_keep: 0.5
+  amp: true
+  grad_clip: null
+  log_every: 50
+  val_every: 1000
+  diag_every: 1000000
+  ckpt_every: 1000000
+  device: cuda
+  resume: null
+  schedule: constant           # LR held at learning_rate, no warmup
+  stop_step: null              # stop early at this step; the LR schedule keeps the full max_steps length
+  preserve: null               # {weight, block}: pull block-k tokens toward the frozen init_checkpoint model
+  save_steps: [250, 500, 1000, 2000]
+  init_checkpoint: null        # required: a stage-1 member checkpoint
+wandb:
+  enabled: true
+  log_checkpoints: false
+  entity: null
+  project: spectralfm-lejepa
+  group: final-model-fixed-block2
+  job_type: pretrain
+  tags:
+  - lejepa
+  - spectralfm
+  - final-candidate
+  - fixed-block2-flat
+  - seed101
+  - alldata

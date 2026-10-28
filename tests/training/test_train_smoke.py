@@ -370,3 +370,45 @@ def test_save_steps_outside_run_fail(data_dir, tmp_path, bad):
     cfg = _stop_cfg(data_dir, tmp_path, "badsave", stop_step=8, save_steps=[4, bad])
     with pytest.raises(ValueError, match="save_steps"):
         train(cfg)
+
+
+def test_constant_schedule_holds_lr(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "out")
+    cfg["training"].update(schedule="constant", max_steps=6, log_every=1)
+    with pytest.warns(UserWarning):
+        result = train(cfg)
+    lrs = [h["train/learning_rate"] for h in result["history"]]
+    assert lrs and all(abs(lr - cfg["training"]["learning_rate"]) < 1e-12 for lr in lrs)
+
+
+def test_bogus_schedule_fails(data_dir, tmp_path):
+    cfg = tiny_cfg(data_dir, tmp_path / "out")
+    cfg["training"]["schedule"] = "bogus"
+    with pytest.raises(ValueError, match="training.schedule"):
+        train(cfg)
+
+
+def test_sources_filter_records_rows(tmp_path):
+    packed = make_packed_sources(tmp_path)
+    srcs = ["big"] * 70 + ["labeled_regression/a"] * 20 + ["labeled_regression/b"] * 10
+    (packed / "index.tsv").write_text("".join(f"{i}\t{s}\tx{i}.wav\n" for i, s in enumerate(srcs)))
+    cfg = load_config(REPO / "configs" / "pretrain.yaml", [
+        "experiment.name=sources", f"experiment.output_dir={tmp_path / 'out'}",
+        "data.source=packed", f"data.packed_dir={packed}", "data.normalization=global",
+        "data.sources=[labeled_regression/a]",
+        *TINY_OVERRIDES, "training.max_steps=4", "training.log_every=1"])
+    with pytest.warns(UserWarning, match="batch_size=8"):
+        result = train(cfg)
+    derived = load_checkpoint(Path(result["output_dir"]) / "checkpoint_last.pt")["config"]["derived"]
+    assert derived["sources"] == ["labeled_regression/a"]
+    assert derived["n_train_rows"] == 20 - 2   # rows 70..89 minus validation rows 70, 71 (and 90, 91 are source b)
+
+
+def test_sources_exclusive_with_weights(tmp_path):
+    packed = make_packed_sources(tmp_path)
+    cfg = load_config(REPO / "configs" / "pretrain.yaml", [
+        "experiment.name=excl", f"experiment.output_dir={tmp_path / 'out'}",
+        "data.source=packed", f"data.packed_dir={packed}", "data.normalization=global",
+        "data.sources=[big]", "data.source_weights={default: 1.0}", *TINY_OVERRIDES])
+    with pytest.raises(ValueError, match="exclusive"):
+        train(cfg)

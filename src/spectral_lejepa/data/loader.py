@@ -111,6 +111,23 @@ def valid_subset(valid_rows, k=2048, seed=0) -> np.ndarray:
     return np.sort(np.random.default_rng(seed).choice(valid_rows, min(k, len(valid_rows)), replace=False))
 
 
+def source_rows(packed_dir, rows, sources) -> np.ndarray:
+    """The rows of `rows` whose index.tsv source starts with one of `sources` (labels are never read)."""
+    with open(Path(packed_dir) / "index.tsv") as f:   # `row<TAB>source<TAB>path`, ~12.6M lines
+        src = np.array([line.split("\t", 2)[1] for line in f])
+    keep = np.zeros(len(src), bool)
+    for prefix in sources:
+        hit = np.char.startswith(src, prefix)
+        if not hit.any():
+            raise ValueError(f"data.sources: {prefix!r} matches no source in index.tsv")
+        keep |= hit
+    rows = np.asarray(rows)
+    out = np.sort(rows[keep[rows]])
+    if not len(out):
+        raise ValueError(f"data.sources {list(sources)} leaves no training rows")
+    return out
+
+
 def _source_groups(packed_dir, train_rows, source_weights):
     """(group key per training row, normalized mass per group that has training rows)."""
     stats = json.loads((Path(packed_dir) / "stats.json").read_text())

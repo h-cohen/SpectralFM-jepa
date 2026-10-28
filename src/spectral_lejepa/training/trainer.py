@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import LambdaLR
 
 from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset, make_loader,
                            manifest_fingerprint, packed_train_rows, read_manifest, source_mass,
-                           source_row_probs, subsample, valid_subset)
+                           source_row_probs, source_rows, subsample, valid_subset)
 from ..data.perturb import check_config, perturb
 from ..models.masking import make_mask, random_mask
 from ..models.vit_1d import build_model, core_model_config
@@ -238,6 +238,10 @@ def train(cfg: dict) -> dict:
 
     norm = dcfg["normalization"]
     weights, sampler = dcfg.get("source_weights"), None
+    if dcfg.get("sources") and weights:
+        raise ValueError("data.sources and data.source_weights are exclusive")
+    if dcfg.get("sources") and dcfg["source"] != "packed":
+        raise ValueError("data.sources needs data.source=packed")
     if weights and dcfg["source"] != "packed":
         raise ValueError("data.source_weights needs data.source=packed")
     if dcfg["source"] == "packed":
@@ -245,11 +249,17 @@ def train(cfg: dict) -> dict:
         stats = json.loads((Path(packed_dir) / "stats.json").read_text())
         global_stats = {"mean": stats["mean"], "std": stats["std"]}
         valid_rows = np.load(Path(packed_dir) / "valid_rows.npy")
-        train_rows = subsample(packed_train_rows(packed_dir), dcfg["max_train_samples"], seed)
+        train_rows = packed_train_rows(packed_dir)
+        if dcfg.get("sources"):
+            train_rows = source_rows(packed_dir, train_rows, dcfg["sources"])
+        train_rows = subsample(train_rows, dcfg["max_train_samples"], seed)
         train_ds = PackedSpectra(packed_dir, train_rows, norm, global_stats)
         valid_ds = PackedSpectra(packed_dir, valid_subset(valid_rows), norm, global_stats)
         data_derived = {"packed_dir": str(packed_dir), "global_stats": global_stats,
                         "n_rows": stats["n_rows"], "n_dropped": stats["n_dropped"]}
+        if dcfg.get("sources"):
+            data_derived["sources"] = list(dcfg["sources"])
+            data_derived["n_train_rows"] = int(len(train_rows))
         if weights:
             sampler = SourceWeightedSampler(source_row_probs(packed_dir, train_rows, weights), seed)
             data_derived["source_mass"] = source_mass(packed_dir, train_rows, weights)
@@ -271,6 +281,9 @@ def train(cfg: dict) -> dict:
     steps_per_epoch = len(loader)
     if steps_per_epoch == 0:
         raise ValueError(f"{len(train_ds)} training samples is fewer than one batch ({batch_size})")
+    schedule = tcfg.get("schedule", "cosine")
+    if schedule not in ("cosine", "constant"):
+        raise ValueError(f"training.schedule must be 'cosine' or 'constant', got {schedule!r}")
     total_steps, warmup_steps = schedule_lengths(steps_per_epoch, tcfg)
     if resume:
         previous = resume["ckpt"]["config"].get("derived", {})
@@ -331,7 +344,10 @@ def train(cfg: dict) -> dict:
                                 (robust_cfg or {}).get("weight", 0.0),
                                 (preserve_cfg or {}).get("weight", 0.0)).to(device)
     optimizer = torch.optim.AdamW(param_groups(model, tcfg["weight_decay"]), lr=tcfg["learning_rate"])
-    scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
+    if schedule == "constant":
+        scheduler = LambdaLR(optimizer, lambda s: 1.0)
+    else:
+        scheduler = LambdaLR(optimizer, lambda s: lr_factor(s, warmup_steps, total_steps, tcfg["final_lr_ratio"]))
     scaler = torch.amp.GradScaler(device.type, enabled=amp)
     mask_generator = torch.Generator().manual_seed(seed + 1)
     robust_generator = torch.Generator().manual_seed(seed + 5)   # separate stream: masking sequence unchanged
