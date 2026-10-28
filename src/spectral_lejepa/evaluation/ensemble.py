@@ -20,7 +20,7 @@ import numpy as np
 
 from spectral_lejepa.evaluation.bank import load_bank
 from spectral_lejepa.evaluation.nested import nested_cv, paired_delta
-from spectral_lejepa.evaluation.probe import r2, recipe_set
+from spectral_lejepa.evaluation.probe import RECIPES, r2, recipe_set
 
 HEADS = ('layer2/flat', 'layer2', 'layer6')
 
@@ -131,7 +131,8 @@ def fuse(banks, output, heads=HEADS, select=None, mix_groups=None, mix_specs=Non
     members' random_control/nested_oof.npz layer2/flat (entry['random_source'] 'nested_oof', else 'bank')."""
     banks, output = [Path(b) for b in banks], Path(output)
     sets = sorted(set.intersection(*({p.parent.name for p in b.glob('*/bank.npz')} for b in banks)))
-    out = {'members': [str(b) for b in banks], 'heads': list(heads), 'mix_groups': mix_groups, 'mix_specs': mix_specs, 'select': list(select or ()), 'sets': {}}
+    out = {'members': [str(b) for b in banks], 'heads': list(heads), 'mix_groups': mix_groups, 'mix_specs': mix_specs, 'select': list(select or ()),
+           'recipes': [f'{a}+{b}' for a, b in probe.get('recipes', RECIPES)], 'sets': {}}
     for ds in sets:
         m = fuse_set([b / ds / 'bank.npz' for b in banks], heads, select=select, mix_groups=mix_groups, mix_specs=mix_specs, **probe)
         rand_banks = [b / ds / 'random_control' / 'bank.npz' for b in banks]

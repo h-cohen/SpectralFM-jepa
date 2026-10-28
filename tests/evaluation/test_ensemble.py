@@ -220,3 +220,13 @@ def test_cli_probes_flag_reaches_fuse(monkeypatch, tmp_path):
     ensemble.main(["--banks", str(tmp_path), "--stack", "--output-dir", str(tmp_path), "--probes", "extended",
                    "--backend", "sklearn"])
     assert seen["recipes"] == EXTENDED_RECIPES
+
+
+@pytest.mark.parametrize('recipes,n', [(None, 12), (EXTENDED_RECIPES, 18)])
+def test_fuse_records_recipes(tmp_path, recipes, n):
+    y = np.random.default_rng(0).normal(size=60)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(2)]
+    probe = {} if recipes is None else {'recipes': recipes}
+    fuse(runs, tmp_path / 'out', heads=(), n_repeats=1, n_folds=2, n_inner=2, **probe)
+    saved = json.loads((tmp_path / 'out' / 'fusion.json').read_text())
+    assert len(saved['recipes']) == n

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from spectral_lejepa.evaluation import nested as nc
-from spectral_lejepa.evaluation.probe import EXTENDED_RECIPES, RECIPES, fold_transforms, r2
+from spectral_lejepa.evaluation.probe import EXTENDED_RECIPES, NONLINEAR_PROBES, RECIPES, fold_transforms, r2
 
 
 def synthetic(n=60, d=12, seed=0):
@@ -307,3 +307,7 @@ def test_extended_recipes_with_torch_backend_merge():
     arms, fams, y = _toy_arms()
     res = nc.nested_cv(arms, fams, y, n_repeats=1, recipes=EXTENDED_RECIPES, backend="torch", device="cpu")
     assert set(res) >= {"raw", "a"}
+    X, yy = arms["a"], y
+    P = nc._recipe_predictions(X[:40], yy[:40], X[40:], EXTENDED_RECIPES, 0, "torch", "cpu")
+    assert set(P) == set(EXTENDED_RECIPES)
+    assert any(rc[1] in NONLINEAR_PROBES for rc in P) and any(rc[1] not in NONLINEAR_PROBES for rc in P)
