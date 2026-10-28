@@ -19,13 +19,20 @@ SETS = ["labeled_data", "dataset0055", "dataset0106", "dataset0109",
 
 def curve_table(evals, sets, family="layer2/flat"):
     """evals {member: {step: eval dir}} -> {set: {step: mean-over-members dev score}}."""
-    steps = sorted(set.intersection(*(set(v) for v in evals.values())))
+    steps = sorted(set.union(*(set(v) for v in evals.values())))
+    for m, v in sorted(evals.items()):
+        for st in steps:
+            if st not in v:
+                raise ValueError(f"member {m} lacks step {st}")
     return {s: {st: float(np.mean([dev_score(Path(evals[m][st]) / s / "nested_results.json", family)
                                    for m in evals])) for st in steps} for s in sets}
 
 
 def trigger(table, ref=450000, need=5):
     """True when the final (max) step beats `ref` strictly on at least `need` sets."""
+    for s, t in table.items():
+        if ref not in t:
+            raise ValueError(f"set {s} has no step {ref}; steps {sorted(t)}")
     return sum(t[max(t)] > t[ref] for t in table.values()) >= need
 
 
@@ -61,7 +68,10 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p.add_argument("--sets", nargs="+", default=SETS)
     a = p.parse_args(argv)
-    table = curve_table(_collect(a.eval_dir, a.final), a.sets)
+    evals = _collect(a.eval_dir, a.final)
+    table = curve_table(evals, a.sets)
+    steps = sorted(next(iter(table.values())))
+    print(json.dumps({"members": sorted(evals), "steps": steps, "n_per_step": {st: len(evals) for st in steps}}))
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     verdict = trigger(table)

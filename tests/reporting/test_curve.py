@@ -21,3 +21,25 @@ def test_curve_table(tmp_path):
             ev.setdefault(m, {})[st] = tmp_path / f"{m}{st}"
     t = curve_table(ev, ["s"])
     assert t == {"s": {1: 1.6, 2: 2.6}}
+
+
+def test_missing_member_step_raises(tmp_path):
+    import pytest
+    with pytest.raises(ValueError, match="member b lacks step 2"):
+        curve_table({"a": {1: tmp_path, 2: tmp_path}, "b": {1: tmp_path}}, ["s"])
+
+
+def test_trigger_needs_450k():
+    import pytest
+    with pytest.raises(ValueError, match="450000"):
+        trigger({"s": {250000: .5, 497990: .6}})
+
+
+def test_collect_parses_names(tmp_path):
+    from spectral_lejepa.reporting.curve import _collect
+    e = tmp_path / "eval"
+    (e / "nr_s107_20261022-204051_step250000").mkdir(parents=True)
+    f = tmp_path / "nr_s107_20261022-204051_step497990"
+    f.mkdir()
+    r = _collect(e, [f])
+    assert set(r) == {"nr_s107"} and set(r["nr_s107"]) == {250000, 497990}
