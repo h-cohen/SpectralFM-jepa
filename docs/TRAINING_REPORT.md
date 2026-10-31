@@ -1,6 +1,6 @@
 # SpectralFM-LeJEPA training report
 
-Status 2026-10-29. Candidate: **family-mix ensemble** of 16 frozen encoders (8 non-robust, 8 robust), block-2 flat features; the robust four-seed ensemble is the previous candidate. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
+Status 2026-10-31. Candidate: **family-mix ensemble** of 16 frozen encoders (8 non-robust, 8 robust), block-2 flat features; the robust four-seed ensemble is the previous candidate. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
 
 ## 1. Bottom line
 
@@ -17,7 +17,7 @@ Status 2026-10-29. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
   - Robustness: Appendix C. The robust term trades 0112 accuracy for noise robustness.
 
   Sections 7–11 describe the robust four-member ensemble.
-- **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Nonlinear probes, per-set adaptation and synthetic-only pretraining are still in progress; their rules were fixed before any score.
+- **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 gain: the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes are still running. All rules were fixed before any score.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -174,15 +174,15 @@ flowchart TB
     AF -.-> X13["Shrunk mix 3/8 · 24-patch third family 3/8<br/>(App. D1)"]
     AF -.-> X14["Longer stage 1 (App. E3)<br/>final > 450k on 2/8: not triggered"]
     AF -.-> P1["Nonlinear probes PLS/KRR/MLP<br/>(App. E1) · running"]
-    AF -.-> P2["Per-set and pooled adaptation<br/>(App. E2) · scoring"]
-    AF -.-> P3["Synthetic-only pretraining<br/>(App. F) · running"]
+    AF -.-> X15["Per-set adaptation 3/8, −.0003<br/>pooled 4/8, +.002 (App. E2)"]
+    AF -.-> X16["Synthetic-only pretraining (App. F)<br/>+.019 vs +.089: gain is transductive"]
     RE -.-> X12["Signal squeeze (App. B) · readout by inner CV 5/8, −.013<br/>8 members 3/8, +.008 · per-set adaptation 5/8, −.001"]
     classDef drop fill:#eee,stroke:#bbb,color:#777
     classDef keep fill:#e2f2e5,stroke:#5a9,color:#1d5a32
     classDef pend fill:#fff6dd,stroke:#d9a400,color:#6b5200
-    class X1,X2,X3,X4,X5,X8,X9,X10,X11,X12,X13,X14 drop
+    class X1,X2,X3,X4,X5,X8,X9,X10,X11,X12,X13,X14,X15,X16 drop
     class AF keep
-    class P1,P2,P3 pend
+    class P1 pend
 ```
 
 | Stage (date) | Question | Arms → wins vs raw, mean ΔR² | Decision |
@@ -214,8 +214,8 @@ flowchart TB
 | Mix variants (10-24) | Shrunk mix weight; 24-patch third family (Appendix D1) | vs MIX2: MIX2s 3/8, −.003; MIX3 3/8, −.002; MIX3s 4/8, +.002 but 0106 .025 below raw | MIX2 kept; combination has plateaued |
 | Stage-1 curve (10-28) | Is stage 1 still improving? (Appendix E3) | Final beats 450k on 2/8 sets (rule: 5/8); from 250k to the end, 0120 .437 → .404 and 0106 .643 → .625 | Longer schedule not run |
 | Nonlinear probes (10-28) | PLS, kernel ridge and MLP on the 16 members' features (Appendix E1) | Running; the linear arm reproduces MIX2 exactly | Pending |
-| Set adaptation (10-28) | Short continued pretraining on each set's own spectra (Appendix E2) | 36 runs trained and evaluated; step choice and comparison next | Pending |
-| Synthetic-only (10-29) | Pretrain without any real spectrum (Appendix F) | 4 seeds training, about 19 h | Pending; diagnostic |
+| Set adaptation (10-28) | Short continued pretraining on each set's own spectra (Appendix E2) | vs the unadapted four: per-set 3/8, −.0003; pooled 4/8, +.002 | Neither passes; not run in the mix |
+| Synthetic-only (10-29) | Pretrain without any real spectrum (Appendix F) | Four-seed ensemble +.019 vs raw against +.089 for all data; 0112 −.303, 0113 −.162, 0109 −.074 | Gain depends on the real spectra (4/7 sets more than .03 below) |
 
 ### Input normalization
 
@@ -467,7 +467,7 @@ Features are mean-pooled block-2 outputs (256 dims) on all 4,716 labeled_data sp
 
 - **Retrospective choice.** The candidate was chosen after about ten studies on the same eight sets. Bootstrap SDs cover row sampling only.
 - **Small sets.** Sets have 25–230 spectra, and the gains on 0055, 0106, 0112, 0114 and 0120 are under 1 SD.
-- **Transductive evaluation.** Unseen instruments or sources are not measured. Appendix F measures how much of the gain depends on pretraining on the real spectra.
+- **Transductive evaluation.** Unseen instruments or sources are not measured. Appendix F shows that most of the gain depends on pretraining on the real spectra: synthetic-only pretraining keeps +.019 of +.089.
 - **Benchmark.** `pred_avg` looks promising, but it was scored on the same eight sets as every earlier study and needs the same holdout.
 - **Noise test.** It has no raw-input reference, and its noise is seeded where the old code was not. Signal reconstruction was not run, because there is no decoder.
 
@@ -774,9 +774,9 @@ These are adaptive choices on the same eight sets, so the gain over R4 is explor
 - **No arm passes.** MIX2 stays the candidate. Code: `ensemble --mix-specs NAME:a,b[,c][:shrink]`. Outputs: `outputs/accuracy-ensemble/mix3`, `results_mix3.json`.
 - **Next lever:** a better encoder rather than a better combination, for example a full-length wider model as a new family.
 
-## Appendix E. Probes, set adaptation and the stage-1 curve (2026-10-28, in progress)
+## Appendix E. Probes, set adaptation and the stage-1 curve (2026-10-28/31; probes in progress)
 
-**Bottom line.** Three studies test levers other than ensemble combination, which plateaued in Appendix D1. A longer stage 1 is not warranted: the checkpoint curve has flattened, and on two sets it falls. The nonlinear-probe and set-adaptation studies are still running; this appendix records their design and rules, which were fixed before any score.
+**Bottom line.** Three studies test levers other than ensemble combination, which plateaued in Appendix D1. A longer stage 1 is not warranted: the checkpoint curve has flattened, and on two sets it falls. Set adaptation does not help: per-set 3/8, pooled 4/8 vs the unadapted members. The nonlinear-probe study is still running. Rules for all three were fixed before any score.
 
 **Shared rule.** An arm replaces the candidate (MIX2, +.095) only if all three hold:
 1. Its mean ΔR² vs raw is higher.
@@ -804,7 +804,7 @@ For a passing arm, the rule is re-applied with each set left out in turn, and th
 
 Raw is scored with the same recipes as the arm it is compared with, so neither side gets a probe the other lacks.
 
-### E2. Set adaptation (scoring)
+### E2. Set adaptation (done: no gain)
 
 **Question.** Does a short continuation of pretraining on a set's own unlabeled spectra sharpen the features for that set? This is transductive, as the main pretraining already is, and labels are never read.
 
@@ -821,7 +821,25 @@ Raw is scored with the same recipes as the arm it is compared with, so neither s
 
 **Limitation (stated before any score).** The step is chosen once per set, from inner-CV R² averaged over all ten outer folds. A row that is outer-test in one fold is a training row in the others, so the choice is not fully nested, and the scores are mildly optimistic. With four candidate steps the effect is small.
 
-**Status.** All 36 runs have trained and their checkpoints have been evaluated. Step choice and the ensemble comparison come next.
+**Result: neither variant passes.** All differences from the unadapted four are within noise.
+
+| Set | raw | random | unadapted (4) | per-set step | per-set adapted | pooled step | pooled adapted |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .949 | .963 | 2000 | .963 | 500 | .963 |
+| 0055 | .591 | .541 | .642 | 500 | .653 | 1000 | .661 |
+| 0106 | .697 | .702 | .602 | 1000 | .601 | 2000 | .598 |
+| 0109 | .918 | .933 | .924 | 2000 | .922 | 2000 | .926 |
+| 0112 | .377 | .364 | .724 | 2000 | .718 | 2000 | .733 |
+| 0113 | .548 | .561 | .749 | 1000 | .745 | 500 | .746 |
+| 0114 | .983 | .982 | .984 | 2000 | .984 | 250 | .984 |
+| 0120 | .380 | .354 | .448 | 500 | .447 | 2000 | .443 |
+| wins vs unadapted | | | | | 3/8 | | 4/8 |
+| mean Δ vs unadapted | | | | | −.0003 | | +.002 |
+
+- **Rule outcome:** neither variant reaches the 5/8 head-to-head wins, so neither replaces the non-robust family in the mix.
+- **Context:** the unadapted four fall below raw on 0106, as non-robust members do; the mix covers this with the robust family.
+- **Interpretation:** the full stage-1 run already includes every set's spectra (Appendix F), and 2,000 more steps on them change little.
+- **Outputs:** `outputs/set-adapt/select/` (step choices, composites, `ens_perset`, `ens_pooled`).
 
 ### E3. Stage-1 checkpoint curve (done)
 
@@ -851,31 +869,44 @@ Raw is scored with the same recipes as the arm it is compared with, so neither s
 - **Falling:** 0120 loses .033 between 250k and the end, and 0106 loses .019.
 - **Implication:** earlier checkpoints would favour these two sets. Choosing a checkpoint per set was not part of the rule, so it is noted only as a possible future study, to be registered first.
 
-## Appendix F. Pretraining on synthetic data only (2026-10-29, in progress)
+## Appendix F. Pretraining on synthetic data only (2026-10-29/31)
 
-**Bottom line.** Pending. Today every encoder is pretrained on all eligible spectra, including the real evaluation sets. This study measures how much of the gain on the real sets depends on that.
+**Bottom line.** Most of the gain on the real sets needs the real spectra in pretraining. Without them, the four-seed ensemble keeps only +.019 of the +.089 mean ΔR² vs raw. The loss falls on the sets that carry the candidate's advantage: 0112 loses .30 and 0113 loses .16. labeled_data, 0055 and 0106 transfer, which means synthetic spectra alone suffice there. Pre-registered verdict: **depends on the real spectra** (synthetic-only is more than .03 below all-data on 4/7 real sets).
 
 **Runs.**
 - **Configuration:** stage 1 (`configs/final_model.yaml`) restricted to the synthetic sources: `single_channel_all`, `multi_channel`, `sampled_data` and `labeled_data`. All 15 `labeled_regression` sets are excluded.
 - **Seeds:** 107–110, matching the all-data members nr_s107–nr_s110.
-- **Changes from the all-data recipe:**
+- **Changes from the all-data recipe, recorded before any score:**
   - Sampling is uniform. The production half-and-half weighting of regression sources has no regression rows to apply to.
   - Training is pinned to the same 497,990 steps.
   - Warmup is one epoch of the slightly smaller set.
 - **Outputs:** `outputs/synth-only/`; W&B group `synth-only`.
 
-**Evaluation.**
-- Each member is scored as usual: nested CV, 12 linear recipes, block-2 flat, with raw and random-weight rows.
-- The four are averaged and compared with nr_s107–nr_s110 on paired folds.
-- labeled_data was seen in pretraining by both arms. The seven real sets were seen only by the all-data members.
+**Evaluation.** Each member was scored as usual: nested CV, 12 linear recipes, block-2 flat. The four were averaged and compared with nr_s107–nr_s110 on paired folds, in one `ensemble --mix-groups` run. labeled_data was seen in pretraining by both arms. The seven real sets were seen only by the all-data members.
 
-**Reading (fixed beforehand), over the seven real sets.**
-- **Transfers:** synthetic-only is within .01 of all-data on at least 5/7 sets.
-- **Depends on the real spectra:** synthetic-only is more than .03 below all-data on at least 4/7 sets.
-- **Mixed:** anything else.
-- **Also reported per set:** the transductive share, (all-data − synthetic-only) / (all-data − raw).
+| Set | n | raw | random | all data (4) | synthetic only (4) | synthetic − all (± SD) | transductive share |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | 4,716 | .830 | .949 | .963 | .968 | +.005 ± .001 | — |
+| 0055 | 25 | .591 | .541 | .642 | .656 | +.014 ± .071 | — |
+| 0106 | 64 | .697 | .702 | .602 | .617 | +.015 ± .022 | — |
+| 0109 | 96 | .918 | .933 | .924 | .850 | −.074 ± .017 | > 1 |
+| 0112 | 68 | .377 | .364 | .724 | .421 | −.303 ± .085 | .87 |
+| 0113 | 70 | .548 | .561 | .749 | .587 | −.162 ± .047 | .81 |
+| 0114 | 230 | .983 | .982 | .984 | .984 | −.000 ± .000 | .51 |
+| 0120 | 125 | .380 | .354 | .448 | .393 | −.054 ± .021 | .81 |
+| mean Δ vs raw | | | | +.089 | +.019 | −.060 | |
 
-This study is diagnostic: it cannot replace the candidate.
+The random column is the all-data members' random-weight control. The transductive share is (all-data − synthetic-only) / (all-data − raw). It is shown only where all-data beats raw, and "—" marks sets where synthetic-only is as good or better. On 0109 the share exceeds 1 because synthetic-only falls .068 below raw while all-data is only .006 above.
+
+![Synthetic-only](figures/training-report/fig_synth_only.svg)
+
+**Figure F1.** ΔR² vs raw per set, for the all-data and synthetic-only four-seed ensembles.
+
+**Reading.**
+- **Rule outcome:** synthetic-only is within .01 of all-data, or above it, on 3/7 real sets (0055, 0106, 0114), short of the 5/7 needed for "transfers". It is more than .03 below on 4/7 (0109, 0112, 0113, 0120), which meets the "depends on the real spectra" threshold.
+- **Implication 1:** the benchmark gain is transductive. Pretraining on a set's own unlabeled spectra is what lets the encoder serve 0112 and 0113.
+- **Implication 2:** for a new instrument or source, its unlabeled spectra should be added to pretraining before the features are used. Training on synthetic data alone will not carry most of the gain.
+- **Note on the per-set changes:** short continued pretraining on one set's spectra (Appendix E2) adds nothing on top of the full run. The full run already contains those spectra.
 
 ## References
 
