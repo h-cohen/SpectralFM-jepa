@@ -20,7 +20,7 @@ import numpy as np
 
 from spectral_lejepa.evaluation.bank import load_bank
 from spectral_lejepa.evaluation.nested import nested_cv, paired_delta
-from spectral_lejepa.evaluation.probe import r2
+from spectral_lejepa.evaluation.probe import RECIPES, r2, recipe_set
 
 HEADS = ('layer2/flat', 'layer2', 'layer6')
 
@@ -131,7 +131,8 @@ def fuse(banks, output, heads=HEADS, select=None, mix_groups=None, mix_specs=Non
     members' random_control/nested_oof.npz layer2/flat (entry['random_source'] 'nested_oof', else 'bank')."""
     banks, output = [Path(b) for b in banks], Path(output)
     sets = sorted(set.intersection(*({p.parent.name for p in b.glob('*/bank.npz')} for b in banks)))
-    out = {'members': [str(b) for b in banks], 'heads': list(heads), 'mix_groups': mix_groups, 'mix_specs': mix_specs, 'select': list(select or ()), 'sets': {}}
+    out = {'members': [str(b) for b in banks], 'heads': list(heads), 'mix_groups': mix_groups, 'mix_specs': mix_specs, 'select': list(select or ()),
+           'recipes': [f'{a}+{b}' for a, b in probe.get('recipes', RECIPES)], 'sets': {}}
     for ds in sets:
         m = fuse_set([b / ds / 'bank.npz' for b in banks], heads, select=select, mix_groups=mix_groups, mix_specs=mix_specs, **probe)
         rand_banks = [b / ds / 'random_control' / 'bank.npz' for b in banks]
@@ -202,6 +203,8 @@ def main(argv=None):
     ap.add_argument('--backend', default='torch')
     ap.add_argument('--device', default='cuda')
     ap.add_argument('--n-jobs', type=int, default=1)
+    ap.add_argument('--probes', choices=['linear', 'extended'], default='linear',
+                    help='--stack: recipe set (extended adds PLS, RBF kernel ridge and MLP probes)')
     ap.add_argument('--select', nargs='+', help='--stack: candidate readouts chosen per member in inner CV')
     ap.add_argument('--no-stack-heads', action='store_true', help='--stack: skip the NNLS stack arm')
     ap.add_argument('--mix-groups', nargs='+',
@@ -214,7 +217,7 @@ def main(argv=None):
         specs = parse_mix_specs(a.mix_specs) if a.mix_specs else None
         out = fuse(a.banks, a.output_dir, heads=() if a.no_stack_heads else HEADS, select=a.select,
                    mix_groups=a.mix_groups, mix_specs=specs,
-                   backend=a.backend, device=a.device, n_jobs=a.n_jobs)
+                   backend=a.backend, device=a.device, n_jobs=a.n_jobs, recipes=recipe_set(a.probes))
         for ds, s in out['sets'].items():
             print(f"{ds:14s} " + ' '.join(f"{k} {v:.4f}" for k, v in s['r2'].items()))
         print(json.dumps(out['summary']))
