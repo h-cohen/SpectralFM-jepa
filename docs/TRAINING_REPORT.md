@@ -1,6 +1,6 @@
 # SpectralFM-LeJEPA training report
 
-Status 2026-10-31. Candidate: **family-mix ensemble** of 16 frozen encoders (8 non-robust, 8 robust), block-2 flat features; the robust four-seed ensemble is the previous candidate. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
+Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 non-robust, 8 robust), block-2 flat features; the robust four-seed ensemble is the previous candidate. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
 
 ## 1. Bottom line
 
@@ -17,7 +17,7 @@ Status 2026-10-31. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
   - Robustness: Appendix C. The robust term trades 0112 accuracy for noise robustness.
 
   Sections 7–11 describe the robust four-member ensemble.
-- **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 gain: the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes are still running. All rules were fixed before any score.
+- **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 gain: the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes beat the candidate on only 2 of 7 finished sets. The candidate stands. All rules were fixed before any score.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -173,7 +173,7 @@ flowchart TB
     RE --> AF["Accuracy-first family mix (App. D)<br/>8 non-robust + 8 robust · 8/8 · +.095"]
     AF -.-> X13["Shrunk mix 3/8 · 24-patch third family 3/8<br/>(App. D1)"]
     AF -.-> X14["Longer stage 1 (App. E3)<br/>final > 450k on 2/8: not triggered"]
-    AF -.-> P1["Nonlinear probes PLS/KRR/MLP<br/>(App. E1) · running"]
+    AF -.-> P1["Nonlinear probes PLS/KRR/MLP<br/>(App. E1) · 2/7 vs MIX2"]
     AF -.-> X15["Per-set adaptation 3/8, −.0003<br/>pooled 4/8, +.002 (App. E2)"]
     AF -.-> X16["Synthetic-only pretraining (App. F)<br/>+.019 vs +.089: gain is transductive"]
     RE -.-> X12["Signal squeeze (App. B) · readout by inner CV 5/8, −.013<br/>8 members 3/8, +.008 · per-set adaptation 5/8, −.001"]
@@ -182,7 +182,7 @@ flowchart TB
     classDef pend fill:#fff6dd,stroke:#d9a400,color:#6b5200
     class X1,X2,X3,X4,X5,X8,X9,X10,X11,X12,X13,X14,X15,X16 drop
     class AF keep
-    class P1 pend
+    class P1 drop
 ```
 
 | Stage (date) | Question | Arms → wins vs raw, mean ΔR² | Decision |
@@ -213,7 +213,7 @@ flowchart TB
 | Accuracy-first ensemble (10-23) | Mix non-robust and robust members (Appendix D) | M16 +.092 but 0106 −.018 vs raw; family mix +.095, 8/8 vs raw, 4/8 vs R4 | Family mix adopted (5/8 head-to-head waived) |
 | Mix variants (10-24) | Shrunk mix weight; 24-patch third family (Appendix D1) | vs MIX2: MIX2s 3/8, −.003; MIX3 3/8, −.002; MIX3s 4/8, +.002 but 0106 .025 below raw | MIX2 kept; combination has plateaued |
 | Stage-1 curve (10-28) | Is stage 1 still improving? (Appendix E3) | Final beats 450k on 2/8 sets (rule: 5/8); from 250k to the end, 0120 .437 → .404 and 0106 .643 → .625 | Longer schedule not run |
-| Nonlinear probes (10-28) | PLS, kernel ridge and MLP on the 16 members' features (Appendix E1) | Running; the linear arm reproduces MIX2 exactly | Pending |
+| Nonlinear probes (10-28) | PLS, kernel ridge and MLP on the 16 members' features (Appendix E1) | 2/7 finished sets vs MIX2; raw gains more (0112 .377 → .493); labeled_data stopped after 30 h | MIX2 kept |
 | Set adaptation (10-28) | Short continued pretraining on each set's own spectra (Appendix E2) | vs the unadapted four: per-set 3/8, −.0003; pooled 4/8, +.002 | Neither passes; not run in the mix |
 | Synthetic-only (10-29) | Pretrain without any real spectrum (Appendix F) | Four-seed ensemble +.019 vs raw against +.089 for all data; 0112 −.303, 0113 −.162, 0109 −.074 | Gain depends on the real spectra (4/7 sets more than .03 below) |
 
@@ -774,9 +774,9 @@ These are adaptive choices on the same eight sets, so the gain over R4 is explor
 - **No arm passes.** MIX2 stays the candidate. Code: `ensemble --mix-specs NAME:a,b[,c][:shrink]`. Outputs: `outputs/accuracy-ensemble/mix3`, `results_mix3.json`.
 - **Next lever:** a better encoder rather than a better combination, for example a full-length wider model as a new family.
 
-## Appendix E. Probes, set adaptation and the stage-1 curve (2026-10-28/31; probes in progress)
+## Appendix E. Probes, set adaptation and the stage-1 curve (2026-10-28 to 11-02)
 
-**Bottom line.** Three studies test levers other than ensemble combination, which plateaued in Appendix D1. A longer stage 1 is not warranted: the checkpoint curve has flattened, and on two sets it falls. Set adaptation does not help: per-set 3/8, pooled 4/8 vs the unadapted members. The nonlinear-probe study is still running. Rules for all three were fixed before any score.
+**Bottom line.** Three studies test levers other than ensemble combination, which plateaued in Appendix D1. A longer stage 1 is not warranted: the checkpoint curve has flattened, and on two sets it falls. Set adaptation does not help: per-set 3/8, pooled 4/8 vs the unadapted members. Nonlinear probes do not help either: 2/7 finished sets vs MIX2. Rules for all three were fixed before any score.
 
 **Shared rule.** An arm replaces the candidate (MIX2, +.095) only if all three hold:
 1. Its mean ΔR² vs raw is higher.
@@ -785,7 +785,7 @@ These are adaptive choices on the same eight sets, so the gain over R4 is explor
 
 For a passing arm, the rule is re-applied with each set left out in turn, and the report states on how many of the 8 omissions it still passes. Every arm is exploratory: about fifteen earlier studies used the same eight sets, and no independent holdout exists.
 
-### E1. Nonlinear probes (running)
+### E1. Nonlinear probes (done: no gain)
 
 **Question.** Is the linear probe leaving signal in the frozen features?
 
@@ -799,10 +799,29 @@ For a passing arm, the rule is re-applied with each set left out in turn, and th
 | Arm | Recipes | Status |
 |---|---|---|
 | MIX2-lin | 12 linear | Done. Reproduces the adopted MIX2 predictions exactly (largest absolute difference 0) |
-| MIX2-all | 12 linear + 6 nonlinear | Running (3/8 sets) |
-| MIX2-nl | 6 nonlinear only | Running (3/8 sets); diagnostic, not eligible |
+| MIX2-all | 12 linear + 6 nonlinear | 7/8 sets; labeled_data stopped unfinished |
+| MIX2-nl | 6 nonlinear only | 7/8 sets, stopped as above; diagnostic, not eligible |
 
 Raw is scored with the same recipes as the arm it is compared with, so neither side gets a probe the other lacks.
+
+**Result: MIX2-all does not pass.** It beats MIX2 on 2 of the 7 finished sets, so it cannot reach 5/8 whatever labeled_data shows.
+
+**Why labeled_data is missing.** Both nonlinear arms ran on labeled_data (4,716 spectra) for more than 30 hours: kernel ridge and the MLP scale steeply with the number of rows. They were stopped on 2026-11-02, after the verdict was already fixed, and labeled_data is not reported.
+
+| Set | raw, linear | raw, all recipes | random | MIX2 | MIX2-all | MIX2-nl | MIX2-all − MIX2 (± SD) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | .591 | .661 | .541 | .596 | .666 | .740 | +.070 ± .036 |
+| 0106 | .697 | .708 | .702 | .706 | .703 | .701 | −.003 ± .008 |
+| 0109 | .918 | .922 | .933 | .942 | .939 | .941 | −.003 ± .002 |
+| 0112 | .377 | .493 | .364 | .715 | .698 | .681 | −.017 ± .028 |
+| 0113 | .548 | .560 | .561 | .739 | .738 | .699 | −.001 ± .004 |
+| 0114 | .983 | .984 | .982 | .985 | .985 | .986 | −.000 ± .000 |
+| 0120 | .380 | .385 | .354 | .439 | .464 | .464 | +.025 ± .013 |
+| mean Δ vs matching raw (7 sets) | | | | +.090 | +.068 | | |
+
+- **Raw gains more than the features.** Nonlinear probes lift raw spectra on 0112 (.377 → .493) and 0055 (.591 → .661), so MIX2-all's gain over raw with the same recipes falls from +.090 to +.068.
+- **Local gains only.** MIX2-all helps on 0055 (25 spectra, noisy) and 0120, and costs slightly elsewhere. The frozen block-2 features are already close to linearly sufficient.
+- **Outputs:** `outputs/probes-nl/{lin,all,nl}`.
 
 ### E2. Set adaptation (done: no gain)
 
