@@ -14,6 +14,7 @@ data:
   sequence_length: 245
   max_train_samples: null      # null = all 999,000; set an int for dev runs
   num_workers: 8
+  sources: null                # packed only: keep rows whose index.tsv source starts with any listed prefix, e.g. [labeled_regression/dataset0112]; exclusive with source_weights
   source_weights: null         # packed only: {prefix: mass, default: mass} reweights sources, e.g. {labeled_regression: 0.5, default: 0.5}
 
 model:
@@ -57,6 +58,7 @@ training:
   ckpt_every: 5000
   device: cuda
   resume: null                 # restore optimizer/scaler and original schedule from checkpoint
+  schedule: cosine             # cosine (warmup + decay) or constant (LR held at learning_rate, no warmup)
   stop_step: null              # stop early at this step; the LR schedule keeps the full max_steps length
   preserve: null               # {weight, block}: pull block-k tokens toward the frozen init_checkpoint model
   save_steps: []               # extra checkpoint_step<N>.pt at these steps (0 = the init weights)
