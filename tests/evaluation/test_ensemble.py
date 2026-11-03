@@ -230,3 +230,18 @@ def test_fuse_records_recipes(tmp_path, recipes, n):
     fuse(runs, tmp_path / 'out', heads=(), n_repeats=1, n_folds=2, n_inner=2, **probe)
     saved = json.loads((tmp_path / 'out' / 'fusion.json').read_text())
     assert len(saved['recipes']) == n
+
+
+def test_ensemble_minirocket_flag_adds_a_paired_arm(tmp_path):
+    pytest.importorskip('sktime')
+    from spectral_lejepa.evaluation.ensemble import main
+    y = np.random.default_rng(0).normal(size=40)
+    runs = [make_run(tmp_path, f'm{i}', y, i) for i in range(2)]
+    out = tmp_path / 'fused'
+    main(['--stack', '--no-stack-heads', '--backend', 'sklearn', '--minirocket',
+          '--banks', *map(str, runs), '--output-dir', str(out)])
+    s = json.loads((out / 'fusion.json').read_text())
+    e = s['sets']['dataset0055']
+    assert {'minirocket_vs_raw', 'avg_vs_minirocket'} <= set(e) and 'minirocket' in e['r2']
+    assert 'avg_vs_minirocket_wins' in s['summary']
+    assert np.load(out / 'dataset0055' / 'fusion_oof.npz')['minirocket'].shape == (2, 40)

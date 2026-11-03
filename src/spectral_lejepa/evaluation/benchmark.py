@@ -41,6 +41,51 @@ def features(kind, x, seed=0, n_jobs=8):
     return np.asarray(make().fit_transform(X), dtype=np.float32)
 
 
+def minirocket_arm(raw, y, ref_raw_oof, seed=42, kernel_seed=0, **probe):
+    """The standard MiniRocket baseline (`evaluate --minirocket`, `ensemble --minirocket`): MiniRocket
+    features of [N, L] raw spectra probed with the same nested CV (folds depend only on n and seed).
+    Raw is refit in the same call and must reproduce ref_raw_oof [R, N], so the arm pairs by fold with
+    the caller's OOFs. Returns {'oof' [R, N], 'r2', 'dim', 'chosen'}."""
+    X = features('minirocket', raw, kernel_seed)
+    res = nested_cv({'raw': np.asarray(raw, dtype=np.float32), 'minirocket': X},
+                    {'raw': ['raw'], 'minirocket': ['minirocket']}, y, seed=seed, **probe)
+    y64 = np.asarray(y, dtype=np.float64)
+    if not np.allclose(res['raw']['oof'], ref_raw_oof, rtol=0, atol=1e-4 * float(np.std(y64))):
+        raise RuntimeError('MiniRocket raw OOFs differ from the reference: folds/rows are not paired')
+    m = res['minirocket']
+    return {'oof': m['oof'], 'r2': m['r2_mean'], 'dim': int(X.shape[1]), 'chosen': m['chosen']}
+
+
+def add_minirocket(fusion_dir, banks, **probe):
+    """Adds the MiniRocket arm to an `ensemble --stack` output: <set>/fusion_oof.npz gains 'minirocket'
+    and fusion.json gains r2['minirocket'], minirocket_vs_raw and <arm>_vs_minirocket for every fused arm.
+    Raw spectra come from the first member's bank.npz."""
+    from spectral_lejepa.evaluation.bank import load_bank
+    d = Path(fusion_dir)
+    out = json.loads((d / 'fusion.json').read_text())
+    for ds, entry in out['sets'].items():
+        f = d / ds / 'fusion_oof.npz'
+        P = dict(np.load(f))
+        _, raw, y, _ = load_bank(Path(banks[0]) / ds / 'bank.npz', readouts=('flat',))
+        if not np.array_equal(y, P['y']):
+            raise ValueError(f'{ds}: bank rows differ from {f}')
+        m = minirocket_arm(raw, y, P['raw'], **probe)
+        P['minirocket'] = m['oof']
+        entry['r2']['minirocket'] = m['r2']
+        entry['minirocket_dim'] = m['dim']
+        entry['minirocket_vs_raw'] = paired_delta(y, m['oof'], P['raw'])
+        for k in [k for k in entry['r2'] if k not in ('raw', 'minirocket')]:
+            entry[f'{k}_vs_minirocket'] = paired_delta(y, P[k], m['oof'])
+        np.savez(f, **P)
+        print(f'{ds:14s} minirocket R² {m["r2"]:.4f} (raw {entry["r2"]["raw"]:.4f})', flush=True)
+    S = out['sets'].values()
+    keys = [k for k in next(iter(S)) if k == 'minirocket_vs_raw' or k.endswith('_vs_minirocket')]
+    out['summary'] |= {**{f'{k}_wins': int(sum(s[k]['delta'] > 0 for s in S)) for k in keys},
+                       **{f'{k}_mean': float(np.mean([s[k]['delta'] for s in S])) for k in keys}}
+    (d / 'fusion.json').write_text(json.dumps(out, indent=2))
+    return out
+
+
 def _member_name(bank_dir):
     return Path(bank_dir).parents[1].name
 

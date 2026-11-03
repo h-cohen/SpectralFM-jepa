@@ -96,6 +96,8 @@ def main(argv=None):
     ap.add_argument("--suite", choices=("probe", "embedding"), default="probe",
                     help="probe: nested-CV label probes; embedding: previous-project similarity and noise metrics")
     ap.add_argument("--config", default="configs/eval.yaml")
+    ap.add_argument("--minirocket", action="store_true",
+                    help="probe suite: add the MiniRocket baseline (seed 0, same folds) per set")
     ap.add_argument("overrides", nargs="*")
     a = ap.parse_args(argv)
     if a.suite == "embedding":
@@ -203,13 +205,23 @@ def main(argv=None):
             rc_delta, rc_verdict = verdict(rc_nested["families"]["raw"]["r2_mean"], rc_r2)
             summary["random_control"] = {"embedding_r2": rc_r2, "best_block": best_block(rc_nested),
                                          "delta_vs_raw": rc_delta, "verdict": rc_verdict}
+        if a.minirocket:
+            from spectral_lejepa.evaluation.benchmark import minirocket_arm
+            y64 = np.asarray(y, dtype=np.float64)
+            mr = minirocket_arm(raw, y, oof["raw"], seed=seed, backend=backend, device=probe["device"],
+                                n_jobs=probe["n_jobs"])
+            np.savez_compressed(out_dir / "minirocket_oof.npz", y=y, oof=mr["oof"], dim=mr["dim"])
+            summary["minirocket"] = {"r2": mr["r2"], "dim": mr["dim"],
+                                     "vs_raw": paired_delta(y64, mr["oof"], oof["raw"]),
+                                     "model_vs_minirocket": paired_delta(y64, oof["embedding"], mr["oof"])}
         write_json(out_dir / "summary.json", summary)
         sets[name] = summary
         wb.log(run, flat_metrics(name, summary))
         print(f"[evaluate] {name}: embedding R2 {summary['embedding_r2']:.4f} vs raw {summary['raw_r2']:.4f}"
               + f", Δraw {summary['delta_vs_raw']:+.4f}±{summary['embedding_minus_raw']['sd']:.3f} [{summary['verdict']}]"
               + (f", vs {bcfg['tag']} (mean-only ref) {summary['vs_ref_mean_only']['embedding']['delta']:+.4f}"
-                 if "vs_ref_mean_only" in summary else ""))
+                 if "vs_ref_mean_only" in summary else "")
+              + (f", MiniRocket {summary['minirocket']['r2']:.4f}" if "minirocket" in summary else ""))
 
     card = {"model": scorecard(sets, None)}
     if random_backbone is not None:

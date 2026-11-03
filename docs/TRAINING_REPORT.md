@@ -11,7 +11,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
 - **How it was adopted:** under a rule written after part of the evidence was seen, with one criterion waived (Appendix D). Four of the eight gains are within bootstrap noise, and no independent holdout exists yet.
 - **Previous method:** data2vec stays below raw (recent checkpoint 0/8, mean −.197; section 9).
 - **Other comparisons and analyses:**
-  - Training-free ROCKET-family baselines: Appendix A.
+  - Training-free ROCKET-family baselines: Appendix A. Against MiniRocket the candidate wins 5 of 8 sets, mean ΔR² +.082 (table below).
   - Error metrics: section 10.
   - SIGReg geometry: section 11.
   - Robustness: Appendix C. The robust term trades 0112 accuracy for noise robustness.
@@ -59,6 +59,23 @@ flowchart LR
 The random-weight column is the mean over the 16 members' random-weight controls.
 
 RMSE is in label units (section 6); in the last column and the mean row it is the paired ΔRMSE vs raw, negative is better, with its bootstrap SD. Shaded cells (HTML): the robust ensemble beats raw on that set.
+
+**Candidate vs raw and MiniRocket (2026-11-03).** MiniRocket (sktime, seed 0, about 10k label-free features of the raw spectrum) is now a standard baseline: `ensemble --stack --minirocket` (or `--minirocket-only` on an existing fusion) and `evaluate --minirocket`. It runs in the same nested CV, and its refit raw arm must reproduce the stored raw OOFs, so every Δ is paired by fold. Outputs: `outputs/accuracy-ensemble/mix_minirocket/`.
+
+| Set | n | Raw R² | Raw RMSE | MiniRocket R² | MiniRocket RMSE | Family-mix R² | Family-mix RMSE | MiniRocket Δ vs raw (± SD) | Family-mix Δ vs MiniRocket (± SD) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | 4,716 | .830 | .412 | .634 | .605 | .962 | .195 | −.196 ± .008 | +.328 ± .008 |
+| 0055 | 25 | .591 | .625 | .699 | .537 | .596 | .623 | +.109 ± .081 | −.104 ± .087 |
+| 0106 | 64 | .697 | .546 | .719 | .526 | .706 | .538 | +.022 ± .058 | −.013 ± .052 |
+| 0109 | 96 | .918 | .285 | .903 | .309 | .942 | .240 | −.015 ± .020 | +.038 ± .016 |
+| 0112 | 68 | .377 | .781 | .679 | .562 | .715 | .530 | +.302 ± .123 | +.036 ± .046 |
+| 0113 | 70 | .548 | .667 | .468 | .724 | .739 | .507 | −.080 ± .093 | +.271 ± .067 |
+| 0114 | 230 | .983 | .130 | .986 | .117 | .985 | .121 | +.003 ± .001 | −.001 ± .001 |
+| 0120 | 125 | .380 | .784 | .336 | .812 | .439 | .745 | −.044 ± .075 | +.103 ± .056 |
+| mean Δ (wins) |  |  |  |  |  |  |  | +.013 (4/8) | +.082 (5/8) |
+| mean nRMSE |  |  | .533 |  | .528 |  | .441 |  |  |
+
+Δ columns are paired ΔR² with bootstrap SD. MiniRocket barely beats raw on average (+.013, 4/8; mean ΔRMSE −.005) and fails labeled_data badly. The candidate beats it on 5/8, mean ΔRMSE −.087 vs MiniRocket. MiniRocket keeps the lead on 0055, 0106 and 0114, all within noise; the candidate closes the 0112 gap that the robust ensemble had (Appendix A: −.26). The MiniRocket R² match Appendix A, which used the same rows, folds and seed.
 
 ![Ensemble R²](figures/training-report/fig5_ensemble_r2.svg)
 

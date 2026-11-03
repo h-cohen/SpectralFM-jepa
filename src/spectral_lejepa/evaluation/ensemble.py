@@ -212,12 +212,23 @@ def main(argv=None):
     ap.add_argument('--mix-specs', nargs='+', metavar='ARM:a,b[:shrink]',
                     help='--stack: one mix arm per entry over the listed families, e.g. MIX3s:a,b,c:shrink; '
                          'replaces the single mix arm')
+    ap.add_argument('--minirocket', action='store_true',
+                    help='--stack: add the MiniRocket baseline (seed 0, same folds) to raw and the fused arms')
+    ap.add_argument('--minirocket-only', action='store_true',
+                    help='--stack: add MiniRocket to an existing --output-dir without refitting the members')
     a = ap.parse_args(argv)
     if a.stack:
+        from spectral_lejepa.evaluation.benchmark import add_minirocket
+        probe = dict(backend=a.backend, device=a.device, n_jobs=a.n_jobs, recipes=recipe_set(a.probes))
+        if a.minirocket_only:
+            out = add_minirocket(a.output_dir, a.banks, **probe)
+            print(json.dumps(out['summary']))
+            return
         specs = parse_mix_specs(a.mix_specs) if a.mix_specs else None
         out = fuse(a.banks, a.output_dir, heads=() if a.no_stack_heads else HEADS, select=a.select,
-                   mix_groups=a.mix_groups, mix_specs=specs,
-                   backend=a.backend, device=a.device, n_jobs=a.n_jobs, recipes=recipe_set(a.probes))
+                   mix_groups=a.mix_groups, mix_specs=specs, **probe)
+        if a.minirocket:
+            out = add_minirocket(a.output_dir, a.banks, **probe)
         for ds, s in out['sets'].items():
             print(f"{ds:14s} " + ' '.join(f"{k} {v:.4f}" for k, v in s['r2'].items()))
         print(json.dumps(out['summary']))

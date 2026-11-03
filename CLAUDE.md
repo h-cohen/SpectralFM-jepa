@@ -45,6 +45,7 @@
   - Nested CV: 2×5 outer, 5 inner, 12 recipes. Covers every block and readout, plus raw and random-weight controls.
   - Writes `<dir>/<run>_step<N>/<set>/nested_oof.npz`.
 - **Ensemble:** `python -m spectral_lejepa ensemble --banks <run dirs...> --output E.json`. Paired ΔR² vs raw and vs random, with bootstrap SD.
+- **MiniRocket baseline (opt-in):** `--minirocket` on `evaluate` or `ensemble --stack` adds MiniRocket seed 0 on the same folds; `ensemble --stack --minirocket-only --output-dir D` adds it to an existing fusion. Candidate result: `outputs/accuracy-ensemble/mix_minirocket/` (mix beats MiniRocket 5/8, +.082; report section 1).
 - **Perturbation robustness:** `python -m spectral_lejepa robustness --checkpoint C --output P.json`. Block-2 drift and fixed-ridge R² under noise, offset, slope, scale, shift and a sinusoid.
 - **Embedding suite:** `python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml`, then `embedding-figures`.
   - Runs the previous project's cosine-similarity and noise metrics from its pinned commit (`evaluation/legacy.py`).
