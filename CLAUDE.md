@@ -19,7 +19,7 @@
   - History: `docs/PRODUCTION_RECOMMENDATION.md`.
   - Study specs and plans: `docs/superpowers/` (local, untracked).
 - **Second-component study (done 2026-11-03):** report Appendix G. nr_s107 on sets 0055–0120 with sample-grouped folds; `evaluate --components 0,1 --pooled`, `ops/report_components.py`; outputs in `outputs/components/`. Pooling comp1 into training fails the pre-registered rule (JEPA 2/7, ΔR² −.029); only per-sample averaging of two predictions helps (+.027), and raw/random gain as much (+.038/+.042): noise averaging, not JEPA features.
-- **Running jobs:** none.
+- **Running jobs:** measured-only stage 1 (started 2026-11-03 22:10), units `spectralfm-mo-s107`–`s110` on physical GPUs 4–7, launched from worktree `../SpectralFM-jepa-mo` (branch `measured-only`; `.venv` and `outputs` symlinked to this checkout). Outputs and logs in `outputs/measured-only/`, W&B group `measured-only`. Up to 248,995 steps with early stopping on `valid/loss`. Resume with `bash ops/launch_measured_only.sh --resume SEED CKPT`; do not edit code on that branch while they run.
 - **SIGReg/depth ablation (done 2026-10-14):** report section 8.
   - 9 two-epoch runs in `outputs/sigreg-depth-ablation/`, W&B group `sigreg-depth-ablation`.
   - λ = 0 collapses every block and block 2 falls below raw. Block 2 gains more at depth 6 than at depth 2.
