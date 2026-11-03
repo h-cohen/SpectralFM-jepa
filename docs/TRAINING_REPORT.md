@@ -18,6 +18,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
 
   Sections 7–11 describe the robust four-member ensemble.
 - **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 ΔR² (ΔRMSE −.023 of −.083): the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes beat the candidate on only 2 of 7 finished sets. The candidate stands. All rules were fixed before any score.
+- **Second component (2026-11-03, Appendix G):** pooling the second spectrum of each sample into training fails the pre-registered rule (JEPA 2/7 sets, ΔR² −.029); only per-sample averaging of two predictions helps (+.027), and raw and random-weight gain as much (+.038, +.042), so it is noise averaging, not JEPA features.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -218,6 +219,7 @@ flowchart TB
 | Nonlinear probes (10-28) | PLS, kernel ridge and MLP on the 16 members' features (Appendix E1) | 2/7 finished sets vs MIX2; raw gains more (0112 .377 → .493); labeled_data stopped after 30 h | MIX2 kept |
 | Set adaptation (10-28) | Short continued pretraining on each set's own spectra (Appendix E2) | vs the unadapted four: per-set 3/8, −.0003; pooled 4/8, +.002 | Neither passes; not run in the mix |
 | Synthetic-only (10-29) | Pretrain without any real spectrum (Appendix F) | Four-seed ensemble +.019 vs raw against +.089 for all data; 0112 −.303, 0113 −.162, 0109 −.074 | Gain depends on the real spectra (4/7 sets more than .03 below) |
+| Second component (11-03) | Pool comp1 into training; score on comp0 (Appendix G) | JEPA pooled on comp0 2/7, −.029; per-sample average +.027 (raw +.038, random +.042) | Pooling fails; averaging is model-agnostic noise reduction |
 
 ### Input normalization
 
@@ -475,6 +477,7 @@ Features are mean-pooled block-2 outputs (256 dims) on all 4,716 labeled_data sp
 - **Transductive evaluation.** Unseen instruments or sources are not measured. Appendix F shows that most of the gain depends on pretraining on the real spectra: synthetic-only pretraining keeps +.019 of +.089.
 - **Benchmark.** `pred_avg` looks promising, but it was scored on the same eight sets as every earlier study and needs the same holdout.
 - **Noise test.** It has no raw-input reference, and its noise is seeded where the old code was not. Signal reconstruction was not run, because there is no decoder.
+- **Component averaging.** Appendix G averaged two components per sample. Averaging predictions over all 8–32 components, with raw as reference, is the natural extension.
 
 **Bottom line.** Next, score the robust ensemble once on an independent, group-labelled holdout.
 
@@ -938,6 +941,128 @@ The random column is the all-data members' random-weight control. The transducti
 - **Implication 1:** the benchmark gain is transductive. Pretraining on a set's own unlabeled spectra is what lets the encoder serve 0112 and 0113.
 - **Implication 2:** for a new instrument or source, its unlabeled spectra should be added to pretraining before the features are used. Training on synthetic data alone will not carry most of the gain.
 - **Note on the per-set changes:** short continued pretraining on one set's spectra (Appendix E2) adds nothing on top of the full run. The full run already contains those spectra.
+
+## Appendix G. Second component of each sample (2026-11-03)
+
+**Bottom line.** Pooling the second component into training does not help: the pre-registered rule failed. Fitting on both components of every training sample and scoring component 0 beats component 0 alone on 2 of 7 sets for JEPA (mean ΔR² −.029 ± .014, ΔRMSE +.026), so the rule (at least 5/7 sets and mean ΔR² above 2 SD) is not met. The only gain is averaging the two pooled predictions per sample: +.027 ± .018 ΔR² for JEPA (4/7 sets, ΔRMSE −.020). Raw spectra and the random-weight encoder gain as much (+.038 and +.042), so this is noise averaging of two measurements, not a property of the JEPA features.
+
+**Data.**
+- **Components:** each sample in sets 0055–0120 has 8–32 components, repeat spectra of one sample that share one label (0 label mismatches across components). The main report uses component 0 only. labeled_data has no components and is excluded.
+- **Similarity:** components of a sample are not copies. In 0055 spectrum 0, comp0 and comp1 correlate only about .24.
+- **Samples per set:** 25 (0055), 64 (0106), 96 (0109), 68 (0112), 70 (0113), 230 (0114), 125 (0120).
+
+**Design.**
+- **Arms:** raw spectra, a random-weight encoder of the same architecture, and the JEPA encoder nr_s107 (final stage-1 checkpoint, block-2 flat features). All use the same 12 linear recipes.
+- **Scores:**
+  - `comp0` and `comp1`: fit and scored on one component.
+  - `pooled on comp0` and `pooled on comp1`: one fit on both components of the training samples (2n rows), scored on that component of the test samples.
+  - `pooled on all rows`: the same pooled fit scored over all 2n test predictions together (comp0 and comp1 predictions concatenated, y repeated twice).
+  - `pooled, per-sample average`: the two pooled predictions of a sample averaged, scored on n rows.
+- **Folds:** outer 2×5 and inner 5 folds are grouped by sample, so both components of a sample are always on the same side. Every score of every arm is paired on the same folds. R² and RMSE are per repeat, then averaged (RMSE in label-SD units).
+- **Rule fixed before any result:** pooled comp0 helps if it beats comp0 on at least 5/7 sets and the mean ΔR² exceeds 2 SD.
+- **Comparison with the main tables:** comp0 numbers differ slightly from sections 1 and 6 because folds are grouped by sample here (for example 0112: .746 here, .768 there).
+- **Paired deltas:** ΔR² and ΔRMSE are against comp0 of the same arm, with the bootstrap SD of 1,000 resamples of samples (for `pooled on all rows` both rows of a sample stay together). The SD of a seven-set mean combines the per-set SDs as independent.
+
+**Per-set results.** Each score shows R² and, beside it, RMSE.
+
+**Raw ridge.**
+
+| Set | n | comp0 R² | comp0 RMSE | comp1 R² | comp1 RMSE | pooled on comp0 R² | pooled on comp0 RMSE | pooled on comp1 R² | pooled on comp1 RMSE | pooled on all rows R² | pooled on all rows RMSE | pooled, per-sample avg R² | pooled, per-sample avg RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | .531 | .669 | .655 | .570 | .706 | .530 | .614 | .609 | .660 | .571 | .758 | .482 |
+| 0106 | 64 | .701 | .542 | .693 | .550 | .639 | .596 | .684 | .558 | .662 | .577 | .675 | .566 |
+| 0109 | 96 | .918 | .285 | .893 | .325 | .901 | .311 | .909 | .297 | .905 | .304 | .915 | .289 |
+| 0112 | 68 | .391 | .774 | .348 | .801 | .429 | .749 | .250 | .856 | .339 | .805 | .404 | .765 |
+| 0113 | 70 | .586 | .639 | .518 | .684 | .392 | .774 | .581 | .642 | .486 | .711 | .547 | .668 |
+| 0114 | 230 | .983 | .129 | .984 | .126 | .983 | .128 | .984 | .128 | .984 | .128 | .984 | .125 |
+| 0120 | 125 | .357 | .799 | .493 | .709 | .399 | .772 | .378 | .786 | .389 | .779 | .447 | .741 |
+| mean | | .638 | .548 | .655 | .538 | .636 | .551 | .629 | .554 | .632 | .554 | .676 | .519 |
+
+**Random-weight encoder.**
+
+| Set | n | comp0 R² | comp0 RMSE | comp1 R² | comp1 RMSE | pooled on comp0 R² | pooled on comp0 RMSE | pooled on comp1 R² | pooled on comp1 RMSE | pooled on all rows R² | pooled on all rows RMSE | pooled, per-sample avg R² | pooled, per-sample avg RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | .470 | .710 | .698 | .538 | .693 | .542 | .591 | .626 | .642 | .586 | .737 | .502 |
+| 0106 | 64 | .715 | .529 | .711 | .534 | .653 | .584 | .684 | .558 | .668 | .571 | .678 | .563 |
+| 0109 | 96 | .934 | .255 | .917 | .286 | .924 | .275 | .932 | .259 | .928 | .267 | .937 | .250 |
+| 0112 | 68 | .380 | .780 | .647 | .589 | .360 | .794 | .230 | .871 | .295 | .834 | .403 | .767 |
+| 0113 | 70 | .598 | .629 | .329 | .813 | .316 | .821 | .489 | .708 | .402 | .767 | .462 | .728 |
+| 0114 | 230 | .983 | .129 | .985 | .123 | .983 | .129 | .984 | .128 | .983 | .129 | .984 | .125 |
+| 0120 | 125 | .340 | .809 | .512 | .696 | .418 | .760 | .406 | .767 | .412 | .763 | .512 | .696 |
+| mean | | .631 | .549 | .685 | .511 | .621 | .558 | .617 | .560 | .619 | .560 | .673 | .519 |
+
+**JEPA nr_s107.**
+
+| Set | n | comp0 R² | comp0 RMSE | comp1 R² | comp1 RMSE | pooled on comp0 R² | pooled on comp0 RMSE | pooled on comp1 R² | pooled on comp1 RMSE | pooled on all rows R² | pooled on all rows RMSE | pooled, per-sample avg R² | pooled, per-sample avg RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | .631 | .595 | .776 | .464 | .623 | .600 | .767 | .472 | .695 | .541 | .767 | .473 |
+| 0106 | 64 | .640 | .595 | .583 | .639 | .634 | .600 | .625 | .607 | .630 | .604 | .644 | .592 |
+| 0109 | 96 | .926 | .270 | .875 | .351 | .917 | .287 | .882 | .342 | .899 | .316 | .916 | .288 |
+| 0112 | 68 | .746 | .500 | .573 | .647 | .658 | .580 | .567 | .652 | .613 | .617 | .701 | .541 |
+| 0113 | 70 | .684 | .556 | .598 | .627 | .572 | .649 | .594 | .632 | .583 | .641 | .620 | .612 |
+| 0114 | 230 | .984 | .125 | .985 | .122 | .985 | .123 | .987 | .116 | .986 | .120 | .987 | .115 |
+| 0120 | 125 | .423 | .755 | .549 | .669 | .448 | .740 | .569 | .654 | .508 | .698 | .589 | .639 |
+| mean | | .719 | .485 | .706 | .503 | .691 | .511 | .713 | .496 | .702 | .505 | .746 | .466 |
+
+**Summary.** Wins count sets with ΔR² > 0 against comp0 of the same arm (seven sets). Means are over the seven sets.
+
+| Arm | Score | Wins vs comp0 | Mean R² | Mean ΔR² (± SD) | Mean RMSE | Mean ΔRMSE (± SD) |
+|---|---|---:|---:|---:|---:|---:|
+| Raw | comp1 | 3/7 | .655 | +.017 ± .036 | .538 | −.010 ± .022 |
+| Raw | pooled on comp0 | 4/7 | .636 | −.002 ± .028 | .551 | +.003 ± .018 |
+| Raw | pooled on comp1 | 3/7 | .629 | −.010 ± .032 | .554 | +.006 ± .020 |
+| Raw | pooled on all rows | 3/7 | .632 | −.006 ± .027 | .554 | +.006 ± .017 |
+| Raw | pooled, per-sample avg | 4/7 | .676 | +.038 ± .028 | .519 | −.029 ± .018 |
+| Random | comp1 | 4/7 | .685 | +.054 ± .042 | .511 | −.037 ± .026 |
+| Random | pooled on comp0 | 2/7 | .621 | −.010 ± .033 | .558 | +.009 ± .020 |
+| Random | pooled on comp1 | 3/7 | .617 | −.015 ± .034 | .560 | +.011 ± .021 |
+| Random | pooled on all rows | 3/7 | .619 | −.013 ± .031 | .560 | +.011 ± .018 |
+| Random | pooled, per-sample avg | 5/7 | .673 | +.042 ± .032 | .519 | −.030 ± .019 |
+| JEPA | comp1 | 3/7 | .706 | −.014 ± .025 | .503 | +.017 ± .019 |
+| JEPA | pooled on comp0 | 2/7 | .691 | −.029 ± .014 | .511 | +.026 ± .011 |
+| JEPA | pooled on comp1 | 3/7 | .713 | −.006 ± .024 | .496 | +.011 ± .018 |
+| JEPA | pooled on all rows | 3/7 | .702 | −.017 ± .017 | .505 | +.020 ± .012 |
+| JEPA | pooled, per-sample avg | 4/7 | .746 | +.027 ± .018 | .466 | −.020 ± .013 |
+
+**JEPA, per-set ΔR² vs comp0 (± bootstrap SD).**
+
+| Set | comp1 | pooled on comp0 | pooled on comp1 | pooled on all rows | pooled, per-sample avg |
+|---|---:|---:|---:|---:|---:|
+| 0055 | +.145 ± .126 | −.008 ± .063 | +.136 ± .123 | +.064 ± .085 | +.136 ± .099 |
+| 0106 | −.057 ± .036 | −.007 ± .025 | −.015 ± .029 | −.011 ± .025 | +.003 ± .025 |
+| 0109 | −.051 ± .020 | −.009 ± .010 | −.045 ± .018 | −.027 ± .012 | −.010 ± .011 |
+| 0112 | −.173 ± .076 | −.088 ± .055 | −.179 ± .079 | −.133 ± .055 | −.045 ± .041 |
+| 0113 | −.087 ± .055 | −.112 ± .042 | −.090 ± .052 | −.101 ± .041 | −.064 ± .039 |
+| 0114 | +.001 ± .001 | +.000 ± .000 | +.002 ± .001 | +.001 ± .001 | +.002 ± .001 |
+| 0120 | +.126 ± .071 | +.025 ± .018 | +.147 ± .064 | +.086 ± .034 | +.166 ± .036 |
+
+![Components R²](figures/training-report/fig_components_r2.svg)
+
+**Figure G1.** JEPA R² per set for each of the six scores.
+
+![Components delta](figures/training-report/fig_components_delta.svg)
+
+**Figure G2.** Mean ΔR² vs comp0 (± SD) for each score and arm. Only the per-sample average is above zero for all three arms.
+
+**Reading.**
+- **Component 1 vs component 0 depends on the set.** JEPA is better on comp1 for 0055 (+.145) and 0120 (+.126) and worse for 0112 (−.173) and 0113 (−.087); the others are within .06. The mean is about zero (−.014 ± .025). The two components are different measurements, and which is easier is not general.
+- **Doubling the training rows hurts JEPA on comp0** (−.029 ± .014; strongest on 0112 −.088 and 0113 −.112). A likely reason is that the comp0 and comp1 features of one sample sit apart in feature space, so the linear fit must serve two clusters and compromises. This was not tested.
+- **Scoring on all 2n rows is about the mean of the comp0 and comp1 scores.** For JEPA, .702 against (.691 + .713) / 2 = .702. The same samples are counted twice, so it adds no information, and it is not a separate gain.
+- **Averaging per sample is the only gain, and it is model-agnostic.** JEPA +.027 (4/7), raw +.038 (4/7), random +.042 (5/7). It lowers variance by averaging two noisy readings. It does not help where comp0 is already clearly better than comp1 (0112 −.045, 0113 −.064 for JEPA).
+- **JEPA's margin over raw shrinks.** On comp0 it is +.081 (.719 vs .638). After averaging it is +.070 (.746 vs .676), and the random-weight encoder is only .003 behind raw (.673 vs .676).
+
+**Limits and next step.**
+- One encoder (nr_s107) and only two of the 8–32 components were used, on the seven component sets (25–230 samples). SDs cover row sampling only.
+- The natural extension is averaging the predictions over all 8–32 components of a sample. That is model-agnostic, so the same comparison with raw is needed to judge any JEPA-specific benefit.
+- The family-mix ensemble was not run (8–10 GPU hours). Single-member gains are model-agnostic here, so it is unlikely to change the verdict.
+- The candidate stands. Nothing in this study changes the held-out recommendation in section 12.
+
+**Reproduce.**
+```
+python -m spectral_lejepa evaluate --checkpoint <nr_s107 step497990 checkpoint> --config configs/eval_components.yaml --components 0,1 --pooled experiment.output_dir=outputs/components
+PYTHONPATH=src:. python ops/report_components.py
+```
+`ops/report_components.py` recomputes every R² and RMSE from `components_oof.npz` (largest gap to `results_components.json`: 1e-16), adds `pooled on all rows`, writes `outputs/components/summary.json` and the two figures. Outputs: `outputs/components/nr_s107_20261022-204051_step497990/`; log `outputs/components_s107.log`.
 
 ## References
 
