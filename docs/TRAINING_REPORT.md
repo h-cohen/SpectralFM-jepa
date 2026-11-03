@@ -1059,7 +1059,7 @@ The random column is the all-data members' random-weight control. The transducti
 
 **Reproduce.**
 ```
-python -m spectral_lejepa evaluate --checkpoint <nr_s107 step497990 checkpoint> --config configs/eval_components.yaml --components 0,1 --pooled experiment.output_dir=outputs/components
+python -m spectral_lejepa evaluate --checkpoint outputs/accuracy-ensemble/training/nr_s107_20261022-204051/checkpoint_last.pt --config configs/eval_components.yaml --components 0,1 --pooled experiment.output_dir=outputs/components
 PYTHONPATH=src:. python ops/report_components.py
 ```
 `ops/report_components.py` recomputes every R² and RMSE from `components_oof.npz` (largest gap to `results_components.json`: 1e-16), adds `pooled on all rows`, writes `outputs/components/summary.json` and the two figures. Outputs: `outputs/components/nr_s107_20261022-204051_step497990/`; log `outputs/components_s107.log`.

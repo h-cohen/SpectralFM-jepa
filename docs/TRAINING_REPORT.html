@@ -393,7 +393,7 @@ figcaption strong { color: var(--fg); }
 <p><strong>Limits and next step.</strong></p>
 <ul><li>One encoder (nr_s107) and only two of the 8–32 components were used, on the seven component sets (25–230 samples). SDs cover row sampling only.</li><li>The natural extension is averaging the predictions over all 8–32 components of a sample. That is model-agnostic, so the same comparison with raw is needed to judge any JEPA-specific benefit.</li><li>The family-mix ensemble was not run (8–10 GPU hours). Single-member gains are model-agnostic here, so it is unlikely to change the verdict.</li><li>The candidate stands. Nothing in this study changes the held-out recommendation in section 12.</li></ul>
 <p><strong>Reproduce.</strong></p>
-<div class="scroll"><pre class="code">python -m spectral_lejepa evaluate --checkpoint &lt;nr_s107 step497990 checkpoint&gt; --config configs/eval_components.yaml --components 0,1 --pooled experiment.output_dir=outputs/components
+<div class="scroll"><pre class="code">python -m spectral_lejepa evaluate --checkpoint outputs/accuracy-ensemble/training/nr_s107_20261022-204051/checkpoint_last.pt --config configs/eval_components.yaml --components 0,1 --pooled experiment.output_dir=outputs/components
 PYTHONPATH=src:. python ops/report_components.py</pre></div>
 <p><code>ops/report_components.py</code> recomputes every R² and RMSE from <code>components_oof.npz</code> (largest gap to <code>results_components.json</code>: 1e-16), adds <code>pooled on all rows</code>, writes <code>outputs/components/summary.json</code> and the two figures. Outputs: <code>outputs/components/nr_s107_20261022-204051_step497990/</code>; log <code>outputs/components_s107.log</code>.</p>
 <h2 id="references">References</h2>
