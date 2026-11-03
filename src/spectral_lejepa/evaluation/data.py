@@ -78,3 +78,54 @@ def load_labeled_data(set_dirs, max_samples=5000, seed=42, target_length=245):
         raise RuntimeError(f"no labeled wavs found under {set_dirs}")
     print(f"[eval data] {len(rows)} spectra from {len(set_dirs)} set(s); {missing} labels without a wav skipped")
     return np.stack(rows), np.array(ys, dtype=np.float64)
+
+
+def load_labeled_components(set_dirs, components=(0, 1), max_samples=5000, seed=42, target_length=245):
+    """(raw [rows, T], y [rows], sample_id [rows], component [rows]): every listed component of each
+    sample, ordered by component then sample. All components of a sample carry its label and share its
+    sample_id (rank in the sorted (dataset, spec) order of the kept samples); a sample missing any
+    requested component, in labels.tsv or on disk, is dropped. More than max_samples samples ->
+    seeded subsample over samples. With components=(0,) this is load_labeled_data plus the id columns."""
+    components = tuple(components)
+    files, labels, owner = {}, {}, {}   # (dataset, spec, comp) -> wav path / label; (dataset, spec) -> set dir
+    for set_dir in set_dirs:
+        wav_root = _wav_root(set_dir)
+        with open(os.path.join(set_dir, "labels.tsv")) as f:
+            for line in f:
+                parts = line.strip().split("\t")
+                if len(parts) < 2 or (m := LABELED_PATTERN.match(parts[0])) is None:
+                    continue
+                ds, comp, spec = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if comp not in components:
+                    continue
+                if owner.setdefault((ds, spec), set_dir) != set_dir:
+                    raise ValueError(f"dataset {ds}, spec {spec} appears in both {owner[(ds, spec)]} and {set_dir}")
+                path = os.path.join(wav_root, parts[0])
+                files[(ds, spec, comp)] = path if os.path.isfile(path) else os.path.join(set_dir, parts[0])
+                labels[(ds, spec, comp)] = float(parts[1])
+
+    keys = sorted({k[:2] for k in files})
+    keys = [k for k in keys if all((*k, c) in files and os.path.isfile(files[(*k, c)]) for c in components)]
+    if not keys:
+        raise RuntimeError(f"no samples with components {components} under {set_dirs}")
+    if len(keys) > max_samples:
+        idx = np.random.default_rng(seed).choice(len(keys), max_samples, replace=False)
+        idx.sort()
+        keys = [keys[i] for i in idx]
+    for k in keys:
+        if len({labels[(*k, c)] for c in components}) != 1:
+            raise ValueError(f"dataset {k[0]}, spec {k[1]}: components disagree on the label")
+
+    rows, ys, sids, comps = [], [], [], []
+    for c in components:
+        for sid, k in enumerate(keys):
+            data = np.asarray(sf.read(files[(*k, c)], dtype="float32")[0]).flatten()
+            row = np.zeros(target_length, dtype=np.float32)
+            row[: min(len(data), target_length)] = data[:target_length]
+            rows.append(row)
+            ys.append(labels[(*k, c)])
+            sids.append(sid)
+            comps.append(c)
+    print(f"[eval data] {len(keys)} samples x components {components} from {len(set_dirs)} set(s)")
+    return (np.stack(rows), np.array(ys, dtype=np.float64), np.array(sids, dtype=np.int64),
+            np.array(comps, dtype=np.int64))

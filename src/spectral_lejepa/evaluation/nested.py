@@ -39,6 +39,20 @@ def mix_grid(k):
     return [tuple(i / steps for i in v) for v in rec(steps, k)]
 
 
+def group_kfold(groups, n_splits, seed, n=None):
+    """(train, test) index pairs of a seeded K-fold in which all rows of a group fall on the same side:
+    the shuffled groups are dealt into K near-equal chunks (reproducible for a given seed). groups=None
+    is the plain row-level KFold(shuffle, random_state=seed) over n rows, unchanged."""
+    if groups is None:
+        yield from KFold(n_splits, shuffle=True, random_state=seed).split(np.zeros(n))
+        return
+    groups = np.asarray(groups)
+    uniq = np.random.default_rng(seed).permutation(np.unique(groups))
+    for chunk in np.array_split(uniq, n_splits):
+        test = np.isin(groups, chunk)
+        yield np.flatnonzero(~test), np.flatnonzero(test)
+
+
 def _mix_spec(value):
     """(families [K lists of arms], shrink) from a legacy (arms_a, arms_b), a list of K arm lists, or
     {'families': [...], 'shrink': bool}."""
@@ -96,19 +110,20 @@ def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device=None):
     return out
 
 
-def _inner_predictions(X, y, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES):
-    """Inner-CV predictions of every recipe, on these (training) rows only: {recipe: [n]}."""
+def _inner_predictions(X, y, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES, groups=None):
+    """Inner-CV predictions of every recipe, on these (training) rows only: {recipe: [n]}.
+    groups: one id per row; rows sharing an id are never split between inner train and test."""
     preds = {rc: np.zeros(len(y)) for rc in recipes}
-    for itr, ite in KFold(n_inner, shuffle=True, random_state=seed).split(X):
+    for itr, ite in group_kfold(groups, n_inner, seed, n=len(y)):
         P = _recipe_predictions(X[itr], y[itr], X[ite], recipes, seed, backend, device)
         for rc in recipes:
             preds[rc][ite] = P[rc]
     return preds
 
 
-def _inner_scores(X, y, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES):
+def _inner_scores(X, y, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES, groups=None):
     """Inner-CV R² of every recipe, on these (training) rows only."""
-    return {rc: r2(y, p) for rc, p in _inner_predictions(X, y, n_inner, seed, backend, device, recipes).items()}
+    return {rc: r2(y, p) for rc, p in _inner_predictions(X, y, n_inner, seed, backend, device, recipes, groups).items()}
 
 
 def nnls_weights(P, y):
@@ -128,8 +143,10 @@ def _single_threaded(backend):
 
 
 def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles, backend="sklearn", device=None,
-                stacks=None, mixes=None, recipes=RECIPES):
-    """stacks {name: arms}: each arm at its inner-CV best recipe, mixed by nnls_weights fitted on those
+                stacks=None, mixes=None, recipes=RECIPES, groups=None):
+    """groups (one id per row of y): inner folds keep all rows of a group together; the caller builds
+    tr/te so the same holds for the outer split.
+    stacks {name: arms}: each arm at its inner-CV best recipe, mixed by nnls_weights fitted on those
     recipes' inner-CV predictions (training rows only), applied to the refit test predictions.
     mixes {name: [arms_1..arms_K]} (or the legacy (arms_a, arms_b), or {'families': [...], 'shrink': bool}):
     each arm at its inner-CV best recipe, a family's prediction is the mean of its arms'; the weights on the
@@ -143,7 +160,8 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
                         | {a for names, _ in ensembles.values() for a in names}
                         | {a for names in stacks.values() for a in names}
                         | {a for fams, _ in mixes.values() for names in fams for a in names})
-        inner_pred = {a: _inner_predictions(arms[a][tr], y[tr], n_inner, seed, backend, device, recipes) for a in needed}
+        inner_pred = {a: _inner_predictions(arms[a][tr], y[tr], n_inner, seed, backend, device, recipes,
+                                                    None if groups is None else groups[tr]) for a in needed}
         inner = {a: {rc: r2(y[tr], p) for rc, p in P.items()} for a, P in inner_pred.items()}
 
         # the refits this fold needs, per arm: selected recipes, ensemble members, fixed arms
@@ -226,18 +244,19 @@ def paired_delta(y, PA, PB, n_boot=1000, seed=0):
 
 def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
               fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None, stacks=None,
-              mixes=None, recipes=RECIPES):
+              mixes=None, recipes=RECIPES, groups=None):
     """backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
-    n_jobs concurrent folds per device (threads, one CUDA stream each)."""
+    n_jobs concurrent folds per device (threads, one CUDA stream each). groups (one id per row):
+    outer and inner folds keep all rows of a group on one side; None = row-level folds."""
     y = np.asarray(y, dtype=np.float64)
     n = len(y)
     ensembles = ensembles or {}
     stacks = stacks or {}
     mixes = mixes or {}
-    fold_fn = functools.partial(_outer_fold, stacks=stacks, mixes=mixes, recipes=tuple(recipes))
+    fold_fn = functools.partial(_outer_fold, stacks=stacks, mixes=mixes, recipes=tuple(recipes), groups=groups)
     jobs = []
     for r in range(n_repeats):
-        for f, (tr, te) in enumerate(KFold(n_folds, shuffle=True, random_state=seed + r).split(y)):
+        for f, (tr, te) in enumerate(group_kfold(groups, n_folds, seed + r, n=n)):
             jobs.append((r, f, tr, te))
     args = [(arms, families, y, tr, te, n_inner, seed + 1000 + 10 * r + f, fixed_arms, ensembles, backend)
             for r, f, tr, te in jobs]
