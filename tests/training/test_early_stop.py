@@ -89,3 +89,34 @@ def test_no_early_stopping_key_unchanged(data_dir, tmp_path):  # noqa: F811
         result = train(_stop_cfg(data_dir, tmp_path, "plain", stop_step=4))
     assert result["stopped_at"] is None
     assert not (Path(result["output_dir"]) / "checkpoint_best.pt").exists()
+
+
+def test_resume_carries_best_checkpoint(data_dir, tmp_path):  # noqa: F811
+    es_cfg = {**ALWAYS_WORSE, "patience": 3}
+    with pytest.warns(UserWarning):
+        first = train(_es_cfg(data_dir, tmp_path, "a", stop_step=6, early_stopping=es_cfg))
+    with pytest.warns(UserWarning):
+        second = train(_es_cfg(data_dir, tmp_path, "b", early_stopping=es_cfg, resume=first["final_checkpoint"]))
+    best = Path(second["best_checkpoint"])
+    assert best.parent == Path(second["output_dir"]) and best.exists()
+    assert load_checkpoint(best)["step"] == 2
+
+
+def test_resume_after_early_stop_fails(data_dir, tmp_path):  # noqa: F811
+    es_cfg = {**ALWAYS_WORSE, "patience": 1}
+    with pytest.warns(UserWarning):
+        first = train(_es_cfg(data_dir, tmp_path, "a", early_stopping=es_cfg))
+    assert first["stopped_at"] == 4
+    with pytest.raises(ValueError, match="already early-stopped"):
+        train(_es_cfg(data_dir, tmp_path, "b", early_stopping=es_cfg, resume=first["final_checkpoint"]))
+
+
+def test_no_none_logged_before_armed(data_dir, tmp_path, monkeypatch):  # noqa: F811
+    from spectral_lejepa.training import trainer
+    logged = []
+    monkeypatch.setattr(trainer.wb, "log", lambda run, metrics, step=None: logged.append(metrics))
+    with pytest.warns(UserWarning):
+        train(_es_cfg(data_dir, tmp_path, "arm", stop_step=8,
+                      early_stopping={**ALWAYS_WORSE, "patience": 5, "start_step": 6}))
+    es_logs = [m for m in logged if any(k.startswith("early_stop/") for k in m)]
+    assert es_logs and all(v is not None for m in es_logs for v in m.values())

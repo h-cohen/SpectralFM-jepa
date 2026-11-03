@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import shutil
 import time
 import warnings
 from pathlib import Path
@@ -242,6 +243,9 @@ def train(cfg: dict) -> dict:
 
     resume = load_resume_checkpoint(tcfg.get("resume"), cfg)
     init = resume or load_init_checkpoint(tcfg.get("init_checkpoint"), cfg)
+    es_saved = (resume or {}).get("ckpt", {}).get("early_stopping")
+    if tcfg.get("early_stopping") and es_saved and es_saved["bad_checks"] >= tcfg["early_stopping"]["patience"]:
+        raise ValueError(f"training.resume: this run already early-stopped (best step {es_saved['best_step']})")
 
     norm = dcfg["normalization"]
     weights, sampler = dcfg.get("source_weights"), None
@@ -381,8 +385,15 @@ def train(cfg: dict) -> dict:
         start = es_cfg.get("start_step")
         stopper = EarlyStopping(es_cfg["metric"], es_cfg["patience"], es_cfg["min_delta"],
                                 warmup_steps if start is None else start)
-        if resume and "early_stopping" in resume["ckpt"]:
-            stopper.load_state_dict(resume["ckpt"]["early_stopping"])
+        if es_saved:
+            stopper.load_state_dict(es_saved)
+            # a resume writes a new run directory: carry the earlier run's best checkpoint into it
+            previous_best = Path(tcfg["resume"]).parent / "checkpoint_best.pt"
+            if previous_best.exists() and load_checkpoint(previous_best)["step"] == stopper.best_step:
+                shutil.copy2(previous_best, out_dir / "checkpoint_best.pt")
+            elif stopper.best_step is not None:
+                warnings.warn(f"training.resume: no checkpoint_best.pt at step {stopper.best_step} beside "
+                              f"{tcfg['resume']}; a new one is written only on the next improvement")
     stopped_at = None
     latest, reference_rank = {}, None
     metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, start_step, seed, device, reference_rank)
@@ -478,8 +489,9 @@ def train(cfg: dict) -> dict:
                 if stopper:
                     if stopper.update(step, valid):
                         save(out_dir / "checkpoint_best.pt", step, epoch)
-                    wb.log(run, {"early_stop/best_value": stopper.best_value, "early_stop/best_step": stopper.best_step,
-                                 "early_stop/bad_checks": stopper.bad_checks}, step=step)
+                    if stopper.best_step is not None:   # nothing to log before the stopper is armed
+                        wb.log(run, {"early_stop/best_value": stopper.best_value, "early_stop/best_step": stopper.best_step,
+                                     "early_stop/bad_checks": stopper.bad_checks}, step=step)
                     if stopper.should_stop and not last:
                         stopped_at, last = step, True
                         print(f"early stop at step {step}: best {stopper.metric}={stopper.best_value:.6g} "
@@ -499,4 +511,4 @@ def train(cfg: dict) -> dict:
     return {"output_dir": str(out_dir), "final_checkpoint": str(out_dir / "checkpoint_last.pt"),
             "history": history, "wandb_run_id": metadata["wandb_run_id"], "stopped_at": stopped_at,
             "best_step": stopper.best_step if stopper else None,
-            "best_checkpoint": str(out_dir / "checkpoint_best.pt") if stopper and stopper.best_step is not None else None}
+            "best_checkpoint": str(out_dir / "checkpoint_best.pt") if (out_dir / "checkpoint_best.pt").exists() else None}
