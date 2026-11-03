@@ -57,6 +57,8 @@ The ensemble beats raw spectra on 8 of 8 sets (mean ΔR² +.056) and a random-we
 
 Benchmark against training-free time-series features (sktime MiniRocket, ROCKET, MultiRocket; same nested CV; report Appendix A): MiniRocket ties the ensemble 4–4 by set but averages .043 lower, losing labeled_data by .33. Averaging the ensemble's and MiniRocket's predictions gives +.075 over raw on 8/8. Run it with `python -m spectral_lejepa benchmark run --arms minirocket_s0 ...` then `benchmark score` (needs the `benchmark` extra: `uv pip install -e '.[benchmark]'`).
 
+MiniRocket is also an opt-in standard baseline: `--minirocket` on `evaluate` or `ensemble --stack` scores it on the same nested-CV folds, and refuses to run if its raw arm does not reproduce the stored raw predictions. Against the current family-mix candidate (16 members; `outputs/accuracy-ensemble/mix_minirocket/`, report section 1): MiniRocket vs raw +.013 (4/8); family mix vs MiniRocket +.082 (5/8), mean nRMSE .528 vs .441 (raw .533).
+
 ## Robustness tests
 
 | Test | Command | What it measures |
@@ -106,6 +108,11 @@ python -m spectral_lejepa evaluate --checkpoint <stage-2 checkpoint_last.pt> \
 
 # Score the ensemble (block-2 flat) from the members' evaluation run dirs
 python -m spectral_lejepa ensemble --banks outputs/<study>/*/eval/*_step* --output outputs/<study>/ensemble.json
+
+# Optional MiniRocket baseline (seed 0, same folds; needs the `benchmark` extra)
+python -m spectral_lejepa evaluate --minirocket --checkpoint <ckpt> --config configs/eval_production_all_blocks.yaml ...
+python -m spectral_lejepa ensemble --stack --minirocket --banks ... --output-dir D   # refit members + MiniRocket
+python -m spectral_lejepa ensemble --stack --minirocket-only --banks ... --output-dir D   # add to existing D
 
 # Robustness tests, figures, report
 python -m spectral_lejepa robustness --checkpoint <ckpt> --output outputs/<study>/<member>/perturbation.json
