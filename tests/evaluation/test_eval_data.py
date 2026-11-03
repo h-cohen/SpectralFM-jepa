@@ -154,3 +154,34 @@ def test_same_rows_as_parent(set_dirs, rel):
     raw, y = load_labeled_data(set_dirs)
     assert np.array_equal(y, parent_y)
     assert np.array_equal(raw, parent_raw)
+
+
+def test_components_selection_and_sample_alignment(tmp_path):
+    from spectral_lejepa.evaluation.data import load_labeled_components
+    rows = []
+    for spec, label in ((1, 1.0), (2, 2.0), (3, 3.0)):
+        for comp in (0, 1, 2):
+            if spec == 3 and comp == 1:
+                continue                                    # sample 3 lacks component 1
+            rows.append((f"dataset0007_comp{comp}_spec_{spec}.wav", label))
+    make_set(tmp_path / "a", rows, "wavs")
+    raw, y, sid, comp = load_labeled_components([str(tmp_path / "a")], components=(0, 1))
+    assert raw.shape == (4, 245) and comp.tolist() == [0, 0, 1, 1]
+    assert sid.tolist() == [0, 1, 0, 1] and y.tolist() == [1.0, 2.0, 1.0, 2.0]
+    assert not np.array_equal(raw[0], raw[2])               # components are different spectra
+    raw0, y0, sid0, comp0 = load_labeled_components([str(tmp_path / "a")], components=(0,))
+    assert raw0.shape == (3, 245) and sid0.tolist() == [0, 1, 2]
+    plain, yp = load_labeled_data([str(tmp_path / "a")])
+    np.testing.assert_array_equal(plain, raw0)
+    np.testing.assert_array_equal(yp, y0)
+
+
+def test_components_subsample_is_over_samples(tmp_path):
+    from spectral_lejepa.evaluation.data import load_labeled_components
+    rows = [(f"dataset0007_comp{c}_spec_{s}.wav", float(s)) for s in range(10) for c in (0, 1)]
+    make_set(tmp_path / "a", rows, "wavs")
+    raw, y, sid, comp = load_labeled_components([str(tmp_path / "a")], components=(0, 1), max_samples=4)
+    assert len(raw) == 8 and sorted(set(sid.tolist())) == [0, 1, 2, 3]
+    for s in range(4):
+        assert sorted(comp[sid == s].tolist()) == [0, 1]
+        assert len(set(y[sid == s])) == 1

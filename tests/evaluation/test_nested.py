@@ -311,3 +311,50 @@ def test_extended_recipes_with_torch_backend_merge():
     P = nc._recipe_predictions(X[:40], yy[:40], X[40:], EXTENDED_RECIPES, 0, "torch", "cpu")
     assert set(P) == set(EXTENDED_RECIPES)
     assert any(rc[1] in NONLINEAR_PROBES for rc in P) and any(rc[1] not in NONLINEAR_PROBES for rc in P)
+
+
+def test_group_kfold_keeps_groups_whole_and_is_seeded():
+    groups = np.repeat(np.arange(20), 3)
+    folds = list(nc.group_kfold(groups, 5, seed=3))
+    assert len(folds) == 5
+    assert sorted(np.concatenate([te for _, te in folds])) == list(range(60))
+    for tr, te in folds:
+        assert not set(groups[tr]) & set(groups[te])
+        assert len(set(groups[te])) == 4
+    again = list(nc.group_kfold(groups, 5, seed=3))
+    assert all((a[1] == b[1]).all() for a, b in zip(folds, again))
+    other = list(nc.group_kfold(groups, 5, seed=4))
+
+
+def test_group_kfold_none_is_plain_kfold():
+    from sklearn.model_selection import KFold
+    for (a, b), (c, d) in zip(nc.group_kfold(None, 5, seed=7, n=30), KFold(5, shuffle=True, random_state=7).split(np.zeros(30))):
+        np.testing.assert_array_equal(b, d)
+
+
+def test_nested_cv_groups_never_split_a_sample(monkeypatch):
+    X, y = synthetic(n=40)
+    groups = np.repeat(np.arange(20), 2)
+    seen = []
+    real = nc._inner_predictions
+
+    def spy(X_, y_, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES, groups=None):
+        seen.append(groups)
+        return real(X_, y_, n_inner, seed, backend, device, recipes, groups=groups)
+    monkeypatch.setattr(nc, "_inner_predictions", spy)
+    res = nc.nested_cv({"a": X}, {"a": ["a"]}, y, n_repeats=1, groups=groups)
+    for te in res["test_folds"][0]:
+        te = np.array(te)
+        assert len(set(groups[te])) * 2 == len(te)         # both rows of every test sample are in the fold
+    assert seen and all(g is not None for g in seen)
+    # inner folds: no sample in both inner train and inner test
+    for g in seen:
+        for itr, ite in nc.group_kfold(g, 5, seed=0):
+            assert not set(g[itr]) & set(g[ite])
+
+
+def test_nested_cv_groups_none_unchanged():
+    X, y = synthetic()
+    a = nc.nested_cv({"a": X}, {"a": ["a"]}, y)
+    b = nc.nested_cv({"a": X}, {"a": ["a"]}, y, groups=None)
+    np.testing.assert_array_equal(a["a"]["oof"], b["a"]["oof"])
