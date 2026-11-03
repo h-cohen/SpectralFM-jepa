@@ -57,6 +57,15 @@ def test_schedule():
     assert lr_factor(100, 10, 100, 0.001) == pytest.approx(0.001)
 
 
+def test_warmup_steps_override():
+    tcfg = {"max_steps": 248995, "epochs": 10, "warmup_epochs": 1.0}
+    assert schedule_lengths(577, {**tcfg, "warmup_steps": 49799}) == (248995, 49799)
+    assert schedule_lengths(577, {**tcfg, "warmup_steps": None}) == (248995, 577)
+    for bad in (0, 248995):
+        with pytest.raises(ValueError, match="warmup_steps"):
+            schedule_lengths(577, {**tcfg, "warmup_steps": bad})
+
+
 def test_tiny_training_run(data_dir, tmp_path):
     with pytest.warns(UserWarning, match="batch_size=8"):
         result = train(tiny_cfg(data_dir, tmp_path / "out"))
@@ -411,4 +420,57 @@ def test_sources_exclusive_with_weights(tmp_path):
         "data.source=packed", f"data.packed_dir={packed}", "data.normalization=global",
         "data.sources=[big]", "data.source_weights={default: 1.0}", *TINY_OVERRIDES])
     with pytest.raises(ValueError, match="exclusive"):
+        train(cfg)
+
+
+def _holdout_cfg(tmp_path, name, *extra):
+    packed = tmp_path / "packed"
+    if not packed.exists():
+        make_packed_sources(tmp_path)
+        names = ([("big", f"spectra0000_batch0_spec_{i}.wav") for i in range(70)]
+                 + [("labeled_regression/dataset0055", f"dataset0055_comp{i % 2}_spec_{i // 2}.wav") for i in range(20)]
+                 + [("labeled_regression/dataset0106", f"dataset0106_comp{i % 2}_spec_{i // 2}.wav") for i in range(10)])
+        (packed / "index.tsv").write_text("".join(f"{i}\t{s}\t/x/{n}\n" for i, (s, n) in enumerate(names)))
+    cfg = load_config(REPO / "configs" / "pretrain.yaml", [
+        f"experiment.name={name}", f"experiment.output_dir={tmp_path / name}",
+        "data.source=packed", f"data.packed_dir={packed}", "data.normalization=global",
+        *TINY_OVERRIDES, "training.max_steps=4", "training.log_every=1", *extra])
+    return cfg, packed
+
+
+def test_packed_holdout_uses_only_source_rows(tmp_path):
+    from spectral_lejepa.data.loader import sample_group_keys
+    cfg, packed = _holdout_cfg(tmp_path, "holdout", "data.sources=[labeled_regression]")
+    cfg["data"]["valid_holdout"] = 0.2
+    with pytest.warns(UserWarning, match="batch_size=8"):
+        result = train(cfg)
+    out = Path(result["output_dir"])
+    valid = np.load(out / "valid_rows_used.npy")
+    assert len(valid) and ((valid >= 70) & (valid < 100)).all()
+    assert not set(valid.tolist()) & {70, 71, 90, 91}
+    derived = load_checkpoint(out / "checkpoint_last.pt")["config"]["derived"]
+    assert derived["n_valid_rows"] == len(valid) == derived["valid_samples"]
+    assert derived["valid_holdout"] == 0.2
+    measured = np.setdiff1d(np.arange(70, 100), [70, 71, 90, 91])
+    train_rows = np.setdiff1d(measured, valid)
+    assert derived["n_train_rows"] == len(train_rows)
+    assert not set(sample_group_keys(packed, valid)) & set(sample_group_keys(packed, train_rows))
+
+
+def test_no_holdout_keeps_legacy_valid_rows(tmp_path):
+    from spectral_lejepa.data.loader import valid_subset
+    cfg, packed = _holdout_cfg(tmp_path, "legacy", "data.sources=[labeled_regression]")
+    with pytest.warns(UserWarning, match="batch_size=8"):
+        result = train(cfg)
+    out = Path(result["output_dir"])
+    derived = load_checkpoint(out / "checkpoint_last.pt")["config"]["derived"]
+    assert derived["valid_samples"] == len(valid_subset(np.load(packed / "valid_rows.npy")))
+    assert "n_valid_rows" not in derived
+    assert not (out / "valid_rows_used.npy").exists()
+
+
+def test_holdout_without_sources_fails(tmp_path):
+    cfg, _ = _holdout_cfg(tmp_path, "nosrc")
+    cfg["data"]["valid_holdout"] = 0.2
+    with pytest.raises(ValueError, match="valid_holdout needs data.sources"):
         train(cfg)
