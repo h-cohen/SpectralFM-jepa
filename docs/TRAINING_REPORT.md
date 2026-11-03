@@ -5,9 +5,9 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
 ## 1. Bottom line
 
 **Bottom line.** Since 2026-10-23 accuracy comes first, and robustness is deferred. The candidate averages the predictions of 8 non-robust and 8 robust encoders as two families, mixed with one weight chosen in inner CV.
-- **Against raw:** it beats raw spectra on 8 of 8 labeled sets, mean ΔR² +.095. The previous robust four-seed ensemble gave +.056.
-- **Against random weights:** it beats a random-weight encoder average on 8 of 8, mean +.087.
-- **Main gain:** 0112 rises from .42 to .72.
+- **Against raw:** it beats raw spectra on 8 of 8 labeled sets, mean ΔR² +.095 and mean ΔRMSE −.092 label units (nRMSE .533 → .441). The previous robust four-seed ensemble gave +.056 and −.062.
+- **Against random weights:** it beats a random-weight encoder average on 8 of 8, mean ΔR² +.087, ΔRMSE −.071.
+- **Main gain:** 0112 rises from .42 to .72 (RMSE .75 to .53; raw .78).
 - **How it was adopted:** under a rule written after part of the evidence was seen, with one criterion waived (Appendix D). Four of the eight gains are within bootstrap noise, and no independent holdout exists yet.
 - **Previous method:** data2vec stays below raw (recent checkpoint 0/8, mean −.197; section 9).
 - **Other comparisons and analyses:**
@@ -17,7 +17,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
   - Robustness: Appendix C. The robust term trades 0112 accuracy for noise robustness.
 
   Sections 7–11 describe the robust four-member ensemble.
-- **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 gain: the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes beat the candidate on only 2 of 7 finished sets. The candidate stands. All rules were fixed before any score.
+- **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 ΔR² (ΔRMSE −.023 of −.083): the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes beat the candidate on only 2 of 7 finished sets. The candidate stands. All rules were fixed before any score.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -43,20 +43,22 @@ flowchart LR
     M --> G["8/8 vs raw · 8/8 vs random · +.095"]
 ```
 
-| Set | n | Raw R² | Random-weight R² | Previous: robust ensemble R² | Family-mix R² | Δ vs raw (± SD) |
-|---|---:|---:|---:|---:|---:|---:|
-| labeled_data | 4,716 | .830 | .949 | .959 | .962 | +.132 ± .004 |
-| 0055 | 25 | .591 | .541 | .640 | .596 | +.005 ± .119 |
-| 0106 | 64 | .697 | .702 | .714 | .706 | +.010 ± .023 |
-| 0109 | 96 | .918 | .933 | .943 | .942 | +.024 ± .012 |
-| 0112 | 68 | .377 | .364 | .421 | .715 | +.338 ± .115 |
-| 0113 | 70 | .548 | .561 | .702 | .739 | +.190 ± .054 |
-| 0114 | 230 | .983 | .982 | .986 | .985 | +.002 ± .001 |
-| 0120 | 125 | .380 | .354 | .405 | .439 | +.059 ± .053 |
+| Set | n | Raw R² | Raw RMSE | Random-weight R² | Random-weight RMSE | Previous: robust ensemble R² | Previous: robust ensemble RMSE | Family-mix R² | Family-mix RMSE | Δ vs raw (± SD) | ΔRMSE vs raw (± SD) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | 4,716 | .830 | .412 | .949 | .226 | .959 | .203 | .962 | .195 | +.132 ± .004 | −.218 ± .005 |
+| 0055 | 25 | .591 | .625 | .541 | .664 | .640 | .588 | .596 | .623 | +.005 ± .119 | −.002 ± .086 |
+| 0106 | 64 | .697 | .546 | .702 | .541 | .714 | .531 | .706 | .538 | +.010 ± .023 | −.009 ± .021 |
+| 0109 | 96 | .918 | .285 | .933 | .258 | .943 | .237 | .942 | .240 | +.024 ± .012 | −.045 ± .018 |
+| 0112 | 68 | .377 | .781 | .364 | .791 | .421 | .752 | .715 | .530 | +.338 ± .115 | −.251 ± .060 |
+| 0113 | 70 | .548 | .667 | .561 | .657 | .702 | .542 | .739 | .507 | +.190 ± .054 | −.160 ± .042 |
+| 0114 | 230 | .983 | .130 | .982 | .132 | .986 | .120 | .985 | .121 | +.002 ± .001 | −.009 ± .005 |
+| 0120 | 125 | .380 | .784 | .354 | .800 | .405 | .766 | .439 | .745 | +.059 ± .053 | −.039 ± .034 |
+| mean Δ vs raw |  |  |  |  |  |  |  |  |  | +.095 | −.092 |
+| mean nRMSE |  |  | .533 |  | .513 |  | .471 |  | .441 |  |  |
 
 The random-weight column is the mean over the 16 members' random-weight controls.
 
-Shaded cells (HTML): the robust ensemble beats raw on that set.
+RMSE is in label units (section 6); in the last column and the mean row it is the paired ΔRMSE vs raw, negative is better, with its bootstrap SD. Shaded cells (HTML): the robust ensemble beats raw on that set.
 
 ![Ensemble R²](figures/training-report/fig5_ensemble_r2.svg)
 
@@ -245,6 +247,8 @@ flowchart TB
 
 **Bottom line.** Every probe recipe is chosen inside the training folds. Raw spectra and the random-weight encoder get the identical search, and gains are paired on the same folds.
 
+RMSE is reported beside every R² of the out-of-fold tables, computed from the same out-of-fold predictions (per outer repeat, then averaged over the two repeats, as R² is) and expressed in label units. The evaluation sets store `parameter_0` already standardised per set (mean 0, sample SD 1 in the dataset files), so one label unit is one set SD and the physical unit of each set is not available to this project; nRMSE (RMSE / SD of the set's labels, .98–1.00) is the scale-free version and is averaged in the `mean nRMSE` rows. In Δ columns and mean rows the RMSE column holds ΔRMSE (negative is better), with a bootstrap SD where the ΔR² has one. Development R² tables (Appendices C and E3), the in-sample label R² of section 11, the stage summary of section 5 and the block-wise ablation gains of section 8 are not out-of-fold predictions of one arm per set and carry no RMSE. `ops/report_rmse.py` recomputes every RMSE from the saved predictions and rewrites the tables (`outputs/rmse/rmse.json`).
+
 ```mermaid
 flowchart LR
     D["labeled set"] --> F["features: trained · raw · random-weight"]
@@ -365,18 +369,19 @@ Two data2vec-audio checkpoints from the previous project are scored with the sam
 - **data2vec (recent)** is `d2v_alldata` at 200,000 updates, pretrained on all 12.75M spectra. `evaluate` loads it with the previous project's own checkpoint loader and probes every block with the mean, segment-mean and all-token readouts.
   - On labeled_data the full search did not fit in GPU memory, so a fast estimate is used there: mean readout of blocks 0, 6 and 12 only, without the random-weight control. This search is smaller than the other sets', so that number may be slightly low.
 
-| Set | Raw | data2vec (Feb 25) | data2vec (recent) | JEPA ens. |
-|---|---:|---:|---:|---:|
-| labeled_data | .830 | .853 | .805 | **.959** |
-| 0055 | .591 | .199 | .336 | **.640** |
-| 0106 | .697 | .250 | .294 | **.714** |
-| 0109 | .918 | .066 | .307 | **.943** |
-| 0112 | .377 | .233 | .274 | **.421** |
-| 0113 | .548 | .259 | .541 | **.702** |
-| 0114 | .983 | .981 | .981 | **.986** |
-| 0120 | .380 | .140 | .215 | **.405** |
-| wins vs raw | | 1/8 | 0/8 | 8/8 |
-| mean Δ vs raw | | −.293 | −.197 | **+.056** |
+| Set | Raw R² | Raw RMSE | data2vec (Feb 25) R² | data2vec (Feb 25) RMSE | data2vec (recent) R² | data2vec (recent) RMSE | JEPA ens. R² | JEPA ens. RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .412 | .853 | .383 | .805 | .442 | **.959** | **.203** |
+| 0055 | .591 | .625 | .199 | .877 | .336 | .798 | **.640** | **.588** |
+| 0106 | .697 | .546 | .250 | .859 | .294 | .833 | **.714** | **.531** |
+| 0109 | .918 | .285 | .066 | .961 | .307 | .828 | **.943** | **.237** |
+| 0112 | .377 | .781 | .233 | .869 | .274 | .846 | **.421** | **.752** |
+| 0113 | .548 | .667 | .259 | .853 | .541 | .672 | **.702** | **.542** |
+| 0114 | .983 | .130 | .981 | .136 | .981 | .138 | **.986** | **.120** |
+| 0120 | .380 | .784 | .140 | .924 | .215 | .883 | **.405** | **.766** |
+| wins vs raw |  |  | 1/8 | 1/8 | 0/8 | 0/8 | 8/8 | 8/8 |
+| mean Δ vs raw |  |  | −.293 | +.204 | −.197 | +.151 | +.056 | −.062 |
+| mean nRMSE |  | .533 |  | .739 |  | .685 |  | .471 |
 
 ![Comparison](figures/training-report/fig_benchmark.svg)
 
@@ -391,7 +396,7 @@ Two data2vec-audio checkpoints from the previous project are scored with the sam
 
 **Bottom line.** RMSE tells the same story as R², with two additions. First, the JEPA ensemble lowers RMSE vs raw on 8/8 sets (mean nRMSE .471 vs .533) and has the smallest tail errors. Second, its error is flat across the label range on labeled_data, while raw ridge and both data2vec checkpoints shrink toward the mean and miss most at the extremes.
 
-All metrics come from the same out-of-fold predictions as section 9 and Appendix A (no refitting): `benchmark score` now writes them to `outputs/benchmark/results.json` (`errors` per set and arm; code in `evaluation/errors.py`). Labels are standardised per set (mean 0, SD 1), so RMSE is in label-SD units and RMSE ≈ nRMSE.
+All metrics come from the same out-of-fold predictions as section 9 and Appendix A (no refitting): `benchmark score` now writes them to `outputs/benchmark/results.json` (`errors` per set and arm; code in `evaluation/errors.py`). RMSE is in label units: the stored labels are standardised per set (mean 0, SD 1; section 6), so the tables below are in SD units and RMSE ≈ nRMSE. The original physical unit is not available, so no further conversion is possible.
 
 - **RMSE and nRMSE** (RMSE / SD(y)): headline error, comparable across sets. ΔRMSE vs raw is paired on the same spectra, with bootstrap SD.
 - **MAE, median and 90th-percentile absolute error:** typical error vs tail error.
@@ -415,7 +420,7 @@ All metrics come from the same out-of-fold predictions as section 9 and Appendix
 | mean residual slope | −.28 | −.45 | −.43 | **−.22** |
 | per-spectrum win rate vs raw | | .40 | .45 | **.61** |
 
-RMSE per set (lower is better; bold is the best arm).
+RMSE per set in label units (lower is better; bold is the best arm).
 
 ![nRMSE](figures/training-report/fig_errors_nrmse.svg)
 
@@ -515,7 +520,7 @@ Bold: best of the JEPA ensemble, MiniRocket s0 and the two combinations.
 
 **Figure A1. Nested-CV R² per set, every arm** (bars ± bootstrap SD of the paired difference vs raw). MiniRocket is seed 0; ROCKET and MultiRocket are descriptive arms.
 
-RMSE, every arm (lower is better; error metrics defined in section 10):
+RMSE in label units, every arm (the RMSE for each R² column above; lower is better; error metrics defined in section 10):
 
 | Set | Raw | data2vec (Feb 25) | data2vec (recent) | JEPA ens. | MiniRocket s0 | ROCKET | MultiRocket | pred_avg | concat |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -547,17 +552,18 @@ RMSE, every arm (lower is better; error metrics defined in section 10):
 - **Protocol.** Same nested CV as the main results (2×5 outer, 5 inner, 12 recipes, seed 42). The re-run average reproduces the published +.0556 vs raw exactly.
 - **Criteria, fixed beforehand.** Beat the average in mean ΔR² and on at least 5/8 sets, and beat raw on 8/8.
 
-| Set | raw | average | stack | aug. average | aug. stack | random-weight average |
-|---|---|---|---|---|---|---|
-| labeled_data | .830 | **.959** | .958 | .261 | .266 | .949 |
-| 0055 | .591 | .640 | .691 | **.694** | .482 | .541 |
-| 0106 | .697 | **.714** | .704 | .683 | .705 | .702 |
-| 0109 | .918 | .943 | **.947** | .824 | .829 | .933 |
-| 0112 | .377 | .421 | **.477** | .328 | .401 | .364 |
-| 0113 | .548 | **.702** | .688 | .671 | .586 | .561 |
-| 0114 | .983 | **.986** | **.986** | .981 | .980 | .983 |
-| 0120 | .380 | **.405** | .404 | .311 | .274 | .354 |
-| wins vs raw | | 8/8 | 8/8 | 2/8 | 3/8 | |
+| Set | raw R² | raw RMSE | average R² | average RMSE | stack R² | stack RMSE | aug. average R² | aug. average RMSE | aug. stack R² | aug. stack RMSE | random-weight average R² | random-weight average RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .412 | **.959** | **.203** | .958 | .204 | .261 | .860 | .266 | .856 | .949 | .226 |
+| 0055 | .591 | .625 | .640 | .588 | .691 | .544 | **.694** | **.542** | .482 | .705 | .541 | .664 |
+| 0106 | .697 | .546 | **.714** | **.531** | .704 | .540 | .683 | .558 | .705 | .538 | .702 | .541 |
+| 0109 | .918 | .285 | .943 | .237 | **.947** | **.230** | .824 | .417 | .829 | .411 | .933 | .258 |
+| 0112 | .377 | .781 | .421 | .752 | **.477** | **.716** | .328 | .814 | .400 | .769 | .364 | .791 |
+| 0113 | .548 | .667 | **.702** | **.542** | .688 | .554 | .671 | .569 | .586 | .639 | .561 | .657 |
+| 0114 | .983 | .130 | **.986** | **.120** | **.986** | **.120** | .981 | .137 | .980 | .141 | .982 | .132 |
+| 0120 | .380 | .784 | **.405** | **.766** | .404 | .768 | .311 | .827 | .274 | .849 | .354 | .800 |
+| wins vs raw |  |  | 8/8 | 8/8 | 8/8 | 8/8 | 2/8 | 2/8 | 3/8 | 3/8 |  |  |
+| mean nRMSE |  | .533 |  | .471 |  | .463 |  | .594 |  | .618 |  | .513 |
 
 - **Stacking.** Beats the average on 3/8 sets, mean +.011. The gain comes from 0055 (+.051 ± .068) and 0112 (+.056 ± .031), two small sets with wide intervals. Elsewhere the weights match the average or overfit slightly.
 - **Test-time augmentation.** Beats the average on 1/8 sets, mean −.127. labeled_data falls from .96 to .26.
@@ -581,18 +587,19 @@ RMSE, every arm (lower is better; error metrics defined in section 10):
 - **C. Per-set adaptation.** Each member continues for 5,000 steps with half of its batches drawn from the target set's own unlabeled spectra and half from the rest of the corpus. Labels are never used. Block-2 flat probes; 32 runs.
 - **Criteria.** Beat the average in mean ΔR² and on at least 5/8 sets, and beat raw on 8/8.
 
-| Set | raw | average (4) | A: selection | B: 8 members | C: adapted | random-weight (8) |
-|---|---|---|---|---|---|---|
-| labeled_data | .830 | .959 | .960 | **.960** | **.960** | .949 |
-| 0055 | .591 | **.640** | .543 | .632 | .646 | .541 |
-| 0106 | .697 | .714 | **.728** | .713 | .709 | .702 |
-| 0109 | .918 | .943 | .943 | .942 | **.950** | .933 |
-| 0112 | .377 | .421 | .438 | **.489** | .399 | .364 |
-| 0113 | .548 | .702 | .672 | .698 | **.727** | .561 |
-| 0114 | .983 | **.986** | **.986** | **.986** | **.986** | .982 |
-| 0120 | .380 | .405 | .393 | **.411** | .385 | .354 |
-| wins vs average | | | 5/8 | 3/8 | 5/8 | |
-| mean Δ vs average | | | −.013 | +.008 | −.001 | |
+| Set | raw R² | raw RMSE | average (4) R² | average (4) RMSE | A: selection R² | A: selection RMSE | B: 8 members R² | B: 8 members RMSE | C: adapted R² | C: adapted RMSE | random-weight (8) R² | random-weight (8) RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .412 | .959 | .203 | **.960** | **.200** | **.960** | **.200** | **.960** | .201 | .949 | .226 |
+| 0055 | .591 | .625 | .640 | .588 | .543 | .662 | .632 | .595 | **.646** | **.583** | .541 | .664 |
+| 0106 | .697 | .546 | .714 | .531 | **.728** | **.517** | .713 | .531 | .709 | .535 | .702 | .541 |
+| 0109 | .918 | .285 | .943 | .237 | .943 | .237 | .942 | .239 | **.950** | **.222** | .933 | .258 |
+| 0112 | .377 | .781 | .421 | .752 | .438 | .742 | **.489** | **.704** | .399 | .767 | .364 | .791 |
+| 0113 | .548 | .667 | .702 | .542 | .672 | .568 | .698 | .546 | **.727** | **.518** | .561 | .657 |
+| 0114 | .983 | .130 | **.986** | .120 | **.986** | **.118** | **.986** | .120 | **.986** | .119 | .982 | .132 |
+| 0120 | .380 | .784 | .405 | .766 | .393 | .774 | **.411** | **.762** | .385 | .778 | .354 | .800 |
+| wins vs average |  |  |  |  | 5/8 | 4/8 | 3/8 | 3/8 | 5/8 | 5/8 |  |  |
+| mean Δ vs average |  |  |  |  | −.013 | +.010 | +.008 | −.005 | −.001 | −.002 |  |  |
+| mean nRMSE |  | .533 |  | .471 |  | .481 |  | .466 |  | .469 |  | .513 |
 
 - **A.** Inner CV on 25–70 spectra picks unstable readouts. 0055 loses .097 and 0113 loses .030. Where the pick is stable it helps a little: 0106 picks block-2 seg4 in every fold (+.015), and labeled_data picks block 1 or blocks 1+2 (+.001).
 - **B.** The four new seeds score .525 on 0112, against .421 for the original four. They change nothing elsewhere, so the average has saturated on seven sets. 0112's swing tracks the seed draw.
@@ -713,18 +720,19 @@ flowchart LR
 - **Robust (8):** the four previous candidate members plus seeds 103–106 (`outputs/signal-squeeze/members`).
 - All banks share labels, rows, raw OOF and folds.
 
-| Set | raw | R4 (previous) | NR8 mean | R8 mean | M16 (all 16 averaged) | family mix | mean non-robust weight |
-|---|---|---|---|---|---|---|---|
-| labeled_data | .830 | .959 | .963 | .960 | .963 | .962 | .73 |
-| 0055 | .591 | .640 | .640 | .632 | .656 | .596 | .55 |
-| 0106 | .697 | .714 | .604 | .713 | .678 | .706 | .13 |
-| 0109 | .918 | .943 | .926 | .942 | .942 | .942 | .33 |
-| 0112 | .377 | .421 | .723 | .489 | .653 | .715 | .85 |
-| 0113 | .548 | .702 | .747 | .698 | .732 | .739 | .95 |
-| 0114 | .983 | .986 | .984 | .986 | .985 | .985 | .08 |
-| 0120 | .380 | .405 | .446 | .411 | .451 | .439 | .40 |
-| mean Δ vs raw | | +.056 | +.088 | +.063 | +.092 | **+.095** | |
-| worst set vs raw | | +.002 | −.092 | +.002 | −.018 | +.002 | |
+| Set | raw R² | raw RMSE | R4 (previous) R² | R4 (previous) RMSE | NR8 mean R² | NR8 mean RMSE | R8 mean R² | R8 mean RMSE | M16 (all 16 averaged) R² | M16 (all 16 averaged) RMSE | family mix R² | family mix RMSE | mean non-robust weight |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .412 | .959 | .203 | .963 | .193 | .960 | .200 | .963 | .194 | .962 | .195 | .73 |
+| 0055 | .591 | .625 | .640 | .588 | .640 | .588 | .632 | .595 | .656 | .575 | .596 | .623 | .55 |
+| 0106 | .697 | .546 | .714 | .531 | .604 | .624 | .713 | .531 | .678 | .563 | .706 | .538 | .13 |
+| 0109 | .918 | .285 | .943 | .237 | .926 | .271 | .942 | .239 | .942 | .240 | .942 | .240 | .33 |
+| 0112 | .377 | .781 | .421 | .752 | .723 | .523 | .489 | .704 | .653 | .584 | .715 | .530 | .85 |
+| 0113 | .548 | .667 | .702 | .542 | .747 | .500 | .698 | .546 | .732 | .513 | .739 | .507 | .95 |
+| 0114 | .983 | .130 | .986 | .120 | .984 | .126 | .986 | .120 | .985 | .122 | .985 | .121 | .08 |
+| 0120 | .380 | .784 | .405 | .766 | .446 | .741 | .411 | .762 | .451 | .737 | .439 | .745 | .40 |
+| mean Δ vs raw |  |  | +.056 | −.062 | +.088 | −.083 | +.063 | −.067 | +.092 | −.088 | +.095 | −.092 |  |
+| worst set vs raw |  |  | +.002 | −.010 | −.092 | +.078 | +.002 | −.010 | −.018 | +.016 | +.002 | −.002 |  |
+| mean nRMSE |  | .533 |  | .471 |  | .449 |  | .466 |  | .445 |  | .441 |  |
 
 **Family mix.**
 - In each outer fold, each member's recipe is chosen in inner CV.
@@ -755,19 +763,20 @@ These are adaptive choices on the same eight sets, so the gain over R4 is explor
 - **Run:** one paired run in which MIX2 reproduces the adopted predictions exactly.
 - **Rule, fixed beforehand:** a higher mean, no set more than .01 below raw, and wins over MIX2 on at least 5/8 sets.
 
-| Set | raw | MIX2 | MIX2s | MIX3 | MIX3s | 24-patch mean |
-|---|---|---|---|---|---|---|
-| labeled_data | .830 | .962 | .963 | .963 | .964 | .963 |
-| 0055 | .591 | .596 | .656 | .605 | .671 | .652 |
-| 0106 | .697 | .706 | .679 | .698 | .672 | .637 |
-| 0109 | .918 | .942 | .942 | .941 | .942 | .898 |
-| 0112 | .377 | .715 | .656 | .714 | .698 | .721 |
-| 0113 | .548 | .739 | .732 | .723 | .734 | .674 |
-| 0114 | .983 | .985 | .985 | .985 | .986 | .985 |
-| 0120 | .380 | .439 | .451 | .440 | .434 | .401 |
-| mean Δ vs raw | | +.095 | +.092 | +.093 | +.097 | |
-| worst set vs raw | | +.002 | −.017 | +.002 | −.025 | |
-| wins vs MIX2 | | | 3/8 | 3/8 | 4/8 | |
+| Set | raw R² | raw RMSE | MIX2 R² | MIX2 RMSE | MIX2s R² | MIX2s RMSE | MIX3 R² | MIX3 RMSE | MIX3s R² | MIX3s RMSE | 24-patch mean R² | 24-patch mean RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .412 | .962 | .195 | .963 | .193 | .963 | .191 | .964 | .190 | .963 | .191 |
+| 0055 | .591 | .625 | .596 | .623 | .656 | .575 | .605 | .616 | .671 | .562 | .652 | .578 |
+| 0106 | .697 | .546 | .706 | .538 | .679 | .562 | .698 | .545 | .672 | .569 | .637 | .598 |
+| 0109 | .918 | .285 | .942 | .240 | .942 | .240 | .941 | .242 | .942 | .240 | .898 | .317 |
+| 0112 | .377 | .781 | .715 | .530 | .656 | .582 | .714 | .531 | .698 | .545 | .721 | .524 |
+| 0113 | .548 | .667 | .739 | .507 | .732 | .513 | .723 | .523 | .734 | .512 | .674 | .567 |
+| 0114 | .983 | .130 | .985 | .121 | .985 | .121 | .985 | .121 | .986 | .120 | .985 | .124 |
+| 0120 | .380 | .784 | .439 | .745 | .451 | .737 | .440 | .744 | .434 | .748 | .401 | .770 |
+| mean Δ vs raw |  |  | +.095 | −.092 | +.092 | −.088 | +.093 | −.090 | +.097 | −.093 |  |  |
+| worst set vs raw |  |  | +.002 | −.002 | −.017 | +.015 | +.002 | −.002 | −.025 | +.022 |  |  |
+| wins vs MIX2 |  |  |  |  | 3/8 | 3/8 | 3/8 | 3/8 | 4/8 | 4/8 |  |  |
+| mean nRMSE |  | .533 |  | .441 |  | .444 |  | .443 |  | .439 |  | .462 |
 
 - **Shrinkage** repairs 0055 (.60 → .66) but also fires where the tuned weight was right. It pushes 0106 below raw and costs 0112 up to .06.
 - **The 24-patch family** is strong only where the non-robust family already is (0112, 0055), and weak on 0106, 0109 and 0113.
@@ -808,16 +817,17 @@ Raw is scored with the same recipes as the arm it is compared with, so neither s
 
 **Why labeled_data is missing.** Both nonlinear arms ran on labeled_data (4,716 spectra) for more than 30 hours: kernel ridge and the MLP scale steeply with the number of rows. They were stopped on 2026-11-02, after the verdict was already fixed, and labeled_data is not reported.
 
-| Set | raw, linear | raw, all recipes | random | MIX2 | MIX2-all | MIX2-nl | MIX2-all − MIX2 (± SD) |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 0055 | .591 | .661 | .541 | .596 | .666 | .740 | +.070 ± .036 |
-| 0106 | .697 | .708 | .702 | .706 | .703 | .701 | −.003 ± .008 |
-| 0109 | .918 | .922 | .933 | .942 | .939 | .941 | −.003 ± .002 |
-| 0112 | .377 | .493 | .364 | .715 | .698 | .681 | −.017 ± .028 |
-| 0113 | .548 | .560 | .561 | .739 | .738 | .699 | −.001 ± .004 |
-| 0114 | .983 | .984 | .982 | .985 | .985 | .986 | −.000 ± .000 |
-| 0120 | .380 | .385 | .354 | .439 | .464 | .464 | +.025 ± .013 |
-| mean Δ vs matching raw (7 sets) | | | | +.090 | +.068 | | |
+| Set | raw, linear R² | raw, linear RMSE | raw, all recipes R² | raw, all recipes RMSE | random R² | random RMSE | MIX2 R² | MIX2 RMSE | MIX2-all R² | MIX2-all RMSE | MIX2-nl R² | MIX2-nl RMSE | MIX2-all − MIX2 (± SD) | MIX2-all − MIX2, ΔRMSE (± SD) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | .591 | .625 | .661 | .568 | .541 | .664 | .596 | .623 | .666 | .565 | .740 | .499 | +.070 ± .036 | −.058 ± .022 |
+| 0106 | .697 | .546 | .708 | .536 | .702 | .541 | .706 | .538 | .703 | .541 | .701 | .542 | −.003 ± .008 | +.003 ± .008 |
+| 0109 | .918 | .285 | .922 | .275 | .933 | .258 | .942 | .240 | .939 | .245 | .941 | .242 | −.003 ± .002 | +.005 ± .003 |
+| 0112 | .377 | .781 | .493 | .707 | .364 | .791 | .715 | .530 | .698 | .545 | .681 | .560 | −.017 ± .028 | +.015 ± .024 |
+| 0113 | .548 | .667 | .560 | .657 | .561 | .657 | .739 | .507 | .738 | .508 | .699 | .545 | −.001 ± .004 | +.001 ± .004 |
+| 0114 | .983 | .130 | .984 | .126 | .982 | .132 | .985 | .121 | .985 | .121 | .986 | .119 | +.000 ± .000 | +.000 ± .001 |
+| 0120 | .380 | .784 | .385 | .781 | .354 | .800 | .439 | .745 | .464 | .728 | .464 | .729 | +.025 ± .013 | −.016 ± .008 |
+| mean Δ vs matching raw (7 sets) |  |  |  |  |  |  | +.090 | −.074 | +.069 | −.057 |  |  |  |  |
+| mean nRMSE (7 sets) |  | .550 |  | .526 |  | .554 |  | .476 |  | .469 |  | .466 |  |  |
 
 - **Raw gains more than the features.** Nonlinear probes lift raw spectra on 0112 (.377 → .493) and 0055 (.591 → .661), so MIX2-all's gain over raw with the same recipes falls from +.090 to +.068.
 - **Local gains only.** MIX2-all helps on 0055 (25 spectra, noisy) and 0120, and costs slightly elsewhere. The frozen block-2 features are already close to linearly sufficient.
@@ -842,18 +852,19 @@ Raw is scored with the same recipes as the arm it is compared with, so neither s
 
 **Result: neither variant passes.** All differences from the unadapted four are within noise.
 
-| Set | raw | random | unadapted (4) | per-set step | per-set adapted | pooled step | pooled adapted |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| labeled_data | .830 | .949 | .963 | 2000 | .963 | 500 | .963 |
-| 0055 | .591 | .541 | .642 | 500 | .653 | 1000 | .661 |
-| 0106 | .697 | .702 | .602 | 1000 | .601 | 2000 | .598 |
-| 0109 | .918 | .933 | .924 | 2000 | .922 | 2000 | .926 |
-| 0112 | .377 | .364 | .724 | 2000 | .718 | 2000 | .733 |
-| 0113 | .548 | .561 | .749 | 1000 | .745 | 500 | .746 |
-| 0114 | .983 | .982 | .984 | 2000 | .984 | 250 | .984 |
-| 0120 | .380 | .354 | .448 | 500 | .447 | 2000 | .443 |
-| wins vs unadapted | | | | | 3/8 | | 4/8 |
-| mean Δ vs unadapted | | | | | −.0003 | | +.002 |
+| Set | raw R² | raw RMSE | random R² | random RMSE | unadapted (4) R² | unadapted (4) RMSE | per-set step | per-set adapted R² | per-set adapted RMSE | pooled step | pooled adapted R² | pooled adapted RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | .830 | .412 | .949 | .226 | .963 | .194 | 2000 | .963 | .191 | 500 | .963 | .193 |
+| 0055 | .591 | .625 | .541 | .664 | .642 | .586 | 500 | .653 | .577 | 1000 | .661 | .571 |
+| 0106 | .697 | .546 | .702 | .541 | .602 | .626 | 1000 | .601 | .626 | 2000 | .598 | .629 |
+| 0109 | .918 | .285 | .933 | .258 | .924 | .275 | 2000 | .922 | .278 | 2000 | .926 | .270 |
+| 0112 | .377 | .781 | .364 | .791 | .724 | .521 | 2000 | .718 | .527 | 2000 | .733 | .513 |
+| 0113 | .548 | .667 | .561 | .657 | .749 | .497 | 1000 | .745 | .501 | 500 | .746 | .501 |
+| 0114 | .983 | .130 | .982 | .132 | .984 | .126 | 2000 | .984 | .124 | 250 | .984 | .126 |
+| 0120 | .380 | .784 | .354 | .800 | .448 | .740 | 500 | .447 | .741 | 2000 | .443 | .743 |
+| wins vs unadapted |  |  |  |  |  |  |  | 3/8 | 3/8 |  | 4/8 | 4/8 |
+| mean Δ vs unadapted |  |  |  |  |  |  |  | −.0003 | +.0002 |  | +.0022 | −.0024 |
+| mean nRMSE |  | .533 |  | .513 |  | .449 |  |  | .449 |  |  | .447 |
 
 - **Rule outcome:** neither variant reaches the 5/8 head-to-head wins, so neither replaces the non-robust family in the mix.
 - **Context:** the unadapted four fall below raw on 0106, as non-robust members do; the mix covers this with the robust family.
@@ -903,17 +914,18 @@ Raw is scored with the same recipes as the arm it is compared with, so neither s
 
 **Evaluation.** Each member was scored as usual: nested CV, 12 linear recipes, block-2 flat. The four were averaged and compared with nr_s107–nr_s110 on paired folds, in one `ensemble --mix-groups` run. labeled_data was seen in pretraining by both arms. The seven real sets were seen only by the all-data members.
 
-| Set | n | raw | random | all data (4) | synthetic only (4) | synthetic − all (± SD) | transductive share |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| labeled_data | 4,716 | .830 | .949 | .963 | .968 | +.005 ± .001 | — |
-| 0055 | 25 | .591 | .541 | .642 | .656 | +.014 ± .071 | — |
-| 0106 | 64 | .697 | .702 | .602 | .617 | +.015 ± .022 | — |
-| 0109 | 96 | .918 | .933 | .924 | .850 | −.074 ± .017 | > 1 |
-| 0112 | 68 | .377 | .364 | .724 | .421 | −.303 ± .085 | .87 |
-| 0113 | 70 | .548 | .561 | .749 | .587 | −.162 ± .047 | .81 |
-| 0114 | 230 | .983 | .982 | .984 | .984 | −.000 ± .000 | .51 |
-| 0120 | 125 | .380 | .354 | .448 | .393 | −.054 ± .021 | .81 |
-| mean Δ vs raw | | | | +.089 | +.019 | −.060 | |
+| Set | n | raw R² | raw RMSE | random R² | random RMSE | all data (4) R² | all data (4) RMSE | synthetic only (4) R² | synthetic only (4) RMSE | synthetic − all (± SD) | synthetic − all, ΔRMSE (± SD) | transductive share |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | 4,716 | .830 | .412 | .949 | .226 | .963 | .194 | .968 | .179 | +.005 ± .001 | −.014 ± .003 | — |
+| 0055 | 25 | .591 | .625 | .541 | .664 | .642 | .586 | .656 | .574 | +.014 ± .071 | −.012 ± .055 | — |
+| 0106 | 64 | .697 | .546 | .702 | .541 | .602 | .626 | .617 | .614 | +.015 ± .022 | −.012 ± .017 | — |
+| 0109 | 96 | .918 | .285 | .933 | .258 | .924 | .275 | .850 | .385 | −.074 ± .017 | +.110 ± .020 | > 1 |
+| 0112 | 68 | .377 | .781 | .364 | .791 | .724 | .521 | .421 | .755 | −.303 ± .085 | +.234 ± .062 | .87 |
+| 0113 | 70 | .548 | .667 | .561 | .657 | .749 | .497 | .587 | .638 | −.162 ± .047 | +.140 ± .037 | .81 |
+| 0114 | 230 | .983 | .130 | .982 | .132 | .984 | .126 | .984 | .128 | +.000 ± .000 | +.002 ± .001 | .51 |
+| 0120 | 125 | .380 | .784 | .354 | .800 | .448 | .740 | .393 | .776 | −.054 ± .021 | +.036 ± .014 | .81 |
+| mean Δ vs raw |  |  |  |  |  | +.089 | −.083 | +.019 | −.023 | −.070 | +.061 |  |
+| mean nRMSE |  |  | .533 |  | .513 |  | .449 |  | .510 |  |  |  |
 
 The random column is the all-data members' random-weight control. The transductive share is (all-data − synthetic-only) / (all-data − raw). It is shown only where all-data beats raw, and "—" marks sets where synthetic-only is as good or better. On 0109 the share exceeds 1 because synthetic-only falls .068 below raw while all-data is only .006 above.
 
