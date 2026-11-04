@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 
-from ops.measured_only_verdict import SEVEN, summarize, synthetic_share, verdict
+from ops.measured_only_verdict import SEVEN, fig_delta, fig_valid, summarize, synthetic_share, verdict
 
 
 def _per_set(deltas):
@@ -72,3 +72,30 @@ def test_summarize_reads_fusion_dir(tmp_path):
     assert isinstance(e['measured_within_01_of_raw'], bool)
     assert out['labeled_data_excluded'] is True
     assert out['mean_m_minus_a'] == pytest.approx(np.mean([out['per_set'][s]['m_minus_a']['d_r2'] for s in SEVEN]))
+
+
+def _fusion_dir(tmp_path):
+    rng = np.random.default_rng(1)
+    fusion = {'mix_groups': None, 'sets': {}}
+    for ds in [*SEVEN, 'labeled_data']:
+        y = rng.standard_normal(30)
+        P = {k: y + rng.normal(0, .5, (2, 30)) for k in ('raw', 'avg_a', 'avg_s', 'avg_m', 'random_avg_m')}
+        (tmp_path / ds).mkdir()
+        np.savez(tmp_path / ds / 'fusion_oof.npz', y=y, **P)
+        fusion['sets'][ds] = {}
+    (tmp_path / 'fusion.json').write_text(json.dumps(fusion))
+    return tmp_path
+
+
+def test_fig_delta_writes_svg(tmp_path):
+    out = summarize(_fusion_dir(tmp_path))
+    fig_delta(out, tmp_path / 'figs')
+    assert (tmp_path / 'figs' / 'fig_measured_only.svg').read_text().startswith('<?xml')
+
+
+def test_fig_valid_writes_svg_with_best_marked(tmp_path):
+    hist = {'mo_s107': {'step': [10, 20, 30], 'valid/loss': [2.0, 1.5, 1.6], 'best_step': 20},
+            'mo_s108': {'step': [10, 20, 30], 'valid/loss': [2.1, 1.7, 1.4], 'best_step': 30}}
+    fig_valid(hist, tmp_path)
+    svg = (tmp_path / 'fig_measured_only_valid.svg').read_text()
+    assert 'mo_s107' in svg and 'mo_s108' in svg
