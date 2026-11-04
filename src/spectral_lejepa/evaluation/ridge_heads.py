@@ -117,3 +117,29 @@ def run_fixed_heads(arms, y, heads=HEADS, n_repeats=2, n_folds=5, seed=42, group
                                  "rmse_mean": float(np.mean([rmse(y, p) for p in P]))}
     return {"oof": oof, "scores": scores,
             "test_folds": [[te.tolist() for _, te in rf] for rf in folds]}
+
+
+def arm_key(arm):
+    """npz-safe arm name: 'layer2/flat' -> 'layer2_flat'."""
+    return arm.replace("/", "_")
+
+
+def write_fixed_heads(out_dir, arms, random_arms, y, heads, seed, groups=None):
+    """Score the heads on `arms` (the real encoder's non-raw arms plus 'raw') and on `random_arms`
+    (the random-weight control's non-raw arms, stored as 'random' when there is one). Writes
+    out_dir/fixed_heads_oof.npz (y and '<head>__<arm>' [R, n]) and fixed_heads.json (scores, test folds)."""
+    from pathlib import Path
+    from .nested import write_json
+    real = run_fixed_heads(arms, y, heads, seed=seed, groups=groups)
+    oof = {h: {arm_key(a): P for a, P in d.items()} for h, d in real["oof"].items()}
+    scores = {h: {arm_key(a): v for a, v in d.items()} for h, d in real["scores"].items()}
+    if random_arms:
+        (name, X), = random_arms.items()          # one random-control arm (block-2 flat)
+        rnd = run_fixed_heads({"random": X}, y, heads, seed=seed, groups=groups)
+        for h in heads:
+            oof[h].update(rnd["oof"][h]); scores[h].update(rnd["scores"][h])
+    out_dir = Path(out_dir)
+    np.savez_compressed(out_dir / "fixed_heads_oof.npz", y=np.asarray(y),
+                        **{f"{h}__{a}": P for h, d in oof.items() for a, P in d.items()})
+    write_json(out_dir / "fixed_heads.json", {"heads": list(heads), "alphas": list(ALPHAS), "scores": scores,
+                                              "test_folds": real["test_folds"], "seed": seed})

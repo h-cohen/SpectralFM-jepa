@@ -134,3 +134,17 @@ def test_chosen_alpha_matches_ridgecv_on_the_training_fold():
     ref = RidgeCV(alphas=np.logspace(-3, 3, 20)).fit(Ztr, y[tr]).alpha_
     assert nc.ridge_alpha(X[tr], y[tr], "standardize", seed=0) == pytest.approx(ref)
     assert nc.ridge_alpha(X[tr], y[tr], "standardize", seed=0, backend="torch", device="cpu") == pytest.approx(ref)
+
+
+def test_write_fixed_heads_files(tmp_path):
+    import json
+    X, y = synthetic(n=60)
+    rh.write_fixed_heads(tmp_path, {"raw": X, "layer2/flat": X[:, :6]}, {"layer2/flat": X[:, 6:]}, y,
+                         ("ridge_ens", "client_raw"), seed=42)
+    z = np.load(tmp_path / "fixed_heads_oof.npz")
+    assert set(z.files) == {"y", "ridge_ens__raw", "ridge_ens__layer2_flat", "ridge_ens__random",
+                            "client_raw__raw"}
+    meta = json.loads((tmp_path / "fixed_heads.json").read_text())
+    assert meta["scores"]["ridge_ens"]["random"]["r2_mean"] == pytest.approx(
+        rh.run_fixed_heads({"x": X[:, 6:]}, y, ("ridge_ens",), seed=42)["scores"]["ridge_ens"]["x"]["r2_mean"])
+    assert meta["test_folds"] and meta["heads"] == ["ridge_ens", "client_raw"]
