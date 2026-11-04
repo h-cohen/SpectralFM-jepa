@@ -18,7 +18,7 @@
   - Results and figures: `docs/TRAINING_REPORT.md` (and `.html`, published as artifact `4pDknEu4iwtFTgEsbnMJyy`).
   - History: `docs/PRODUCTION_RECOMMENDATION.md`.
   - Study specs and plans: `docs/superpowers/` (local, untracked).
-- **Second-component study (done 2026-11-03):** report Appendix G. nr_s107 on sets 0055–0120 with sample-grouped folds; `evaluate --components 0,1 --pooled`, `ops/report_components.py`; outputs in `outputs/components/`. Pooling comp1 into training fails the pre-registered rule (JEPA 2/7, ΔR² −.029); only per-sample averaging of two predictions helps (+.027), and raw/random gain as much (+.038/+.042): noise averaging, not JEPA features.
+- **Second-component study (done 2026-11-03):** report Appendix G. nr_s107 on sets 0055–0120 with sample-grouped folds; `evaluate --components 0,1 --pooled`, `ops/report_components.py`; outputs in `outputs/components/`. Training the ridge on comp0+1 (twice the rows) fails the pre-registered rule (JEPA train 0+1, test 0: 2/7, ΔR² −.029; test 0+1: −.017); only per-sample averaging of two predictions helps (+.027), and raw/random gain as much (+.038/+.042): noise averaging, not JEPA features.
 - **Running jobs:** none.
 - **SIGReg/depth ablation (done 2026-10-14):** report section 8.
   - 9 two-epoch runs in `outputs/sigreg-depth-ablation/`, W&B group `sigreg-depth-ablation`.
