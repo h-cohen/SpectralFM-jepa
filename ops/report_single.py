@@ -196,7 +196,42 @@ def patch(path, R):
     insert(lines, '| Set | raw R² | raw RMSE | MIX2 R²', 'raw RMSE', 'both', R)
     insert(lines, '| Set | raw R² | raw RMSE | random R² | random RMSE | unadapted', 'raw RMSE', 'both', R)
     insert(lines, '| Set | n | raw R² | raw RMSE', 'raw RMSE', 'both', R)
+    rebold(lines)
     Path(path).write_text('\n'.join(lines))
+
+
+def rebold(lines):
+    """Bold the best arm of each set row (single encoder included) in the tables that bold their best arm.
+    Higher R² or lower RMSE; ties at 3 dp all bold. Each spec: header start, kind ('both', 'r2', 'rmse'),
+    arms that compete (header prefixes; None = every column after Set)."""
+    S = '| Set | '
+    sg = 'single encoder (robust_s103)'
+    ap = ('Raw', sg, 'JEPA', 'MiniRocket', 'pred_avg', 'concat')
+    ap = tuple(x for x in ap if x != 'Raw')
+    specs = [(S + f'Raw R² | Raw RMSE | {sg} R² | {sg} RMSE | data2vec', 'both', None),
+             (S + f'Raw | {sg} | data2vec (Feb 25) | data2vec (recent) | JEPA ens. |', 'rmse', None),
+             (S + f'Raw | {sg} | data2vec (Feb 25) | data2vec (recent) | JEPA ens. | MiniRocket s0 (s1', 'r2', ap),
+             (S + f'Raw | {sg} | data2vec (Feb 25) | data2vec (recent) | JEPA ens. | MiniRocket s0 |', 'rmse', ap),
+             (S + f'raw R² | raw RMSE | {sg} R² | {sg} RMSE | average R²', 'both', (sg, 'average', 'stack', 'aug.')),
+             (S + f'raw R² | raw RMSE | {sg} R² | {sg} RMSE | average (4) R²', 'both',
+              (sg, 'average (4)', 'A:', 'B:', 'C:'))]
+    num = lambda c: round(float(c.replace('**', '').replace(MINUS, '-').split()[0]), 3)
+    for start, kind, names in specs:
+        i, j = find(lines, start)
+        hdr = cells(lines[i])
+        elig = [k for k in range(1, len(hdr)) if names is None or hdr[k].startswith(names)]
+        for l in range(i + 2, j):
+            c = [x.replace('**', '') for x in cells(lines[l])]
+            if c[0] not in NAME.values():
+                continue
+            for kk in (('r2', 'rmse') if kind == 'both' else (kind,)):
+                cols = [k for k in elig if kind != 'both' or hdr[k].endswith('RMSE') == (kk == 'rmse')]
+                v = {k: num(c[k]) for k in cols}
+                best = (max if kk == 'r2' else min)(v.values())
+                for k in cols:
+                    if v[k] == best:
+                        c[k] = f'**{c[k]}**'
+            lines[l] = row(c)
 
 
 def main(argv=None):
@@ -204,7 +239,13 @@ def main(argv=None):
     ap.add_argument('--outputs', default=f'{ROOT}/outputs')
     ap.add_argument('--json', default=f'{ROOT}/outputs/single-encoder/single.json')
     ap.add_argument('--patch')
+    ap.add_argument('--bold-only', action='store_true', help='only re-bold the best arm per row of --patch')
     a = ap.parse_args(argv)
+    if a.bold_only:
+        lines = Path(a.patch).read_text().split('\n')
+        rebold(lines)
+        Path(a.patch).write_text('\n'.join(lines))
+        return
     R = compute(a.outputs)
     worst = max(g for v in R['raw_check'].values() for g in v['max_abs_gap_by_source'].values())
     print('largest |raw OOF gap| between the single encoder and any table source:', worst)

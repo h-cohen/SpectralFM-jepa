@@ -60,7 +60,7 @@ flowchart LR
 
 The random-weight column is the mean over the 16 members' random-weight controls.
 
-**Single-encoder column (added 2026-11-04).** Every ensemble or multi-member table in this report (section 1, sections 9–10, Appendices A, B1, B2, D, D1, E2 and F) now shows one frozen encoder, robust_s103 (stage 2, block-2 flat, one linear readout), with its R² and RMSE, so the reader sees what ensembling buys. It is the member with the most wins vs raw among the 16 (8/8, tied with robust_p1) and, among those, the highest mean ΔR² (+.058 vs +.051). The member with the highest mean ΔR² overall is p48_s2 (+.089) but it wins only 7/8. The member was chosen from outer-test scores, so its column is mildly optimistic and descriptive only; it is not a selection result and no checkpoint is chosen from it. Its raw OOF predictions are identical to those of every table (same rows, folds and labels), so every comparison is paired. `ops/report_single.py` regenerates the column and writes `outputs/single-encoder/single.json`. Bold in the tables still marks the best of the arms the table had before the column was added; the single encoder is never bolded (for example it beats the bold cell on 0113 in section 9, Appendix A and B1). Tables with a different protocol have no such column: Appendix C (development R² from inner-CV probes), E1 (nonlinear probes, extended recipe grid) and Appendix G (sample-grouped folds).
+**Single-encoder column (added 2026-11-04).** Every ensemble or multi-member table in this report (section 1, sections 9–10, Appendices A, B1, B2, D, D1, E2 and F) now shows one frozen encoder, robust_s103 (stage 2, block-2 flat, one linear readout), with its R² and RMSE, so the reader sees what ensembling buys. It is the member with the most wins vs raw among the 16 (8/8, tied with robust_p1) and, among those, the highest mean ΔR² (+.058 vs +.051). The member with the highest mean ΔR² overall is p48_s2 (+.089) but it wins only 7/8. The member was chosen from outer-test scores, so its column is mildly optimistic and descriptive only; it is not a selection result and no checkpoint is chosen from it. Its raw OOF predictions are identical to those of every table (same rows, folds and labels), so every comparison is paired. `ops/report_single.py` regenerates the column and writes `outputs/single-encoder/single.json`. Bold marks the best arm of each set row, the single encoder included (sections 9–10, Appendices A, B1 and B2; the other tables do not bold). Tables with a different protocol have no such column: Appendix C (development R² from inner-CV probes), E1 (nonlinear probes, extended recipe grid) and Appendix G (sample-grouped folds).
 
 RMSE is in label units (section 6); in the last column and the mean row it is the paired ΔRMSE vs raw, negative is better, with its bootstrap SD. Shaded cells (HTML): the robust ensemble beats raw on that set.
 
@@ -396,9 +396,9 @@ Two data2vec-audio checkpoints from the previous project are scored with the sam
 | labeled_data | .830 | .412 | .954 | .214 | .853 | .383 | .805 | .442 | **.959** | **.203** |
 | 0055 | .591 | .625 | .634 | .591 | .199 | .877 | .336 | .798 | **.640** | **.588** |
 | 0106 | .697 | .546 | .709 | .536 | .250 | .859 | .294 | .833 | **.714** | **.531** |
-| 0109 | .918 | .285 | .944 | .235 | .066 | .961 | .307 | .828 | **.943** | **.237** |
-| 0112 | .377 | .781 | .469 | .722 | .233 | .869 | .274 | .846 | **.421** | **.752** |
-| 0113 | .548 | .667 | .709 | .534 | .259 | .853 | .541 | .672 | **.702** | **.542** |
+| 0109 | .918 | .285 | **.944** | **.235** | .066 | .961 | .307 | .828 | .943 | .237 |
+| 0112 | .377 | .781 | **.469** | **.722** | .233 | .869 | .274 | .846 | .421 | .752 |
+| 0113 | .548 | .667 | **.709** | **.534** | .259 | .853 | .541 | .672 | .702 | .542 |
 | 0114 | .983 | .130 | .985 | .121 | .981 | .136 | .981 | .138 | **.986** | **.120** |
 | 0120 | .380 | .784 | .384 | .778 | .140 | .924 | .215 | .883 | **.405** | **.766** |
 | wins vs raw |  |  | 8/8 | 8/8 | 1/8 | 1/8 | 0/8 | 0/8 | 8/8 | 8/8 |
@@ -431,9 +431,9 @@ All metrics come from the same out-of-fold predictions as section 9 and Appendix
 | labeled_data | .412 | .214 | .383 | .442 | **.203** |
 | 0055 | .625 | .591 | .877 | .798 | **.588** |
 | 0106 | .546 | .536 | .859 | .833 | **.531** |
-| 0109 | .285 | .235 | .961 | .828 | **.237** |
-| 0112 | .781 | .722 | .869 | .846 | **.752** |
-| 0113 | .667 | .534 | .853 | .672 | **.542** |
+| 0109 | .285 | **.235** | .961 | .828 | .237 |
+| 0112 | .781 | **.722** | .869 | .846 | .752 |
+| 0113 | .667 | **.534** | .853 | .672 | .542 |
 | 0114 | .130 | .121 | .136 | .138 | **.120** |
 | 0120 | .784 | .778 | .924 | .883 | **.766** |
 | lower RMSE than raw |  | 8/8 | 1/8 | 0/8 | 8/8 |
@@ -529,10 +529,10 @@ Full R² comparison (data2vec columns as in section 9):
 | labeled_data | .830 | .954 | .853 | .805 | **.959** | .634 (.640, .632) | .530 | .780 | .878 | .731 |
 | 0055 | .591 | .634 | .199 | .336 | .640 | .699 (.717, .735) | .605 | .695 | **.704** | .690 |
 | 0106 | .697 | .709 | .250 | .294 | .714 | .719 (.713, .707) | .543 | .668 | **.739** | .712 |
-| 0109 | .918 | .944 | .066 | .307 | **.943** | .903 (.902, .910) | .809 | .844 | .937 | .938 |
-| 0112 | .377 | .469 | .233 | .274 | .421 | **.679** (.704, .625) | .429 | .611 | .609 | .649 |
-| 0113 | .548 | .709 | .259 | .541 | **.702** | .468 (.469, .472) | .521 | .527 | .642 | .558 |
-| 0114 | .983 | .985 | .981 | .981 | .986 | .986 (.985, .985) | .985 | .985 | **.987** | .987 |
+| 0109 | .918 | **.944** | .066 | .307 | .943 | .903 (.902, .910) | .809 | .844 | .937 | .938 |
+| 0112 | .377 | .469 | .233 | .274 | .421 | **.679 (.704, .625)** | .429 | .611 | .609 | .649 |
+| 0113 | .548 | **.709** | .259 | .541 | .702 | .468 (.469, .472) | .521 | .527 | .642 | .558 |
+| 0114 | .983 | .985 | .981 | .981 | .986 | .986 (.985, .985) | .985 | .985 | **.987** | **.987** |
 | 0120 | .380 | .384 | .140 | .215 | .405 | .336 (.375, .400) | .362 | .422 | **.427** | .333 |
 | wins vs raw |  | 8/8 | 1/8 | 0/8 | 8/8 | 4/8 | 3/8 | 4/8 | 8/8 | 6/8 |
 | mean Δ vs raw |  | +.058 | −.293 | −.197 | +.056 | +.013 | −.067 | +.026 | **+.075** | +.034 |
@@ -550,9 +550,9 @@ RMSE in label units, every arm (the RMSE for each R² column above; lower is bet
 | labeled_data | .412 | .214 | .383 | .442 | **.203** | .605 | .685 | .469 | .350 | .518 |
 | 0055 | .625 | .591 | .877 | .798 | .588 | .537 | .615 | .541 | **.533** | .545 |
 | 0106 | .546 | .536 | .859 | .833 | .531 | .526 | .669 | .572 | **.507** | .533 |
-| 0109 | .285 | .235 | .961 | .828 | **.237** | .309 | .434 | .393 | .250 | .247 |
+| 0109 | .285 | **.235** | .961 | .828 | .237 | .309 | .434 | .393 | .250 | .247 |
 | 0112 | .781 | .722 | .869 | .846 | .752 | **.562** | .750 | .619 | .621 | .587 |
-| 0113 | .667 | .534 | .853 | .672 | **.542** | .724 | .687 | .683 | .594 | .660 |
+| 0113 | .667 | **.534** | .853 | .672 | .542 | .724 | .687 | .683 | .594 | .660 |
 | 0114 | .130 | .121 | .136 | .138 | .120 | .117 | .122 | .120 | **.113** | .115 |
 | 0120 | .784 | .778 | .924 | .883 | .766 | .812 | .794 | .757 | **.753** | .813 |
 | lower RMSE than raw |  | 8/8 | 1/8 | 0/8 | 8/8 | 4/8 | 3/8 | 4/8 | 8/8 | 6/8 |
@@ -582,7 +582,7 @@ RMSE in label units, every arm (the RMSE for each R² column above; lower is bet
 | 0106 | .697 | .546 | .709 | .536 | **.714** | **.531** | .704 | .540 | .683 | .558 | .705 | .538 | .702 | .541 |
 | 0109 | .918 | .285 | .944 | .235 | .943 | .237 | **.947** | **.230** | .824 | .417 | .829 | .411 | .933 | .258 |
 | 0112 | .377 | .781 | .469 | .722 | .421 | .752 | **.477** | **.716** | .328 | .814 | .400 | .769 | .364 | .791 |
-| 0113 | .548 | .667 | .709 | .534 | **.702** | **.542** | .688 | .554 | .671 | .569 | .586 | .639 | .561 | .657 |
+| 0113 | .548 | .667 | **.709** | **.534** | .702 | .542 | .688 | .554 | .671 | .569 | .586 | .639 | .561 | .657 |
 | 0114 | .983 | .130 | .985 | .121 | **.986** | **.120** | **.986** | **.120** | .981 | .137 | .980 | .141 | .982 | .132 |
 | 0120 | .380 | .784 | .384 | .778 | **.405** | **.766** | .404 | .768 | .311 | .827 | .274 | .849 | .354 | .800 |
 | wins vs raw |  |  | 8/8 | 8/8 | 8/8 | 8/8 | 8/8 | 8/8 | 2/8 | 2/8 | 3/8 | 3/8 |  |  |
