@@ -20,6 +20,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
   Sections 7–11 describe the robust four-member ensemble.
 - **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 ΔR² (ΔRMSE −.023 of −.083): the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes beat the candidate on only 2 of 7 finished sets. The candidate stands. All rules were fixed before any score.
 - **Second component (2026-11-03, Appendix G):** pooling the second spectrum of each sample into training fails the pre-registered rule (JEPA 2/7 sets, ΔR² −.029); only per-sample averaging of two predictions helps (+.027), and raw and random-weight gain as much (+.038, +.042), so it is noise averaging, not JEPA features.
+- **Ridge head (2026-11-04, Appendix H):** the linear head must be chosen inside CV, because there are 12,288 features and at most a few hundred training rows per measured set. Inner CV adds .03–.05 R² over any fixed head; plain least squares collapses (0120: −.34). Tuning λ by CV also lifts raw above a fixed average of ridges (our approximation of the client's method): .666 vs .595, 7/8.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -1090,6 +1091,45 @@ python -m spectral_lejepa evaluate --checkpoint outputs/accuracy-ensemble/traini
 PYTHONPATH=src:. python ops/report_components.py
 ```
 `ops/report_components.py` recomputes every R² and RMSE from `components_oof.npz` (largest gap to `results_components.json`: 1e-16), adds `train 0+1, test 0+1`, writes `outputs/components/summary.json` and the two figures. Outputs: `outputs/components/nr_s107_20261022-204051_step497990/`; log `outputs/components_s107.log`.
+
+## Appendix H. Choosing the ridge head inside CV (2026-11-04)
+
+**Bottom line.** The linear head on top of the features must be chosen inside cross-validation, separately for each set. JEPA features have 12,288 dimensions while the measured sets have 20–184 training rows, so a plain linear fit memorizes noise and a fixed list of ridge penalties fails on some sets. With the head chosen by inner CV, JEPA beats raw on 7/8 sets (mean R² .750 vs .666). The same choice also lifts raw spectra above a fixed average of ridges, which approximates the client's current method (.666 vs .595, 7/8).
+
+![Inner-CV choice](figures/training-report/fig_ridge_inner_cv.svg)
+
+**Figure H1.** (A) How the head is chosen in every outer split: the candidates are scored on inner folds of the training samples only, the one with the lowest validation error is refit, and the test fold is predicted once. (B) Why a plain linear head does not hold: every measured set has far fewer training rows than JEPA features.
+
+**Heads compared** (nr_s107, block-2 flat; same outer folds for every column, so all comparisons are paired):
+- **Inner CV:** the main report's recipe choice (section 6). 6 normalizers × {ridge, plain least squares}; ridge picks its penalty λ from 20 values (0.001–1000) by leave-one-out error. Lowest validation error wins, which is the same as highest validation R².
+- **Fixed ridge average:** standardize, then average ridges at λ = 0.001, 0.01, …, 1000. No choice.
+- **Plain least squares:** standardize, then ordinary least squares. No penalty, no choice.
+- **Client-style raw:** our approximation of the client's raw-spectra ensemble, whose exact settings are unknown. Ridges at the same 7 λ on 4 preprocessings (none, standardize, SNV, first derivative), all 28 predictions averaged.
+
+| Set | n | Client-style raw R² | RMSE | Raw, inner CV R² | RMSE | Random, inner CV R² | RMSE | JEPA, plain LS R² | RMSE | JEPA, fixed ridge avg R² | RMSE | JEPA, inner CV R² | RMSE |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| labeled_data | 4716 | .497 | .709 | .830 | .412 | .949 | .226 | .839 | .402 | .935 | .254 | **.961** | **.198** |
+| 0055 | 25 | .564 | .647 | .591 | .625 | .541 | .664 | .652 | .578 | **.673** | **.560** | .614 | .609 |
+| 0106 | 64 | .601 | .627 | .697 | .546 | **.702** | **.541** | .542 | .671 | .579 | .644 | .584 | .639 |
+| 0109 | 96 | .688 | .556 | .918 | .285 | **.933** | **.258** | .925 | .272 | .928 | .266 | .921 | .280 |
+| 0112 | 68 | .517 | .689 | .377 | .781 | .364 | .791 | .743 | .503 | .724 | .521 | **.744** | **.502** |
+| 0113 | 70 | .535 | .676 | .548 | .667 | .561 | .657 | .737 | .509 | .746 | .500 | **.753** | **.493** |
+| 0114 | 230 | .975 | .159 | .983 | .130 | .982 | .132 | .971 | .170 | .978 | .147 | **.984** | **.126** |
+| 0120 | 125 | .380 | .784 | .380 | .784 | .354 | .800 | −.336 | 1.151 | .038 | .977 | **.435** | **.748** |
+| **Mean** | | .595 | .606 | .666 | .529 | .673 | .509 | .634 | .532 | .700 | .484 | **.750** | **.449** |
+
+RMSE is in label-SD units (labels are z-scored per set). Bold marks the best column of each row. Single encoder robust_s103 with inner CV: mean R² .724, RMSE .466, 8/8 vs raw.
+
+**Reading.**
+- **Inner CV adds .03–.05 mean R² over the best fixed head for every input:** JEPA +.049, raw +.027, random-weight +.052.
+- **No single setting is best everywhere.** The most common winning recipe is picked in only 50–59% of outer splits, so each set and split needs its own choice.
+- **Fixed heads break on 0120.** Plain least squares gives −.34 and the fixed ridge average .04, while inner CV gives .44. The small penalties in the fixed list nearly interpolate the 100 training rows.
+- **With a fixed head, JEPA's gain does not pass the pre-registered rule.** With the fixed ridge average on both sides, JEPA beats raw on 5/8 sets (+.061 ± .032; the rule needed 6/8). JEPA with the fixed head still beats client-style raw on 6/8 (rule: 5/8, passes).
+- **For the client:** choosing λ inside CV on raw spectra alone should gain about .07 R² over averaging a fixed set of ridges, if our approximation matches their method.
+
+**Not tested.** A fixed ridge average limited to λ ≥ 1, which might remove the 0120 collapse without any choice.
+
+**Reproduce.** `configs/eval_ridge_study.yaml` (`evaluation.fixed_heads`, `evaluation.log_alpha`), `evaluation/ridge_heads.py`, `ops/ridge_audit.py`. Outputs and per-set analysis: `outputs/ridge-study/` (`analysis.json`).
 
 ## References
 
