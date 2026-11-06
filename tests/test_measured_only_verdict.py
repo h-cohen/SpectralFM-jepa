@@ -93,6 +93,35 @@ def test_fig_delta_writes_svg(tmp_path):
     assert (tmp_path / 'figs' / 'fig_measured_only.svg').read_text().startswith('<?xml')
 
 
+def test_summarize_scores_extra_measured_arms(tmp_path):
+    # n = doubled cap with early stopping, f = doubled cap with full decay: each gets its own verdict vs all
+    rng = np.random.default_rng(2)
+    fusion = {'mix_groups': None, 'sets': {}}
+    for ds in SEVEN:
+        y = rng.standard_normal(30)
+        P = {k: y + rng.normal(0, .5, (2, 30)) for k in ('raw', 'avg_a', 'avg_s', 'avg_m', 'avg_n', 'avg_f', 'random_avg_m')}
+        (tmp_path / ds).mkdir()
+        np.savez(tmp_path / ds / 'fusion_oof.npz', y=y, **P)
+        fusion['sets'][ds] = {}
+    (tmp_path / 'fusion.json').write_text(json.dumps(fusion))
+
+    out = summarize(tmp_path)
+
+    e = out['per_set']['dataset0055']
+    assert {'measured_2x', 'measured_2x_full'} <= set(e['arms']) and 'measured_2x_full' in e['vs_raw']
+    assert e['minus_a']['measured_2x_full']['d_r2'] == pytest.approx(
+        e['arms']['measured_2x_full']['r2'] - e['arms']['all']['r2'])
+    assert set(out['verdicts']) == {'measured', 'measured_2x', 'measured_2x_full'}
+    assert out['verdicts']['measured'] == out['verdict']
+    assert out['means_minus_a']['measured_2x_full'] == pytest.approx(
+        np.mean([out['per_set'][s]['minus_a']['measured_2x_full']['d_r2'] for s in SEVEN]))
+
+
+def test_summarize_without_extra_arms_has_one_verdict(tmp_path):
+    out = summarize(_fusion_dir(tmp_path))
+    assert set(out['verdicts']) == {'measured'}
+
+
 def test_fig_valid_writes_svg_with_best_marked(tmp_path):
     hist = {'mo_s107': {'step': [10, 20, 30], 'valid/loss': [2.0, 1.5, 1.6], 'best_step': 20},
             'mo_s108': {'step': [10, 20, 30], 'valid/loss': [2.1, 1.7, 1.4], 'best_step': 30}}
