@@ -110,6 +110,23 @@ def _recipe_predictions(X_tr, y_tr, X_te, recipes, seed, backend, device=None):
     return out
 
 
+def ridge_alpha(X_tr, y_tr, norm, seed, backend="sklearn", device=None):
+    """The alpha RidgeCV picks (its leave-one-out grid) for normalizer `norm` fit on these training
+    rows: the alpha behind a refit ('norm', 'ridgecv') prediction."""
+    if backend == "torch":
+        from . import probe_torch
+        Z_tr = probe_torch.fold_transforms(X_tr, X_tr[:1], seed=seed, device=device)[norm][0]
+        return probe_torch.ridge_gcv(Z_tr, np.asarray(y_tr, dtype=np.float64))["alpha"]
+    from .probe import _standardize, make_regressor
+    if norm == "none":        # the cheap normalizers need no whitening SVD
+        Z_tr = np.asarray(X_tr, dtype=np.float32)
+    elif norm == "standardize":
+        Z_tr = _standardize(X_tr, X_tr[:1])[0]
+    else:
+        Z_tr = fold_transforms(X_tr, X_tr[:1], seed=seed)[norm][0]
+    return float(make_regressor("ridgecv").fit(Z_tr, y_tr).alpha_)
+
+
 def _inner_predictions(X, y, n_inner, seed, backend="sklearn", device=None, recipes=RECIPES, groups=None):
     """Inner-CV predictions of every recipe, on these (training) rows only: {recipe: [n]}.
     groups: one id per row; rows sharing an id are never split between inner train and test."""
@@ -143,8 +160,9 @@ def _single_threaded(backend):
 
 
 def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles, backend="sklearn", device=None,
-                stacks=None, mixes=None, recipes=RECIPES, groups=None):
-    """groups (one id per row of y): inner folds keep all rows of a group together; the caller builds
+                stacks=None, mixes=None, recipes=RECIPES, groups=None, log_alpha=False):
+    """log_alpha: each selected family's record also gets the RidgeCV alpha of its refit ('alpha', None
+    for a non-ridge probe). groups (one id per row of y): inner folds keep all rows of a group together; the caller builds
     tr/te so the same holds for the outer split.
     stacks {name: arms}: each arm at its inner-CV best recipe, mixed by nnls_weights fitted on those
     recipes' inner-CV predictions (training rows only), applied to the refit test predictions.
@@ -201,6 +219,9 @@ def _outer_fold(arms, families, y, tr, te, n_inner, seed, fixed_arms, ensembles,
         for fam, (arm, (norm, probe)) in picks.items():
             chosen[fam] = {"pred": refit[arm][(norm, probe)], "arm": arm,
                            "norm": norm, "probe": probe, "inner_r2": inner[arm][(norm, probe)]}
+            if log_alpha:
+                chosen[fam]["alpha"] = (ridge_alpha(arms[arm][tr], y[tr], norm, seed, backend, device)
+                                        if probe == "ridgecv" else None)
         for name in ensembles:
             chosen[name] = {"pred": np.mean([refit[a_][best[name][a_]] for a_ in tops[name]], axis=0),
                             "members": [{"arm": a_, "norm": best[name][a_][0], "probe": best[name][a_][1],
@@ -244,8 +265,9 @@ def paired_delta(y, PA, PB, n_boot=1000, seed=0):
 
 def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
               fixed_arms=(), ensembles=None, n_jobs=1, backend="sklearn", device=None, stacks=None,
-              mixes=None, recipes=RECIPES, groups=None):
-    """backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
+              mixes=None, recipes=RECIPES, groups=None, log_alpha=False):
+    """log_alpha: record the chosen RidgeCV alpha per selected family and fold (see _outer_fold).
+    backend "torch" runs the folds on `device` (one device or a list, folds dealt round-robin),
     n_jobs concurrent folds per device (threads, one CUDA stream each). groups (one id per row):
     outer and inner folds keep all rows of a group on one side; None = row-level folds."""
     y = np.asarray(y, dtype=np.float64)
@@ -253,7 +275,8 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
     ensembles = ensembles or {}
     stacks = stacks or {}
     mixes = mixes or {}
-    fold_fn = functools.partial(_outer_fold, stacks=stacks, mixes=mixes, recipes=tuple(recipes), groups=groups)
+    fold_fn = functools.partial(_outer_fold, stacks=stacks, mixes=mixes, recipes=tuple(recipes), groups=groups,
+                                 log_alpha=log_alpha)
     jobs = []
     for r in range(n_repeats):
         for f, (tr, te) in enumerate(group_kfold(groups, n_folds, seed + r, n=n)):
@@ -290,7 +313,7 @@ def nested_cv(arms, families, y, n_repeats=2, n_folds=5, n_inner=5, seed=42,
 
 
 def run_nested(bank, input_raw, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, n_jobs=1, backend="sklearn",
-               device=None):
+               device=None, log_alpha=False):
     """Raw input vs the embedding (every block, mean-pooled), each at its nested-selected
     recipe; the top-3 block average; every block alone (depth profile / fixed-block readout);
     raw input at every fixed recipe. Returns (json-able results, {family: oof [R, n]})."""
@@ -300,7 +323,7 @@ def run_nested(bank, input_raw, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, n
     ensembles = {f"embedding_top{ENSEMBLE_K}": (stages, ENSEMBLE_K)}
     res = nested_cv(arms, families, y, n_repeats=n_repeats, n_folds=n_folds, n_inner=n_inner,
                     seed=seed, fixed_arms=("raw",), ensembles=ensembles, n_jobs=n_jobs, backend=backend,
-                    device=device)
+                    device=device, log_alpha=log_alpha)
     families = {**families, **ensembles}
     y64 = np.asarray(y, dtype=np.float64)
     out = {

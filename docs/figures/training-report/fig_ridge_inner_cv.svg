@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="960" height="430" fill="#ffffff"/>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- Panel A: how the head is chosen -->
+  <text x="20" y="28" font-size="15" font-weight="bold" fill="#222">A. How the head is chosen (one outer split)</text>
+
+  <text x="20" y="58" fill="#444">Samples of one set, split into 5 outer folds</text>
+  <g>
+    <rect x="20" y="66" width="80" height="26" fill="#cfe0f5" stroke="#4a78b5"/>
+    <rect x="100" y="66" width="80" height="26" fill="#cfe0f5" stroke="#4a78b5"/>
+    <rect x="180" y="66" width="80" height="26" fill="#cfe0f5" stroke="#4a78b5"/>
+    <rect x="260" y="66" width="80" height="26" fill="#cfe0f5" stroke="#4a78b5"/>
+    <rect x="340" y="66" width="80" height="26" fill="#f6d2c4" stroke="#c0603a"/>
+    <text x="180" y="84" text-anchor="middle" fill="#1f3f6b">training samples (4 folds)</text>
+    <text x="380" y="84" text-anchor="middle" fill="#7a2e12">test</text>
+  </g>
+
+  <line x1="180" y1="94" x2="180" y2="120" stroke="#555" marker-end="url(#ar)"/>
+  <text x="20" y="138" fill="#444">Training samples only, 5 inner folds, each validates once</text>
+  <g>
+    <rect x="20" y="146" width="64" height="22" fill="#e3edf9" stroke="#4a78b5"/>
+    <rect x="84" y="146" width="64" height="22" fill="#e3edf9" stroke="#4a78b5"/>
+    <rect x="148" y="146" width="64" height="22" fill="#e3edf9" stroke="#4a78b5"/>
+    <rect x="212" y="146" width="64" height="22" fill="#e3edf9" stroke="#4a78b5"/>
+    <rect x="276" y="146" width="64" height="22" fill="#fff3c4" stroke="#b39020"/>
+    <text x="308" y="162" text-anchor="middle" font-size="11" fill="#6b5410">validate</text>
+  </g>
+
+  <line x1="180" y1="170" x2="180" y2="196" stroke="#555" marker-end="url(#ar)"/>
+  <rect x="20" y="200" width="400" height="74" rx="6" fill="#f4f4f4" stroke="#999"/>
+  <text x="32" y="220" fill="#222" font-weight="bold">Try every candidate on the inner folds</text>
+  <text x="32" y="240" fill="#333">6 normalizers × {ridge, plain least squares}</text>
+  <text x="32" y="258" fill="#333">ridge: 20 penalties λ from 0.001 to 1000</text>
+
+  <line x1="180" y1="276" x2="180" y2="302" stroke="#555" marker-end="url(#ar)"/>
+  <rect x="20" y="306" width="400" height="34" rx="6" fill="#e2f1e2" stroke="#4c9a4c"/>
+  <text x="32" y="328" fill="#1d4d1d">Keep the lowest validation error (= highest validation R²)</text>
+
+  <line x1="180" y1="342" x2="180" y2="368" stroke="#555" marker-end="url(#ar)"/>
+  <rect x="20" y="372" width="400" height="34" rx="6" fill="#f6d2c4" stroke="#c0603a"/>
+  <text x="32" y="394" fill="#7a2e12">Refit on all training samples, predict the test fold once</text>
+  <text x="20" y="424" font-size="11" fill="#666">Repeated for all 10 outer splits (2 × 5); each split may pick a different setting.</text>
+
+  <!-- Panel B: why plain linear fails -->
+  <text x="490" y="28" font-size="15" font-weight="bold" fill="#222">B. Why a plain linear head does not hold</text>
+
+  <text x="490" y="58" fill="#444">Training data of one outer split, set 0055, drawn to scale</text>
+  <rect x="490" y="72" width="430" height="22" fill="#cfe0f5" stroke="#4a78b5"/>
+  <text x="705" y="88" text-anchor="middle" fill="#1f3f6b">20 rows × 12,288 JEPA features (block-2 flat)</text>
+  <rect x="490" y="122" width="8.6" height="22" fill="#e8e8e8" stroke="#777"/>
+  <text x="508" y="138" fill="#444">20 rows × 245 raw features</text>
+  <text x="490" y="176" fill="#444">Largest measured set 0114: 184 training rows, still 67 times fewer than features.</text>
+  <text x="490" y="194" fill="#444">Smallest set 0055: 614 times fewer.</text>
+  <text x="490" y="236" fill="#222">More features than rows: many weight vectors fit the training</text>
+  <text x="490" y="254" fill="#222">rows exactly. Plain least squares takes one of them and fits noise.</text>
+  <text x="490" y="284" fill="#222">Ridge shrinks the weights; λ sets how much. Too small a λ is</text>
+  <text x="490" y="302" fill="#222">back to fitting noise, so λ must be fitted to each set.</text>
+
+  <text x="490" y="340" fill="#444" font-weight="bold">JEPA on 0120 (125 samples), R²</text>
+  <text x="490" y="360" fill="#9b2c2c">plain least squares −.34</text>
+  <text x="660" y="360" fill="#9b6a2c">fixed ridge average .04</text>
+  <text x="820" y="360" fill="#1d6b1d">inner-CV choice .44</text>
+</svg>

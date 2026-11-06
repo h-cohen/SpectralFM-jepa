@@ -26,9 +26,9 @@ SETS = ['0055', '0106', '0109', '0112', '0113', '0114', '0120']
 ARMS = ['raw', 'random', 'jepa']
 ARM_LABEL = {'raw': 'Raw ridge', 'random': 'Random-weight encoder', 'jepa': 'JEPA nr_s107'}
 SCORES = ['comp0', 'comp1', 'pooled_comp0', 'pooled_comp1', 'pooled_all', 'pooled_avg']
-SCORE_LABEL = {'comp0': 'comp0', 'comp1': 'comp1', 'pooled_comp0': 'pooled on comp0',
-               'pooled_comp1': 'pooled on comp1', 'pooled_all': 'pooled on all rows',
-               'pooled_avg': 'pooled, per-sample average'}
+SCORE_LABEL = {'comp0': 'train 0, test 0', 'comp1': 'train 1, test 1', 'pooled_comp0': 'train 0+1, test 0',
+               'pooled_comp1': 'train 0+1, test 1', 'pooled_all': 'train 0+1, test 0+1',
+               'pooled_avg': 'train 0+1, test 0 and 1 averaged per sample'}
 
 
 def _rmse(y, p):
@@ -152,7 +152,7 @@ def figures(per_set, tab, outdir):
         ax.bar(np.arange(len(sc_)) + (j - 1) * .26, v, .26, yerr=e, capsize=2, color=acol[a], label=ARM_LABEL[a])
     ax.axhline(0, color='k', lw=.6)
     ax.set_xticks(range(len(sc_)), [SCORE_LABEL[s] for s in sc_], fontsize=7)
-    ax.set_ylabel('mean ΔR² vs comp0 (± SD)')
+    ax.set_ylabel('mean ΔR² vs train 0, test 0 (± SD)')
     ax.legend(fontsize=7)
     fig.tight_layout()
     fig.savefig(outdir / 'fig_components_delta.svg')

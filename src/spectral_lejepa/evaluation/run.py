@@ -16,6 +16,7 @@ from spectral_lejepa.config import load_config
 from spectral_lejepa.evaluation.bank import READOUTS, extract_bank, save_bank
 from spectral_lejepa.evaluation.data import load_labeled_data, normalize_like_fairseq
 from spectral_lejepa.evaluation.data2vec import is_data2vec, load_data2vec, random_like
+from spectral_lejepa.evaluation.ridge_heads import HEADS, write_fixed_heads
 from spectral_lejepa.evaluation.nested import (ENSEMBLE_K, best_block, ladder_for_set, paired_delta,
                                                pair_with_baseline,
                                                run_canary, run_nested, write_json)
@@ -117,6 +118,10 @@ def main(argv=None):
     fb = vcfg.get("flat_blocks")
     if fb is not None and not (isinstance(fb, list) and all(isinstance(b, int) and not isinstance(b, bool) and b >= 0 for b in fb)):
         raise ValueError(f"evaluation.flat_blocks must be null or a list of non-negative ints, got {fb!r}")
+    heads = tuple(vcfg.get("fixed_heads") or ())
+    if bad := [h for h in heads if h not in HEADS]:
+        raise ValueError(f"unknown evaluation.fixed_heads entry {bad[0]!r}; choose from {HEADS}")
+    log_alpha = bool(vcfg.get("log_alpha", False))
     backend = vcfg.get("backend", "sklearn")
     if backend not in ("sklearn", "torch"):
         raise ValueError(f"evaluation.backend must be 'sklearn' or 'torch', got {backend!r}")
@@ -179,7 +184,7 @@ def main(argv=None):
                                                        "stages": tuple(bank),
                                                        "readouts": tuple(vcfg["readouts"]),
                                                        "flat_blocks": vcfg.get("flat_blocks"), "tta": vcfg.get("tta")})
-        nested, oof = run_nested(bank, raw, y, seed=seed, **probe)
+        nested, oof = run_nested(bank, raw, y, seed=seed, log_alpha=log_alpha, **probe)
         write_json(out_dir / "nested_results.json", {**nested, "meta": lineage})
         np.savez_compressed(out_dir / "nested_oof.npz", y=y, **oof)
         block = best_block(nested)
@@ -210,7 +215,7 @@ def main(argv=None):
                       {'checkpoint': a.checkpoint, 'model': 'random_init_seed0', 'seed': seed,
                        'set': name, 'model_input': method, 'readouts': tuple(vcfg['readouts']),
                        'flat_blocks': vcfg.get('flat_blocks'), 'stages': tuple(rc_bank), 'tta': vcfg.get('tta')})
-            rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, **probe)
+            rc_nested, rc_oof = run_nested(rc_bank, raw, y, seed=seed, log_alpha=log_alpha, **probe)
             if not np.allclose(rc_oof["raw"], oof["raw"], rtol=0, atol=1e-8):
                 raise RuntimeError("random-control raw OOFs differ from the model's: folds/rows are not paired")
             summary["vs_random_control"] = paired_delta(np.asarray(y, dtype=np.float64), oof["embedding"],
@@ -221,6 +226,9 @@ def main(argv=None):
             rc_delta, rc_verdict = verdict(rc_nested["families"]["raw"]["r2_mean"], rc_r2)
             summary["random_control"] = {"embedding_r2": rc_r2, "best_block": best_block(rc_nested),
                                          "delta_vs_raw": rc_delta, "verdict": rc_verdict}
+        if heads:     # fixed heads, no selection: raw, the encoder's arms and the random control's
+            write_fixed_heads(out_dir, {"raw": np.asarray(raw, dtype=np.float32), **bank},
+                              rc_bank if random_backbone is not None else {}, y, heads, seed)
         if a.minirocket:
             from spectral_lejepa.evaluation.benchmark import minirocket_arm
             y64 = np.asarray(y, dtype=np.float64)
