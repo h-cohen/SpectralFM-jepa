@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import shutil
 import time
 import warnings
 from pathlib import Path
@@ -14,7 +15,7 @@ import torch
 import yaml
 from torch.optim.lr_scheduler import LambdaLR
 
-from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset, make_loader,
+from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset, group_holdout, make_loader,
                            manifest_fingerprint, packed_train_rows, read_manifest, source_mass,
                            source_row_probs, source_rows, subsample, valid_subset)
 from ..data.perturb import check_config, perturb
@@ -23,6 +24,7 @@ from ..models.vit_1d import build_model, core_model_config
 from ..utils import wandb as wb
 from . import diagnostics as diag
 from .checkpoint import load_checkpoint, load_model, save_checkpoint, sha256_file
+from .early_stop import EarlyStopping
 from .loss import LeJEPAObjective
 
 RECOMMENDED_MIN_BATCH = 256   # SIGReg's Epps-Pulley statistic is estimated from the batch
@@ -54,8 +56,14 @@ def param_groups(model, weight_decay):
 
 
 def schedule_lengths(steps_per_epoch: int, tcfg: dict) -> tuple[int, int]:
-    """(total_steps, warmup_steps). Warmup is warmup_epochs, capped at 10% of a short dev run."""
+    """(total_steps, warmup_steps). Warmup is warmup_epochs, capped at 10% of a short dev run;
+    an explicit training.warmup_steps is used as is (no cap)."""
     total = tcfg["max_steps"] or tcfg["epochs"] * steps_per_epoch
+    explicit = tcfg.get("warmup_steps")
+    if explicit is not None:
+        if not 0 < explicit < total:
+            raise ValueError(f"training.warmup_steps={explicit} must lie in (0, total_steps={total})")
+        return total, int(explicit)
     warmup = min(int(tcfg["warmup_epochs"] * steps_per_epoch), total // 10)
     return total, max(1, warmup)
 
@@ -235,6 +243,9 @@ def train(cfg: dict) -> dict:
 
     resume = load_resume_checkpoint(tcfg.get("resume"), cfg)
     init = resume or load_init_checkpoint(tcfg.get("init_checkpoint"), cfg)
+    es_saved = (resume or {}).get("ckpt", {}).get("early_stopping")
+    if tcfg.get("early_stopping") and es_saved and es_saved["bad_checks"] >= tcfg["early_stopping"]["patience"]:
+        raise ValueError(f"training.resume: this run already early-stopped (best step {es_saved['best_step']})")
 
     norm = dcfg["normalization"]
     weights, sampler = dcfg.get("source_weights"), None
@@ -250,16 +261,24 @@ def train(cfg: dict) -> dict:
         global_stats = {"mean": stats["mean"], "std": stats["std"]}
         valid_rows = np.load(Path(packed_dir) / "valid_rows.npy")
         train_rows = packed_train_rows(packed_dir)
+        holdout = dcfg.get("valid_holdout")
+        if holdout and not dcfg.get("sources"):
+            raise ValueError("data.valid_holdout needs data.sources")
         if dcfg.get("sources"):
             train_rows = source_rows(packed_dir, train_rows, dcfg["sources"])
+        if holdout:   # validation = whole sample groups of the selected sources, never trained on
+            train_rows, held_rows = group_holdout(packed_dir, train_rows, holdout, seed)
         train_rows = subsample(train_rows, dcfg["max_train_samples"], seed)
         train_ds = PackedSpectra(packed_dir, train_rows, norm, global_stats)
-        valid_ds = PackedSpectra(packed_dir, valid_subset(valid_rows), norm, global_stats)
+        valid_ds = PackedSpectra(packed_dir, held_rows if holdout else valid_subset(valid_rows), norm, global_stats)
         data_derived = {"packed_dir": str(packed_dir), "global_stats": global_stats,
                         "n_rows": stats["n_rows"], "n_dropped": stats["n_dropped"]}
         if dcfg.get("sources"):
             data_derived["sources"] = list(dcfg["sources"])
             data_derived["n_train_rows"] = int(len(train_rows))
+        if holdout:
+            data_derived["valid_holdout"] = holdout
+            data_derived["n_valid_rows"] = int(len(held_rows))
         if weights:
             sampler = SourceWeightedSampler(source_row_probs(packed_dir, train_rows, weights), seed)
             data_derived["source_mass"] = source_mass(packed_dir, train_rows, weights)
@@ -309,6 +328,8 @@ def train(cfg: dict) -> dict:
     run_name = f"{ecfg['name']}_{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = Path(ecfg["output_dir"]) / run_name
     out_dir.mkdir(parents=True, exist_ok=False)
+    if dcfg["source"] == "packed" and dcfg.get("valid_holdout"):
+        np.save(out_dir / "valid_rows_used.npy", held_rows)
     derived = {"derived": {
         "steps_per_epoch": steps_per_epoch, "total_steps": total_steps, "warmup_steps": warmup_steps,
         "train_samples": len(train_ds), "valid_samples": len(valid_ds),
@@ -358,21 +379,41 @@ def train(cfg: dict) -> dict:
     max_norm = tcfg["grad_clip"] or float("inf")
 
     start_step = resume["ckpt"]["step"] if resume else 0
+    es_cfg = tcfg.get("early_stopping")   # optional: stop when the validation metric stops improving
+    stopper = None
+    if es_cfg:
+        start = es_cfg.get("start_step")
+        stopper = EarlyStopping(es_cfg["metric"], es_cfg["patience"], es_cfg["min_delta"],
+                                warmup_steps if start is None else start)
+        if es_saved:
+            stopper.load_state_dict(es_saved)
+            # a resume writes a new run directory: carry the earlier run's best checkpoint into it
+            previous_best = Path(tcfg["resume"]).parent / "checkpoint_best.pt"
+            if previous_best.exists() and load_checkpoint(previous_best)["step"] == stopper.best_step:
+                shutil.copy2(previous_best, out_dir / "checkpoint_best.pt")
+            elif stopper.best_step is not None:
+                warnings.warn(f"training.resume: no checkpoint_best.pt at step {stopper.best_step} beside "
+                              f"{tcfg['resume']}; a new one is written only on the next improvement")
+    stopped_at = None
     latest, reference_rank = {}, None
     metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, start_step, seed, device, reference_rank)
     latest.update(metrics)
     skipped_updates = resume['ckpt'].get('metrics',{}).get('amp_skipped_updates',0) if resume else 0
 
+    def save(target, step, epoch):
+        save_checkpoint(target, model=model, optimizer=optimizer, scaler=scaler, step=step,
+                        epoch=epoch, config=resolved, metadata=metadata, metrics=dict(latest), scheduler=scheduler,
+                        rng_state={"torch": torch.get_rng_state(), "numpy": np.random.get_state(),
+                                   "python": random.getstate(), "mask": mask_generator.get_state(),
+                                   **({"robust": robust_generator.get_state()} if robust_cfg else {}),
+                                   "cuda": torch.cuda.get_rng_state_all() if device.type == "cuda" else None},
+                        extra={"early_stopping": stopper.state_dict()} if stopper else None)
+
     def checkpoint(step, epoch):
         meta = {"config": resolved, "epoch": epoch, "global_step": step, "metrics": latest, **metadata}
         path = out_dir / f"checkpoint_step{step}.pt"
         for target in (path, out_dir / "checkpoint_last.pt"):
-            save_checkpoint(target, model=model, optimizer=optimizer, scaler=scaler, step=step,
-                            epoch=epoch, config=resolved, metadata=metadata, metrics=dict(latest), scheduler=scheduler,
-                            rng_state={"torch": torch.get_rng_state(), "numpy": np.random.get_state(),
-                                       "python": random.getstate(), "mask": mask_generator.get_state(),
-                                       **({"robust": robust_generator.get_state()} if robust_cfg else {}),
-                                       "cuda": torch.cuda.get_rng_state_all() if device.type == "cuda" else None})
+            save(target, step, epoch)
         if run is not None and cfg["wandb"].get("log_checkpoints", False):
             wb.log_checkpoint(run, path, f"lejepa-{run.id}", ["latest", f"step-{step}"], meta)
 
@@ -394,7 +435,7 @@ def train(cfg: dict) -> dict:
     if 0 in save_steps and step == 0:
         checkpoint(0, 0.0)
     model.train()
-    while step < stop:
+    while step < stop and stopped_at is None:
         if sampler is not None:
             sampler.set_epoch(epoch_pass)
         epoch_pass += 1
@@ -445,6 +486,16 @@ def train(cfg: dict) -> dict:
                                           robust_cfg, data_derived.get("global_stats"), preserve_cfg, teacher)
                 latest.update(valid)
                 wb.log(run, valid, step=step)
+                if stopper:
+                    if stopper.update(step, valid):
+                        save(out_dir / "checkpoint_best.pt", step, epoch)
+                    if stopper.best_step is not None:   # nothing to log before the stopper is armed
+                        wb.log(run, {"early_stop/best_value": stopper.best_value, "early_stop/best_step": stopper.best_step,
+                                     "early_stop/bad_checks": stopper.bad_checks}, step=step)
+                    if stopper.should_stop and not last:
+                        stopped_at, last = step, True
+                        print(f"early stop at step {step}: best {stopper.metric}={stopper.best_value:.6g} "
+                              f"at step {stopper.best_step}", flush=True)
             if step % tcfg["diag_every"] == 0 or last:
                 metrics, reference_rank = run_diagnostics(run, model, valid_signals, kcfg, step,
                                                           seed, device, reference_rank)
@@ -458,4 +509,6 @@ def train(cfg: dict) -> dict:
 
     wb.finish(run)
     return {"output_dir": str(out_dir), "final_checkpoint": str(out_dir / "checkpoint_last.pt"),
-            "history": history, "wandb_run_id": metadata["wandb_run_id"]}
+            "history": history, "wandb_run_id": metadata["wandb_run_id"], "stopped_at": stopped_at,
+            "best_step": stopper.best_step if stopper else None,
+            "best_checkpoint": str(out_dir / "checkpoint_best.pt") if (out_dir / "checkpoint_best.pt").exists() else None}

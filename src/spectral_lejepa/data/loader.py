@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -126,6 +127,60 @@ def source_rows(packed_dir, rows, sources) -> np.ndarray:
     if not len(out):
         raise ValueError(f"data.sources {list(sources)} leaves no training rows")
     return out
+
+
+_GROUP_NAME = re.compile(r"(dataset\d+)_comp\d+_spec_(\d+)\.wav")
+
+
+def _index_columns(packed_dir, rows) -> tuple[list[str], list[str]]:
+    """(source, wav basename) of each of `rows`, keeping only the wanted lines of index.tsv."""
+    rows = np.asarray(rows)
+    want = np.zeros(int(rows.max()) + 1 if len(rows) else 0, bool)
+    want[rows] = True
+    found = {}
+    with open(Path(packed_dir) / "index.tsv") as f:   # `row<TAB>source<TAB>path`, ~12.8M lines
+        for i, line in enumerate(f):
+            if i >= len(want):
+                break
+            if want[i]:
+                row, source, path = line.rstrip("\n").split("\t", 2)
+                if int(row) != i:
+                    raise ValueError(f"index.tsv line {i} holds row {row}")
+                found[i] = (source, os.path.basename(path))
+    return [found[r][0] for r in rows.tolist()], [found[r][1] for r in rows.tolist()]
+
+
+def _group_keys(rows, names) -> np.ndarray:
+    keys = []
+    for r, name in zip(np.asarray(rows).tolist(), names):
+        m = _GROUP_NAME.fullmatch(name)
+        if not m:
+            raise ValueError(f"row {r}: {name!r} is not datasetXXXX_compC_spec_I.wav")
+        keys.append(f"{m[1]}/{m[2]}")
+    return np.array(keys)
+
+
+def sample_group_keys(packed_dir, rows) -> np.ndarray:
+    """`datasetXXXX/<spectrum index>` per row: all components of one measured spectrum share a key."""
+    return _group_keys(rows, _index_columns(packed_dir, rows)[1])
+
+
+def group_holdout(packed_dir, rows, fraction, seed) -> tuple[np.ndarray, np.ndarray]:
+    """Sorted (train_rows, valid_rows): a seeded `fraction` of each source's sample groups is held out,
+    at least one group per source, but never a source's only group."""
+    rows = np.asarray(rows)
+    sources, names = _index_columns(packed_dir, rows)
+    sources, keys = np.array(sources), _group_keys(rows, names)
+    rng = np.random.default_rng(seed)
+    held = np.zeros(len(rows), bool)
+    for source in sorted(set(sources.tolist())):
+        in_source = sources == source
+        groups = np.unique(keys[in_source])
+        n = len(groups)
+        k = 0 if n == 1 else min(n - 1, max(1, round(fraction * n)))
+        chosen = rng.choice(groups, k, replace=False)
+        held |= in_source & np.isin(keys, chosen)
+    return np.sort(rows[~held]), np.sort(rows[held])
 
 
 def _source_groups(packed_dir, train_rows, source_weights):

@@ -18,10 +18,11 @@ def sha256_file(path, chunk=1 << 20):
     return h.hexdigest()
 
 
-def save_checkpoint(path, *, model, optimizer, scaler, step, epoch, config, metadata, metrics, scheduler=None, rng_state=None):
+def save_checkpoint(path, *, model, optimizer, scaler, step, epoch, config, metadata, metrics, scheduler=None, rng_state=None,
+                    extra=None):
     payload = {"model": model.state_dict(), "optimizer": optimizer.state_dict(),
                "scaler": scaler.state_dict(), "step": step, "epoch": epoch, "config": config,
-               "metrics": metrics, **metadata}
+               "metrics": metrics, **metadata, **(extra or {})}
     if scheduler is not None:
         payload["scheduler"] = scheduler.state_dict()
     if rng_state is not None:

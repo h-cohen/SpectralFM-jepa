@@ -63,3 +63,19 @@ def test_pretrain_yaml_numbers_are_numbers():
     assert cfg["masking"]["mask_ratio"] == 0.5
     assert cfg["model"]["num_patches"] == 24
     assert cfg["data"]["sequence_length"] == 245
+
+
+def test_measured_only_config():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "configs"
+    mo, fm = load_config(root / "measured_only.yaml"), load_config(root / "final_model.yaml")
+    assert mo["data"]["sources"] == ["labeled_regression"] and mo["data"]["source_weights"] is None
+    assert mo["data"]["valid_holdout"] == 0.05
+    assert mo["training"]["max_steps"] == 248995 and mo["training"]["warmup_steps"] == 49799
+    assert mo["training"]["early_stopping"] == {"metric": "valid/loss", "patience": 10, "min_delta": 0.0,
+                                                "start_step": None}
+    assert mo["model"] == fm["model"] and mo["masking"] == fm["masking"]
+    same = ("batch_size", "learning_rate", "weight_decay", "lambda_sigreg", "sigreg_num_slices", "global_weight",
+            "global_views", "global_keep", "final_lr_ratio", "amp", "schedule")
+    assert {k: mo["training"][k] for k in same} == {k: fm["training"][k] for k in same}
+    assert mo["data"]["normalization"] == fm["data"]["normalization"] == "global"

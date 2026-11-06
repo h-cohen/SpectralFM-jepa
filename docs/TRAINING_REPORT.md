@@ -1131,6 +1131,52 @@ RMSE is in label-SD units (labels are z-scored per set). Bold marks the best col
 
 **Reproduce.** `configs/eval_ridge_study.yaml` (`evaluation.fixed_heads`, `evaluation.log_alpha`), `evaluation/ridge_heads.py`, `ops/ridge_audit.py`. Outputs and per-set analysis: `outputs/ridge-study/` (`analysis.json`).
 
+## Appendix I. Pretraining on measured data only (2026-11-03/06)
+
+**Bottom line.** The synthetic sources add nothing on the measured sets. A four-seed ensemble pretrained only on the measured `labeled_regression` spectra matches the all-data ensemble on the seven measured sets: +.092 mean ΔR² vs raw against +.083, measured − all +.009, within .01 on 5/7 and never more than .03 below. Pre-registered verdict: **synthetic not needed**. Doubling the training steps does not help (−.003 vs all-data with the full schedule). Early stopping on the measured validation loss hurts, because it stops before the learning rate has decayed.
+
+**Runs.** Stage 1 (`configs/final_model.yaml`) restricted to `labeled_regression`: all measured spectra and all components, labeled or not, with uniform sampling. Seeds 107–110, as for the all-data (nr) and synthetic-only (so, Appendix F) members. Three arms, all decided before scoring:
+- **m, 248,995 steps** (`configs/measured_only.yaml`): half the all-data steps. Warmup of 49,799 steps, as in the all-data recipe. 5% of each set's sample groups are held out for a validation loss, with all components of a sample kept together. Early stopping was enabled but never triggered. The best-validation checkpoint is scored.
+- **n, 497,990 steps with early stopping** (`configs/measured_only_2x.yaml`): the runs stopped at 166k–213k steps. The best checkpoints (139k–186k) are scored.
+- **f, 497,990 steps, no early stopping** (`configs/measured_only_2x_full.yaml`): the full cosine decay. `checkpoint_last.pt` is scored.
+
+labeled_data was not in the measured pool, so it is excluded from this appendix. Labels never entered pretraining or checkpoint choice.
+
+**Evaluation.** Every member was scored as usual (nested CV, 12 linear recipes, block-2 flat). The 20 members were then fused in one `ensemble --stack --no-stack-heads --mix-groups` run on the seven measured sets, with paired folds; each family is the average of its four seeds. Δ columns are measured − all-data, with bootstrap SD. RMSE is in label-SD units.
+
+| Set | n | raw R² | raw RMSE | random R² | random RMSE | all data R² | all data RMSE | synthetic only R² | synthetic only RMSE | measured, 249k R² | measured, 249k RMSE | measured, 2× early stop R² | measured, 2× early stop RMSE | measured, 2× full R² | measured, 2× full RMSE | m − all (± SD) | m − all ΔRMSE | f − all (± SD) | f − all ΔRMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | .591 | .625 | .541 | .664 | .642 | .586 | .656 | .574 | **.671** | **.561** | .636 | .590 | .651 | .579 | +.029 ± .026 | −.024 | +.009 ± .040 | −.007 |
+| 0106 | 64 | .697 | .546 | **.702** | **.541** | .602 | .626 | .617 | .614 | .678 | .563 | .674 | .566 | .681 | .560 | +.076 ± .025 | −.063 | +.079 ± .025 | −.066 |
+| 0109 | 96 | .918 | .285 | **.933** | **.258** | .924 | .275 | .850 | .385 | .928 | .266 | .929 | .264 | .919 | .283 | +.005 ± .013 | −.009 | −.005 ± .013 | +.008 |
+| 0112 | 68 | .377 | .781 | .364 | .791 | **.724** | **.521** | .421 | .755 | .697 | .546 | .603 | .625 | .635 | .599 | −.027 ± .038 | +.025 | −.089 ± .052 | +.078 |
+| 0113 | 70 | .548 | .667 | .561 | .657 | .749 | .497 | .587 | .638 | .750 | .496 | .734 | .512 | **.759** | **.487** | +.001 ± .020 | −.001 | +.010 ± .016 | −.010 |
+| 0114 | 230 | .983 | .130 | .982 | .132 | .984 | .126 | .984 | .128 | .985 | .123 | .985 | .120 | .985 | .121 | +.001 ± .001 | −.002 | +.001 ± .001 | −.005 |
+| 0120 | 125 | .380 | .784 | .354 | .800 | **.448** | **.740** | .393 | .776 | .429 | .751 | .435 | .747 | .423 | .756 | −.018 ± .034 | +.011 | −.025 ± .036 | +.016 |
+| **Mean** | | .642 | .546 | .634 | .549 | .725 | .482 | .644 | .553 | **.734** | **.472** | .714 | .489 | .722 | .483 | +.009 | −.009 | −.003 | +.002 |
+| mean Δ vs raw | | | | −.008 | | +.083 | | +.002 | | **+.092** | | +.072 | | +.080 | | | | | |
+
+Random is the 249k measured family's random-weight control, fused the same way. Bold marks the best R² and RMSE of each row. Mean nRMSE: raw .550, all data .486, measured 249k .476, 2× full .488. The early-stopped arm n gives measured − all −.011 (0112 −.121 ± .048); verdict "mixed".
+
+![Measured only](figures/training-report/fig_measured_only.svg)
+
+**Figure I1.** ΔR² vs raw (± bootstrap SD) per measured set for the five four-seed families.
+
+![Measured validation loss](figures/training-report/fig_measured_only_valid.svg)
+
+**Figure I2.** Validation loss on held-out measured sample groups for the 249k runs, with the best step marked. The best step is at or near the last step (237,945–248,995).
+
+**Reading.**
+- **Rule outcome (fixed before results):** measured − all ≥ −.01 on 5/7 sets and mean ≥ −.01 means "synthetic not needed"; < −.03 on 4/7 means "synthetic helps". The 249k arm: 5/7, mean +.009, 0/7 below −.03. The 2× full arm: 5/7, mean −.003, 1/7 below (0112). Both are "synthetic not needed".
+- **Where the families differ:** measured-only gains .08 on 0106, where every JEPA family is below raw, and loses .03–.09 on 0112. Neither difference is large next to its SD, except 0106.
+- **With Appendix F:** synthetic-only keeps only +.002 of the gain on these sets. The gain on the measured sets comes from pretraining on measured spectra, and the synthetic sources neither add to it nor carry it alone.
+- **Schedule:** early stopping ended the runs at 28–43% of the doubled cap, with the learning rate still high, and cost .02 mean R² against the full decay. Stage-1 checkpoints should be taken at the end of the cosine decay, not at the validation minimum.
+- **Single members** (mean ΔR² vs raw over all eight sets, labeled_data included): 249k +.015 to +.039; 2× full +.004 to +.048; 2× early stop −.030 to +.036.
+
+**Not tested.** An early stop followed by a short cooldown of the learning rate; measured-only stage 2.
+
+**Reproduce.** `ops/launch_measured_only.sh` (`MO_CONFIG`, `MO_TAG`, `MO_OUT`), `ops/measured_only_verdict.py` (`--dir <fusion> --figures`). Outputs: `outputs/measured-only/` (249k), `outputs/measured-only-2x/` (early stop), `outputs/measured-only-2x-full/` (full decay; `ens/`, `verdict.json`, `ens.sh`); W&B groups `measured-only`, `measured-only-2x`, `measured-only-2x-full`.
+
 ## References
 
 - Balestriero & LeCun (2025). LeJEPA. arXiv:2511.08544.

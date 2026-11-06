@@ -1,0 +1,78 @@
+# Measured-only stage 1 (spec docs/superpowers/specs/2026-11-03-measured-only-pretraining-design.md):
+# final_model.yaml restricted to labeled_regression, group-held-out measured validation, early stopping.
+experiment:
+  name: mo_s107
+  seed: 107
+  output_dir: outputs/measured-only
+data:
+  source: packed
+  packed_dir: /mnt5/home/hadar/nova/data/spectra_all
+  normalization: global
+  manifest_dir: /mnt5/noy/SpectralFM/fairseq/data/nova_data/single_channel_one
+  sequence_length: 245
+  max_train_samples: null
+  num_workers: 4
+  sources: [labeled_regression] # measured spectra only, uniform sampling
+  source_weights: null
+  valid_holdout: 0.05          # validation = 5% of each set's sample groups (all components of a spectrum together)
+model:
+  num_patches: 48
+  dim: 256
+  depth: 6
+  heads: 8
+  mlp_dim: 1024
+  dropout: 0.0
+  predictor_dim: 192
+  predictor_depth: 4
+  predictor_heads: 6
+  predictor_mlp_dim: 768
+masking:
+  strategy: random
+  mask_ratio: 0.75
+  num_blocks: 3
+training:
+  batch_size: 256
+  epochs: 10
+  max_steps: 248995            # all-data members' measured exposure: .5 x 497,990 steps
+  optimizer: adamw
+  learning_rate: 0.0005
+  weight_decay: 0.05
+  warmup_epochs: 1.0
+  warmup_steps: 49799          # same warmup in steps as the all-data recipe (uncapped)
+  final_lr_ratio: 0.001
+  lambda_sigreg: 0.05
+  sigreg_num_slices: 1024
+  sigreg_knots: 17
+  sigreg_t_max: 3.0
+  global_weight: 1.0
+  global_views: 2
+  global_keep: 0.5
+  amp: true
+  grad_clip: null
+  log_every: 50
+  val_every: 2735              # 5 epochs of 547 steps (140,059 rows / 256)
+  diag_every: 25000
+  ckpt_every: 10000
+  device: cuda
+  resume: null
+  schedule: cosine             # cosine (warmup + decay) or constant (LR held at learning_rate, no warmup)
+  stop_step: null              # stop early at this step; the LR schedule keeps the full max_steps length
+  preserve: null               # {weight, block}: pull block-k tokens toward the frozen init_checkpoint model
+  save_steps: []               # extra checkpoint_step<N>.pt at these steps (0 = the init weights)
+  init_checkpoint: null
+  early_stopping:              # stop on measured validation loss; checkpoint_best.pt is the scored model
+    metric: valid/loss
+    patience: 10
+    min_delta: 0.0
+    start_step: null           # null = warmup_steps
+wandb:
+  enabled: true
+  log_checkpoints: false
+  entity: null
+  project: spectralfm-lejepa
+  group: measured-only
+  job_type: pretrain
+  tags:
+  - lejepa
+  - spectralfm
+  - measured-only
