@@ -203,6 +203,7 @@ def main(argv=None):
     ap.add_argument('--backend', default='torch')
     ap.add_argument('--device', default='cuda')
     ap.add_argument('--n-jobs', type=int, default=1)
+    ap.add_argument('--seed', type=int, default=42, help='--stack: outer/inner fold seed (repeat r uses seed + r)')
     ap.add_argument('--probes', choices=['linear', 'extended'], default='linear',
                     help='--stack: recipe set (extended adds PLS, RBF kernel ridge and MLP probes)')
     ap.add_argument('--select', nargs='+', help='--stack: candidate readouts chosen per member in inner CV')
@@ -219,7 +220,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.stack:
         from spectral_lejepa.evaluation.benchmark import add_minirocket
-        probe = dict(backend=a.backend, device=a.device, n_jobs=a.n_jobs, recipes=recipe_set(a.probes))
+        probe = dict(backend=a.backend, device=a.device, n_jobs=a.n_jobs, recipes=recipe_set(a.probes), seed=a.seed)
         if a.minirocket_only:
             out = add_minirocket(a.output_dir, a.banks, **probe)
             print(json.dumps(out['summary']))
