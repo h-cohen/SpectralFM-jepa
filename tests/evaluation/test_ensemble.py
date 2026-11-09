@@ -222,6 +222,14 @@ def test_cli_probes_flag_reaches_fuse(monkeypatch, tmp_path):
     assert seen["recipes"] == EXTENDED_RECIPES
 
 
+@pytest.mark.parametrize('argv,seed', [([], 42), (['--seed', '43'], 43)])
+def test_cli_seed_flag_reaches_fuse(monkeypatch, tmp_path, argv, seed):
+    seen = {}
+    monkeypatch.setattr(ensemble, "fuse", lambda *a, **k: seen.update(k) or {"sets": {}, "summary": {}})
+    ensemble.main(["--banks", str(tmp_path), "--stack", "--output-dir", str(tmp_path), "--backend", "sklearn", *argv])
+    assert seen["seed"] == seed
+
+
 @pytest.mark.parametrize('recipes,n', [(None, 12), (EXTENDED_RECIPES, 18)])
 def test_fuse_records_recipes(tmp_path, recipes, n):
     y = np.random.default_rng(0).normal(size=60)
