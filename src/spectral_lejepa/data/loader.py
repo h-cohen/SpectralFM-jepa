@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -112,21 +113,56 @@ def valid_subset(valid_rows, k=2048, seed=0) -> np.ndarray:
     return np.sort(np.random.default_rng(seed).choice(valid_rows, min(k, len(valid_rows)), replace=False))
 
 
-def source_rows(packed_dir, rows, sources) -> np.ndarray:
-    """The rows of `rows` whose index.tsv source starts with one of `sources` (labels are never read)."""
+def _source_column(packed_dir) -> np.ndarray:
     with open(Path(packed_dir) / "index.tsv") as f:   # `row<TAB>source<TAB>path`, ~12.6M lines
-        src = np.array([line.split("\t", 2)[1] for line in f])
+        return np.array([line.split("\t", 2)[1] for line in f])
+
+
+def _prefix_mask(src, prefixes, key) -> np.ndarray:
     keep = np.zeros(len(src), bool)
-    for prefix in sources:
+    for prefix in prefixes:
         hit = np.char.startswith(src, prefix)
         if not hit.any():
-            raise ValueError(f"data.sources: {prefix!r} matches no source in index.tsv")
+            raise ValueError(f"{key}: {prefix!r} matches no source in index.tsv")
         keep |= hit
+    return keep
+
+
+def source_rows(packed_dir, rows, sources) -> np.ndarray:
+    """The rows of `rows` whose index.tsv source starts with one of `sources` (labels are never read)."""
+    keep = _prefix_mask(_source_column(packed_dir), sources, "data.sources")
     rows = np.asarray(rows)
     out = np.sort(rows[keep[rows]])
     if not len(out):
         raise ValueError(f"data.sources {list(sources)} leaves no training rows")
     return out
+
+
+def exclude_source_rows(packed_dir, rows, sources) -> np.ndarray:
+    """The rows of `rows` whose index.tsv source starts with none of `sources`."""
+    drop = _prefix_mask(_source_column(packed_dir), sources, "data.exclude_sources")
+    rows = np.asarray(rows)
+    return np.sort(rows[~drop[rows]])
+
+
+def group_fraction(packed_dir, rows, fraction, seed=0, prefix="labeled_regression") -> tuple[np.ndarray, np.ndarray]:
+    """Sorted (rows, kept group keys): of the rows whose source starts with `prefix`, keep a seeded
+    `fraction` of each source's sample groups (at least one); other rows pass through. One fixed
+    permutation per source ranks its groups, so smaller fractions are subsets of larger ones."""
+    rows = np.asarray(rows)
+    src = _source_column(packed_dir)[rows]
+    measured = np.char.startswith(src, prefix)
+    m_rows, m_src = rows[measured], src[measured]
+    keys = sample_group_keys(packed_dir, m_rows)
+    rng = np.random.default_rng(seed)
+    keep, kept = np.zeros(len(m_rows), bool), []
+    for source in sorted(set(m_src.tolist())):
+        in_source = m_src == source
+        groups = rng.permutation(np.unique(keys[in_source]))
+        chosen = groups[:max(1, math.ceil(fraction * len(groups)))]
+        keep |= in_source & np.isin(keys, chosen)
+        kept += chosen.tolist()
+    return np.sort(np.concatenate([rows[~measured], m_rows[keep]])), np.sort(np.array(kept))
 
 
 _GROUP_NAME = re.compile(r"(dataset\d+)_comp\d+_spec_(\d+)\.wav")
