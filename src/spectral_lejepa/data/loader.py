@@ -160,6 +160,11 @@ def source_rows(packed_dir, rows, sources) -> np.ndarray:
     return out
 
 
+def source_mask(packed_dir, rows, prefix) -> np.ndarray:
+    """Per row of `rows`: does its index.tsv source start with `prefix`."""
+    return np.char.startswith(_source_column(packed_dir)[np.asarray(rows)], prefix)
+
+
 def exclude_source_rows(packed_dir, rows, sources) -> np.ndarray:
     """The rows of `rows` whose index.tsv source starts with none of `sources`."""
     drop = _prefix_mask(_source_column(packed_dir), sources, "data.exclude_sources")
