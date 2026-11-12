@@ -40,7 +40,7 @@ def f_star(per_f):
 
 
 def substitutes(m, ms) -> bool:
-    return any(passes(ms[f]) and not passes(m[f]) for f in ms if f in m)
+    return any(passes(ms[f]) and not passes(m[f]) for f in ms if f in m and f < 1.0)   # MS at 1.0 is the reference
 
 
 def blend_helps(d) -> bool:

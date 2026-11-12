@@ -48,3 +48,8 @@ def test_summarize_on_fake_fusion(tmp_path):
     assert out['mean_vs_raw']['bm6'] > 0
     fig_budget(out, tmp_path / 'fig')
     assert (tmp_path / 'fig' / 'fig_budget.svg').exists()
+
+
+def test_substitutes_ignores_full_fraction_reference():
+    zero = np.zeros(7)
+    assert not substitutes({1.0: FOUR, .25: FOUR}, {1.0: zero, .25: FOUR})
