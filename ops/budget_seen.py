@@ -51,9 +51,11 @@ def _r2(y, p):
 
 
 def seen_r2(y, pred, mask) -> dict:
-    y, pred, mask = np.asarray(y, float), np.asarray(pred, float), np.asarray(mask, bool)
-    return {'seen': _r2(y[mask], pred[mask]), 'unseen': _r2(y[~mask], pred[~mask]),
-            'n_seen': int(mask.sum()), 'n_unseen': int((~mask).sum())}
+    """R² on seen and unseen rows; `pred` (n,) or (repeats, n), R² averaged over repeats."""
+    y, mask = np.asarray(y, float), np.asarray(mask, bool)
+    pred = np.atleast_2d(np.asarray(pred, float))
+    part = lambda m: float(np.mean([_r2(y[m], p[m]) for p in pred]))
+    return {'seen': part(mask), 'unseen': part(~mask), 'n_seen': int(mask.sum()), 'n_unseen': int((~mask).sum())}
 
 
 def main(argv=None):

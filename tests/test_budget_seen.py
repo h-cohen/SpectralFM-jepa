@@ -49,3 +49,10 @@ def test_seen_r2_splits():
     assert out["seen"] == pytest.approx(1.0) and out["unseen"] == pytest.approx(-3.0)
     assert out["n_seen"] == 4 and out["n_unseen"] == 4
     assert np.isnan(seen_r2(y, pred, np.ones(8, bool))["unseen"])
+
+
+def test_seen_r2_averages_over_repeats():
+    y = np.array([0.0, 1.0, 2.0, 3.0])
+    pred = np.array([[0.0, 1.0, 2.0, 3.0], [0.0, 1.0, 3.0, 2.0]])     # unseen R² 1 and -3
+    out = seen_r2(y, pred, np.array([True, True, False, False]))
+    assert out["seen"] == pytest.approx(1.0) and out["unseen"] == pytest.approx(-1.0)
