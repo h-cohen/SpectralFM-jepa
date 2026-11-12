@@ -95,6 +95,28 @@ class PackedSpectra(Dataset):
         return normalize(x, self.normalization, self.stats)
 
 
+class BlendSpectra(Dataset):
+    """`base` where, with probability `prob`, a measured item becomes lam*measured + (1-lam)*synthetic,
+    lam ~ U(lam_low, 1), the synthetic item drawn uniformly from `synth_positions` (dataset positions).
+    Draws use the torch RNG, which DataLoader seeds per worker from its generator."""
+
+    def __init__(self, base, measured_mask, synth_positions, prob, lam_low):
+        self.base, self.measured = base, np.asarray(measured_mask, bool)
+        self.synth = np.asarray(synth_positions)
+        self.prob, self.lam_low = float(prob), float(lam_low)
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, i):
+        x = self.base[i]
+        if not self.measured[i] or torch.rand(()) >= self.prob:
+            return x
+        j = int(self.synth[torch.randint(len(self.synth), ())])
+        lam = self.lam_low + (1 - self.lam_low) * torch.rand(())
+        return lam * x + (1 - lam) * self.base[j]
+
+
 def _row_indices(a: np.ndarray) -> np.ndarray:
     """Row indices from either an index array or a boolean mask over all rows."""
     return np.flatnonzero(a) if a.dtype == bool else a.astype(np.int64)
