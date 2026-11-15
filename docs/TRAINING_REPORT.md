@@ -21,7 +21,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
 - **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 ΔR² (ΔRMSE −.023 of −.083): the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes beat the candidate on only 2 of 7 finished sets. The candidate stands. All rules were fixed before any score.
 - **Second component (2026-11-03, Appendix G):** pooling the second spectrum of each sample into training fails the pre-registered rule (JEPA 2/7 sets, ΔR² −.029); only per-sample averaging of two predictions helps (+.027), and raw and random-weight gain as much (+.038, +.042), so it is noise averaging, not JEPA features.
 - **Ridge head (2026-11-04, Appendix H):** the linear head must be chosen inside CV, because there are 12,288 features and at most a few hundred training rows per measured set. Inner CV adds .03–.05 R² over any fixed head; plain least squares collapses (0120: −.34). Tuning λ by CV also lifts raw above a fixed average of ridges (our approximation of the client's method): .666 vs .595, 7/8.
-- **Measured-data budget (2026-11-15, Appendix J):** 6.25% of the measured sample groups (748 of 11,873) matches all-data pretraining on the seven measured sets, with or without synthetic data. At 1.5% both fail the pre-registered rule; synthetic data never substitutes for measured spectra, and blending the two costs .04 mean R².
+- **Measured-data budget (2026-11-15, Appendix J):** 6.25% of the measured sample groups (748 of 11,873) matches all-data pretraining on the seven measured sets, with or without synthetic data. At 1.5% both fail the pre-registered rule; synthetic data never substitutes for measured spectra, and blending the two costs .04 mean R². On labeled_data, which neither arm saw, measured-only 25% falls below raw while measured + synthetic 25% matches all data.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -1220,6 +1220,35 @@ Family − all data, ΔR² ± bootstrap SD per set:
 | 0120 | 125 | −.041 ± .043 | −.057 ± .041 | +.000 ± .038 | −.018 ± .043 | +.002 ± .015 | +.001 ± .011 | +.002 ± .014 | −.034 ± .014 | −.043 ± .015 |
 
 Per-set R² and RMSE of every family, with raw and random, are in `outputs/measured-budget/verdict4.json`.
+
+**Full 25% results.** Both 25% families on all eight sets, labeled_data included. Each family is the plain average of its two seeds' block-2 flat predictions; on the seven measured sets this is identical to the fusion above. Random is the M 25% s107 random-weight control. Δ columns are family − all data with bootstrap SD; the last two columns are each seed's ΔR² vs raw. RMSE in label-SD units; bold marks the best R² and RMSE of each row.
+
+| Set | n | raw R² | raw RMSE | random R² | random RMSE | all data R² | all data RMSE | M 25% R² | M 25% RMSE | MS 25% R² | MS 25% RMSE | M 25% − all (± SD) | ΔRMSE | MS 25% − all (± SD) | ΔRMSE | M 25% seeds vs raw | MS 25% seeds vs raw |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| labeled_data | 4716 | .830 | .412 | .949 | .226 | .962 | .195 | .814 | .431 | **.964** | **.191** | −.147 ± .005 | +.235 | +.002 ± .001 | −.005 | −.054, −.048 | +.132, +.131 |
+| 0055 | 25 | .591 | .625 | .541 | .664 | .620 | .604 | **.623** | **.601** | .622 | .602 | +.004 ± .049 | −.003 | +.002 ± .015 | −.002 | −.022, +.065 | +.029, +.026 |
+| 0106 | 64 | .697 | .546 | **.702** | **.541** | .598 | .629 | .678 | .563 | .596 | .631 | +.079 ± .029 | −.065 | −.002 ± .010 | +.002 | −.011, −.062 | −.122, −.091 |
+| 0109 | 96 | .918 | .285 | **.933** | **.258** | .923 | .276 | .931 | .261 | .921 | .279 | +.008 ± .011 | −.015 | −.002 ± .004 | +.003 | +.013, +.006 | +.004, −.006 |
+| 0112 | 68 | .377 | .781 | .364 | .791 | .742 | .504 | **.769** | **.476** | .735 | .511 | +.027 ± .038 | −.028 | −.007 ± .014 | +.006 | +.328, +.380 | +.357, +.339 |
+| 0113 | 70 | .548 | .667 | .561 | .657 | **.754** | **.493** | .714 | .530 | .728 | .517 | −.040 ± .030 | +.037 | −.026 ± .019 | +.025 | +.151, +.134 | +.176, +.175 |
+| 0114 | 230 | .983 | .130 | .982 | .132 | **.984** | **.125** | .984 | .125 | .984 | .126 | −.000 ± .001 | +.001 | −.000 ± .000 | +.001 | −.001, +.000 | +.000, +.001 |
+| 0120 | 125 | .380 | .784 | .354 | .800 | .441 | .744 | .385 | .780 | **.443** | **.743** | −.057 ± .041 | +.036 | +.002 ± .015 | −.001 | −.065, +.000 | +.038, +.066 |
+| **Mean (8 sets)** | | .666 | .529 | .673 | .509 | .753 | .446 | .737 | .471 | .749 | .450 | −.016 | +.025 | −.004 | +.004 | | |
+
+- **labeled_data** was never in the M or MS pretraining pool (MS excludes it; M uses measured sets only), while all data includes it. MS 25% still matches all data there (.964 vs .962): the synthetic sources carry labeled_data. M 25% falls below raw (−.016) and .147 below all data. The seven-set rule does not cover labeled_data, so this does not change the verdict, but a measured-only encoder is not a general one.
+- **On the measured sets** M 25% swings more (0106 +.079, 0120 −.057, 0113 −.040) and MS 25% stays within .03 of all data on every set.
+
+Seen vs unseen R² of the 25% families: evaluation spectra whose sample group was (seen) or was not (unseen) in the pretraining share. Descriptive only; the groups were not chosen to balance the label distribution.
+
+| Set | M 25% seen R² (n) | M 25% unseen R² (n) | MS 25% seen R² (n) | MS 25% unseen R² (n) |
+|---|---:|---:|---:|---:|
+| 0055 | .660 (10) | .564 (15) | .640 (10) | .576 (15) |
+| 0106 | .777 (27) | .629 (37) | .732 (27) | .530 (37) |
+| 0109 | .873 (27) | .941 (69) | .857 (27) | .932 (69) |
+| 0112 | .767 (18) | .768 (50) | .634 (18) | .761 (50) |
+| 0113 | .815 (11) | .690 (59) | .793 (11) | .712 (59) |
+| 0114 | .984 (59) | .984 (171) | .982 (59) | .985 (171) |
+| 0120 | .489 (33) | .317 (92) | .441 (33) | .418 (92) |
 
 ![Measured budget](figures/training-report/fig_budget.svg)
 
