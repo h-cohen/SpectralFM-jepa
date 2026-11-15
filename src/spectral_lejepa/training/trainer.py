@@ -15,9 +15,10 @@ import torch
 import yaml
 from torch.optim.lr_scheduler import LambdaLR
 
-from ..data.loader import (PackedSpectra, SourceWeightedSampler, SpectraDataset, group_holdout, make_loader,
-                           manifest_fingerprint, packed_train_rows, read_manifest, source_mass,
-                           source_row_probs, source_rows, subsample, valid_subset)
+from ..data.loader import (BlendSpectra, PackedSpectra, SourceWeightedSampler, SpectraDataset,
+                           exclude_source_rows, group_fraction, group_holdout, make_loader, manifest_fingerprint,
+                           packed_train_rows, read_manifest, source_mask, source_mass, source_row_probs,
+                           source_rows, subsample, valid_subset)
 from ..data.perturb import check_config, perturb
 from ..models.masking import make_mask, random_mask
 from ..models.vit_1d import build_model, core_model_config
@@ -255,6 +256,12 @@ def train(cfg: dict) -> dict:
         raise ValueError("data.sources needs data.source=packed")
     if weights and dcfg["source"] != "packed":
         raise ValueError("data.source_weights needs data.source=packed")
+    fraction, excluded, blend = dcfg.get("measured_fraction"), dcfg.get("exclude_sources"), dcfg.get("blend")
+    if (fraction is not None or excluded or blend) and dcfg["source"] != "packed":
+        raise ValueError("data.measured_fraction, exclude_sources and blend need data.source=packed")
+    if blend and not weights:
+        raise ValueError("data.blend needs data.source_weights (measured and synthetic rows)")
+    groups_kept = None
     if dcfg["source"] == "packed":
         packed_dir = dcfg["packed_dir"]
         stats = json.loads((Path(packed_dir) / "stats.json").read_text())
@@ -266,6 +273,11 @@ def train(cfg: dict) -> dict:
             raise ValueError("data.valid_holdout needs data.sources")
         if dcfg.get("sources"):
             train_rows = source_rows(packed_dir, train_rows, dcfg["sources"])
+        if excluded:
+            train_rows = exclude_source_rows(packed_dir, train_rows, excluded)
+        if fraction is not None:   # labels never read: groups are chosen by id with a fixed seed
+            train_rows, groups_kept = group_fraction(packed_dir, train_rows, fraction,
+                                                     dcfg.get("measured_fraction_seed", 0))
         if holdout:   # validation = whole sample groups of the selected sources, never trained on
             train_rows, held_rows = group_holdout(packed_dir, train_rows, holdout, seed)
         train_rows = subsample(train_rows, dcfg["max_train_samples"], seed)
@@ -273,9 +285,19 @@ def train(cfg: dict) -> dict:
         valid_ds = PackedSpectra(packed_dir, held_rows if holdout else valid_subset(valid_rows), norm, global_stats)
         data_derived = {"packed_dir": str(packed_dir), "global_stats": global_stats,
                         "n_rows": stats["n_rows"], "n_dropped": stats["n_dropped"]}
+        if dcfg.get("sources") or excluded or fraction is not None:
+            data_derived["n_train_rows"] = int(len(train_rows))
         if dcfg.get("sources"):
             data_derived["sources"] = list(dcfg["sources"])
-            data_derived["n_train_rows"] = int(len(train_rows))
+        if excluded:
+            data_derived["exclude_sources"] = list(excluded)
+        if fraction is not None:
+            data_derived["measured_fraction"] = fraction
+            data_derived["n_measured_groups"] = int(len(groups_kept))
+        if blend:
+            measured = source_mask(packed_dir, train_rows, "labeled_regression")
+            train_ds = BlendSpectra(train_ds, measured, np.flatnonzero(~measured), blend["prob"], blend["lam_low"])
+            data_derived["blend"] = dict(blend)
         if holdout:
             data_derived["valid_holdout"] = holdout
             data_derived["n_valid_rows"] = int(len(held_rows))
@@ -330,6 +352,8 @@ def train(cfg: dict) -> dict:
     out_dir.mkdir(parents=True, exist_ok=False)
     if dcfg["source"] == "packed" and dcfg.get("valid_holdout"):
         np.save(out_dir / "valid_rows_used.npy", held_rows)
+    if groups_kept is not None:
+        np.save(out_dir / "measured_groups.npy", groups_kept)
     derived = {"derived": {
         "steps_per_epoch": steps_per_epoch, "total_steps": total_steps, "warmup_steps": warmup_steps,
         "train_samples": len(train_ds), "valid_samples": len(valid_ds),

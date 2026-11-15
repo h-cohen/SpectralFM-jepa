@@ -21,6 +21,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
 - **Studies after the candidate (2026-10-28/29, Appendices E–F):** a longer stage 1 is not warranted, because the checkpoint curve has plateaued. Set adaptation fails (per-set 3/8, pooled 4/8 vs unadapted). Pretraining on synthetic data only keeps +.019 of the +.089 ΔR² (ΔRMSE −.023 of −.083): the gain depends on pretraining on the real sets' own spectra (0112 loses .30). Nonlinear probes beat the candidate on only 2 of 7 finished sets. The candidate stands. All rules were fixed before any score.
 - **Second component (2026-11-03, Appendix G):** pooling the second spectrum of each sample into training fails the pre-registered rule (JEPA 2/7 sets, ΔR² −.029); only per-sample averaging of two predictions helps (+.027), and raw and random-weight gain as much (+.038, +.042), so it is noise averaging, not JEPA features.
 - **Ridge head (2026-11-04, Appendix H):** the linear head must be chosen inside CV, because there are 12,288 features and at most a few hundred training rows per measured set. Inner CV adds .03–.05 R² over any fixed head; plain least squares collapses (0120: −.34). Tuning λ by CV also lifts raw above a fixed average of ridges (our approximation of the client's method): .666 vs .595, 7/8.
+- **Measured-data budget (2026-11-15, Appendix J):** 6.25% of the measured sample groups (748 of 11,873) matches all-data pretraining on the seven measured sets, with or without synthetic data. At 1.5% both fail the pre-registered rule; synthetic data never substitutes for measured spectra, and blending the two costs .04 mean R².
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -241,6 +242,7 @@ flowchart TB
 | Set adaptation (10-28) | Short continued pretraining on each set's own spectra (Appendix E2) | vs the unadapted four: per-set 3/8, −.0003; pooled 4/8, +.002 | Neither passes; not run in the mix |
 | Synthetic-only (10-29) | Pretrain without any real spectrum (Appendix F) | Four-seed ensemble +.019 vs raw against +.089 for all data; 0112 −.303, 0113 −.162, 0109 −.074 | Gain depends on the real spectra (4/7 sets more than .03 below) |
 | Second component (11-03) | Train the ridge on comp0+1 (twice the rows); test on comp0, on 0+1, or averaged per sample (Appendix G) | JEPA train 0+1, test 0: 2/7, −.029; train 0+1, test 0+1: 3/7, −.017; per-sample average +.027 (raw +.038, random +.042) | Pooling fails; averaging is model-agnostic noise reduction |
+| Measured budget (11-12) | Pretrain on 100/25/6.25/1.5% of the measured sample groups, alone, with synthetic, or blended (Appendix J) | f* = 6.25% for measured only (+.006 vs all) and with synthetic (+.000, 7/7); 1.5% fails both; blend −.04 | 6.25% of the measured groups suffices; synthetic does not substitute |
 
 ### Input normalization
 
@@ -1176,6 +1178,66 @@ Random is the 249k measured family's random-weight control, fused the same way. 
 **Not tested.** An early stop followed by a short cooldown of the learning rate; measured-only stage 2.
 
 **Reproduce.** `ops/launch_measured_only.sh` (`MO_CONFIG`, `MO_TAG`, `MO_OUT`), `ops/measured_only_verdict.py` (`--dir <fusion> --figures`). Outputs: `outputs/measured-only/` (249k), `outputs/measured-only-2x/` (early stop), `outputs/measured-only-2x-full/` (full decay; `ens/`, `verdict.json`, `ens.sh`); W&B groups `measured-only`, `measured-only-2x`, `measured-only-2x-full`.
+
+## Appendix J. Measured-data budget (2026-11-12/15)
+
+**Bottom line.** Pretraining needs only a small share of the measured spectra. With 6.25% of the measured sample groups (748 of 11,873), both measured-only and measured + synthetic pretraining match the all-data family on the seven measured sets. At 1.5% (183 groups) both fail the pre-registered rule, for different reasons. Synthetic data never substitutes for measured data. Blending measured with synthetic spectra hurts, by about .04 mean R².
+
+**Runs.** Stage 1, 248,995 steps with the full cosine decay, `checkpoint_last.pt` scored, no validation holdout and no early stopping. The measured share f is chosen by sample group, per set, nested (each smaller share is a subset of the larger), with a fixed selection seed 0 independent of the training seed. Labels are never read. Three arms, decided before scoring:
+- **M, measured only** (`configs/budget_m.yaml`): f ∈ {100%, 25%, 6.25%, 1.5%}.
+- **MS, measured + synthetic** (`configs/budget_ms.yaml`): sampling mass .5 measured, .5 synthetic; labeled_data excluded. f ∈ {25%, 6.25%, 1.5%}; at 100% the reference is the all-data family (nr_s107/108, 497,990 steps, includes labeled_data).
+- **MX, blend** (`configs/budget_mx.yaml`): MS, plus with probability .5 a measured draw becomes λ·measured + (1−λ)·synthetic, λ ~ U(.5, 1). f ∈ {6.25%, 1.5%}.
+
+Seeds 107/108 for every family. MS at 1.5% was within .005 of the mean bar, so seeds 109/110 were added for it alone, as the rule required; its numbers below are the four-seed family.
+
+**Evaluation.** As in Appendix I: every member scored with nested CV (12 linear recipes, block-2 flat), then one `ensemble --stack --no-stack-heads --mix-groups` fusion of ten families on the seven measured sets, paired folds. labeled_data is excluded, as in Appendix I. RMSE is in label-SD units.
+
+| Family | f | mean R² | mean RMSE | mean ΔR² vs raw | − all (mean) | sets ≥ −.01 | pass |
+|---|---:|---:|---:|---:|---:|---:|:---:|
+| raw | | .642 | .546 | | | | |
+| random | | .634 | .549 | −.008 | | | |
+| all data (MS 100%) | 100% | .723 | .482 | +.081 | 0 | 7/7 | ✔ |
+| M | 100% | .728 | .476 | +.086 | +.005 | 5/7 | ✔ |
+| M | 25% | .726 | .477 | +.084 | +.003 | 5/7 | ✔ |
+| M | 6.25% | .730 | .478 | +.088 | +.006 | 5/7 | ✔ |
+| M | 1.5% | **.735** | **.471** | **+.093** | +.012 | 4/7 | ✘ |
+| MS | 25% | .719 | .487 | +.077 | −.005 | 6/7 | ✔ |
+| MS | 6.25% | .724 | .481 | +.082 | +.000 | 7/7 | ✔ |
+| MS (4 seeds) | 1.5% | .713 | .491 | +.071 | −.010 | 5/7 | ✘ |
+| MX | 6.25% | .683 | .516 | +.041 | −.040 | 4/7 | ✘ |
+| MX | 1.5% | .679 | .519 | +.037 | −.044 | 4/7 | ✘ |
+
+Family − all data, ΔR² ± bootstrap SD per set:
+
+| Set | n | M 100% | M 25% | M 6.25% | M 1.5% | MS 25% | MS 6.25% | MS 1.5% | MX 6.25% | MX 1.5% |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | +.026 ± .049 | +.004 ± .049 | +.028 ± .045 | +.061 ± .035 | +.002 ± .015 | −.001 ± .020 | −.013 ± .025 | +.002 ± .037 | +.023 ± .038 |
+| 0106 | 64 | +.054 ± .032 | +.079 ± .029 | +.080 ± .028 | +.098 ± .033 | −.002 ± .010 | +.006 ± .013 | −.009 ± .011 | +.057 ± .020 | +.048 ± .021 |
+| 0109 | 96 | +.002 ± .012 | +.008 ± .011 | +.003 ± .012 | +.007 ± .012 | −.002 ± .004 | +.002 ± .004 | +.002 ± .003 | +.001 ± .006 | −.003 ± .006 |
+| 0112 | 68 | −.011 ± .040 | +.027 ± .038 | −.054 ± .048 | −.026 ± .042 | −.007 ± .014 | −.008 ± .013 | −.047 ± .027 | −.217 ± .070 | −.233 ± .071 |
+| 0113 | 70 | +.004 ± .019 | −.040 ± .030 | −.011 ± .021 | −.043 ± .034 | −.026 ± .019 | +.003 ± .009 | −.007 ± .009 | −.089 ± .023 | −.097 ± .021 |
+| 0114 | 230 | +.001 ± .001 | −.000 ± .001 | −.001 ± .001 | +.002 ± .001 | −.000 ± .000 | +.000 ± .000 | +.000 ± .000 | −.000 ± .000 | −.001 ± .000 |
+| 0120 | 125 | −.041 ± .043 | −.057 ± .041 | +.000 ± .038 | −.018 ± .043 | +.002 ± .015 | +.001 ± .011 | +.002 ± .014 | −.034 ± .014 | −.043 ± .015 |
+
+Per-set R² and RMSE of every family, with raw and random, are in `outputs/measured-budget/verdict4.json`.
+
+![Measured budget](figures/training-report/fig_budget.svg)
+
+**Figure J1.** Mean ΔR² vs raw over the seven measured sets against the measured share used in pretraining, per arm; dashed line: all data.
+
+**Reading.**
+- **Rule outcome (fixed before results):** an arm passes at f if family − all ≥ −.01 on ≥ 5/7 sets and the mean is ≥ −.01; f* is the smallest passing f. f* = 6.25% for M and for MS; MX passes nowhere. "Synthetic substitutes" (MS passes where M fails, f < 100%) is false. "Blend helps" (MX − MS > 0 on ≥ 5/7, mean ≥ +.01) is false at both shares: −.041 (2/7) at 6.25%, −.034 (2/7) at 1.5%.
+- **1.5%:** M has the best mean of all families (+.012 vs all data) but falls more than .01 below on 0112, 0113 and 0120. MS with four seeds has 5/7 within .01 but a mean of −.0103, missing the bar by .0003, mostly from 0112 (−.047). Both are near the edge; neither passes.
+- **Synthetic data narrows the spread, not the mean.** MS families vary less across sets than M (SDs about a third as large) but carry the all-data drop on 0106 (−.10 vs raw). M gains .05–.10 there at every share.
+- **The blend** costs .22 on 0112 and .09 on 0113. Interpolated spectra are not a usable augmentation for this encoder.
+- **Seen vs unseen** (descriptive, evaluation spectra whose sample group was or was not in pretraining): at 6.25% and 25% most evaluation spectra are unseen, and unseen R² stays close to the 100% family on most sets. Seen counts at 1.5% are 1–5 spectra per set, too few to read. Full split in `verdict4.json` (`seen`).
+- **M 100% at 249k** reproduces Appendix I's 249k arm (+.005 vs all here, +.009 there) without the validation holdout.
+
+**Caveats.** Two seeds per family (four for MS 1.5%); per-set SDs of .03–.05 on 0055, 0112 and 0120 are as large as most differences. The share is of sample groups, not of spectra, and the smallest share keeps at least one group per set. All rules are relative to the all-data family, which itself is .1 below raw on 0106.
+
+**Not tested.** Leaving whole measured sets out of pretraining (planned as a separate study); shares between 1.5% and 6.25%; stage 2 on reduced data.
+
+**Reproduce.** `ops/launch_budget.sh` (`--only NAME` for single runs), then `outputs/measured-budget/eval.sh`, `ens4.sh` (four seeds for MS 1.5%; `ens.sh` is the two-seed fusion) and `ops/budget_verdict.py --dir <fusion> --runs outputs/measured-budget --bank-groups outputs/measured-budget/bank_groups.json`. `ops/budget_seen.py` builds `bank_groups.json`. Outputs in `outputs/measured-budget/` (`ens4/`, `verdict4.json`, `verdict4.log`); W&B group `measured-budget`.
 
 ## References
 
