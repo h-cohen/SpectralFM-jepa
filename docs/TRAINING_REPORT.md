@@ -22,6 +22,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
 - **Second component (2026-11-03, Appendix G):** pooling the second spectrum of each sample into training fails the pre-registered rule (JEPA 2/7 sets, ΔR² −.029); only per-sample averaging of two predictions helps (+.027), and raw and random-weight gain as much (+.038, +.042), so it is noise averaging, not JEPA features.
 - **Ridge head (2026-11-04, Appendix H):** the linear head must be chosen inside CV, because there are 12,288 features and at most a few hundred training rows per measured set. Inner CV adds .03–.05 R² over any fixed head; plain least squares collapses (0120: −.34). Tuning λ by CV also lifts raw above a fixed average of ridges (our approximation of the client's method): .666 vs .595, 7/8.
 - **Measured-data budget (2026-11-15, Appendix J):** 6.25% of the measured sample groups (748 of 11,873) matches all-data pretraining on the seven measured sets, with or without synthetic data. At 1.5% both fail the pre-registered rule; synthetic data never substitutes for measured spectra, and blending the two costs .04 mean R². On labeled_data, which neither arm saw, measured-only 25% falls below raw while measured + synthetic 25% matches all data.
+- **Joined components (2026-11-16, Appendix K):** joining each sample's component features into one vector lifts every method (two components: measured-only LeJEPA .711 → .786, MiniRocket .676 → .765, raw .638 → .738); with three components LeJEPA alone passes the rule and leads MiniRocket by +.043.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -243,6 +244,7 @@ flowchart TB
 | Synthetic-only (10-29) | Pretrain without any real spectrum (Appendix F) | Four-seed ensemble +.019 vs raw against +.089 for all data; 0112 −.303, 0113 −.162, 0109 −.074 | Gain depends on the real spectra (4/7 sets more than .03 below) |
 | Second component (11-03) | Train the ridge on comp0+1 (twice the rows); test on comp0, on 0+1, or averaged per sample (Appendix G) | JEPA train 0+1, test 0: 2/7, −.029; train 0+1, test 0+1: 3/7, −.017; per-sample average +.027 (raw +.038, random +.042) | Pooling fails; averaging is model-agnostic noise reduction |
 | Measured budget (11-12) | Pretrain on 100/25/6.25/1.5% of the measured sample groups, alone, with synthetic, or blended (Appendix J) | f* = 6.25% for measured only (+.006 vs all) and with synthetic (+.000, 7/7); 1.5% fails both; blend −.04 | 6.25% of the measured groups suffices; synthetic does not substitute |
+| Joined components (11-16) | One probe on [f(comp0), f(comp1), f(comp2)] per sample, raw, MiniRocket, measured-only LeJEPA (Appendix K) | 2 comps: LeJEPA .711 → .786 (7/7), MiniRocket .676 → .765, raw .638 → .738; 3 comps: LeJEPA +.100 (5/5), raw +.016 | Joining helps every method; LeJEPA best mean, MiniRocket wins 5/7 sets with 2 comps |
 
 ### Input normalization
 
@@ -1267,6 +1269,64 @@ Seen vs unseen R² of the 25% families: evaluation spectra whose sample group wa
 **Not tested.** Leaving whole measured sets out of pretraining (planned as a separate study); shares between 1.5% and 6.25%; stage 2 on reduced data.
 
 **Reproduce.** `ops/launch_budget.sh` (`--only NAME` for single runs), then `outputs/measured-budget/eval.sh`, `ens4.sh` (four seeds for MS 1.5%; `ens.sh` is the two-seed fusion) and `ops/budget_verdict.py --dir <fusion> --runs outputs/measured-budget --bank-groups outputs/measured-budget/bank_groups.json`. `ops/budget_seen.py` builds `bank_groups.json`. Outputs in `outputs/measured-budget/` (`ens4/`, `verdict4.json`, `verdict4.log`); W&B group `measured-budget`.
+
+## Appendix K. Joining component features per sample (2026-11-16)
+
+**Bottom line.** Each measured sample has several component spectra with the same label. Passing each component through the feature map and joining the feature vectors into one vector per sample, [f(comp0) | f(comp1)], lifts every method. With two components the measured-only LeJEPA goes from .711 to .786 mean R² (7/7 sets), MiniRocket from .676 to .765 and raw from .638 to .738. LeJEPA joined has the best mean (+.048 vs raw joined, +.021 vs MiniRocket joined) but leads MiniRocket on only 2/7 sets. With three components (five sets) LeJEPA is the only arm that passes the rule (+.100, 5/5) and leads MiniRocket by +.043 on 4/5.
+
+**Setup** (spec fixed before results). `evaluate --components 0,1[,2] --concat --minirocket` (`evaluation/components.py`): one nested-CV probe (2×5 outer folds over samples, 5 inner, 12 recipes, seed 42) on the joined vector, with the same folds as the per-component probes, so every delta is paired. Arms: raw (245 values per component), random-weight control (seed-107 run), MiniRocket seed 0 (one unsupervised fit on the rows of every component, ~10k features each) and LeJEPA, the measured-only 100% encoder of Appendix J (`bm100`, 248,995 steps, block-2 flat), as the mean of seeds 107 and 108. Rule: joining helps an arm if joined − comp0 > 0 on ≥ 5 sets and the mean ΔR² ≥ +.01. labeled_data has no components and is not included. n is the number of labeled samples; "all samples" counts every sample of the set, labeled or not (the pretraining pool). RMSE in label-SD units; Δ columns with bootstrap SD.
+
+**Heavier encoder check.** Before the full run, the eight all-data stage-1 members of the candidate (non-robust family) were tried on 0112: joining lowers every member (−.003 to −.089; eight-seed mean .713 → .675), while the measured-only encoder gains (.714 → .756). Only the measured-only encoder was carried forward.
+
+**Two components** (comp0 + comp1, seven sets):
+
+| Set | n | all samples | raw comp0 R² | raw comp0 RMSE | raw concat R² | raw concat RMSE | random comp0 R² | random comp0 RMSE | random concat R² | random concat RMSE | MiniRocket comp0 R² | MiniRocket comp0 RMSE | MiniRocket concat R² | MiniRocket concat RMSE | LeJEPA comp0 R² | LeJEPA comp0 RMSE | LeJEPA concat R² | LeJEPA concat RMSE | LeJEPA joined − comp0 (± SD) | LeJEPA − raw, joined | LeJEPA − MiniRocket, joined |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | 590 | .531 | .669 | .760 | .480 | .470 | .710 | .726 | .512 | .793 | .445 | .830 | .404 | .610 | .611 | .800 | .437 | +.190 ± .141 | +.040 ± .034 | −.030 ± .047 |
+| 0106 | 64 | 3,497 | .701 | .542 | .702 | .541 | .715 | .529 | .700 | .543 | .689 | .553 | .668 | .572 | .637 | .597 | .655 | .582 | +.018 ± .011 | −.047 ± .039 | −.013 ± .046 |
+| 0109 | 96 | 844 | .918 | .285 | .952 | .218 | .934 | .255 | .950 | .222 | .905 | .306 | .897 | .319 | .922 | .278 | .927 | .268 | +.005 ± .005 | −.025 ± .010 | +.030 ± .014 |
+| 0112 | 68 | 516 | .391 | .774 | .494 | .706 | .380 | .780 | .370 | .786 | .599 | .625 | .800 | .442 | .714 | .531 | .756 | .487 | +.042 ± .042 | +.262 ± .082 | −.044 ± .034 |
+| 0113 | 70 | 1,640 | .586 | .639 | .682 | .556 | .598 | .629 | .563 | .654 | .417 | .758 | .537 | .675 | .688 | .553 | .756 | .484 | +.068 ± .026 | +.074 ± .059 | +.219 ± .049 |
+| 0114 | 230 | 585 | .983 | .129 | .984 | .127 | .983 | .129 | .984 | .124 | .985 | .121 | .988 | .110 | .985 | .121 | .986 | .120 | +.000 ± .001 | +.002 ± .001 | −.002 ± .001 |
+| 0120 | 125 | 965 | .357 | .799 | .593 | .636 | .340 | .809 | .616 | .617 | .345 | .806 | .635 | .602 | .418 | .758 | .619 | .615 | +.202 ± .054 | +.027 ± .033 | −.016 ± .031 |
+| **Mean** | | | .638 | .548 | .738 | .466 | .631 | .549 | .701 | .494 | .676 | .516 | .765 | .446 | .711 | .493 | .786 | .428 | +.075 | +.048 | +.021 |
+
+| Arm | joined − comp0, mean ΔR² | sets improved | rule |
+|---|---:|---:|:---:|
+| raw | +.100 | 7/7 | ✔ |
+| random | +.070 | 4/7 | ✘ |
+| MiniRocket | +.089 | 5/7 | ✔ |
+| LeJEPA s107 only | +.089 | 7/7 | ✔ |
+| LeJEPA | +.075 | 7/7 | ✔ |
+
+**Three components** (comp0 + comp1 + comp2). Only five sets have a comp2 spectrum for their labeled samples; 0109 and 0114 have none, and 0120 has it for 70 of 125 samples, so its rows here are those 70 (comp0 is rescored on the same rows). MiniRocket is refit on the rows of all three components, so its comp0 differs slightly from the two-component table.
+
+| Set | n | all samples | raw comp0 R² | raw comp0 RMSE | raw concat R² | raw concat RMSE | random comp0 R² | random comp0 RMSE | random concat R² | random concat RMSE | MiniRocket comp0 R² | MiniRocket comp0 RMSE | MiniRocket concat R² | MiniRocket concat RMSE | LeJEPA comp0 R² | LeJEPA comp0 RMSE | LeJEPA concat R² | LeJEPA concat RMSE | LeJEPA joined − comp0 (± SD) | LeJEPA − raw, joined | LeJEPA − MiniRocket, joined |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | 590 | .531 | .669 | .750 | .489 | .470 | .710 | .727 | .511 | .723 | .515 | .813 | .424 | .610 | .611 | .792 | .447 | +.182 ± .141 | +.042 ± .041 | −.021 ± .041 |
+| 0106 | 64 | 3,497 | .701 | .542 | .707 | .537 | .715 | .529 | .722 | .523 | .668 | .571 | .689 | .553 | .637 | .597 | .699 | .545 | +.061 ± .030 | −.008 ± .034 | +.009 ± .030 |
+| 0112 | 68 | 516 | .391 | .774 | .469 | .721 | .380 | .780 | .556 | .657 | .639 | .595 | .796 | .447 | .714 | .531 | .817 | .424 | +.103 ± .049 | +.347 ± .092 | +.021 ± .032 |
+| 0113 | 70 | 1,640 | .586 | .639 | .348 | .780 | .598 | .629 | .526 | .679 | .424 | .753 | .626 | .607 | .688 | .553 | .793 | .451 | +.105 ± .068 | +.445 ± .177 | +.167 ± .064 |
+| 0120 | 70 | 965 | .641 | .509 | .656 | .498 | .638 | .511 | .639 | .510 | .671 | .487 | .664 | .492 | .654 | .499 | .702 | .464 | +.048 ± .051 | +.046 ± .041 | +.038 ± .031 |
+| **Mean** | | | .570 | .627 | .586 | .605 | .560 | .632 | .634 | .576 | .625 | .584 | .718 | .504 | .661 | .558 | .760 | .466 | +.100 | +.174 | +.043 |
+
+| Arm | joined − comp0, mean ΔR² | sets improved | rule |
+|---|---:|---:|:---:|
+| raw | +.016 | 4/5 | ✘ |
+| random | +.074 | 4/5 | ✘ |
+| MiniRocket | +.093 | 4/5 | ✘ |
+| LeJEPA s107 only | +.117 | 5/5 | ✔ |
+| LeJEPA | +.100 | 5/5 | ✔ |
+
+**Reading.**
+- **Joining is the lever, not the encoder:** raw gains +.100 with two components, close to LeJEPA's +.075; the random control gains too but fails the rule (4/7). The second component carries label information that a probe on comp0 alone cannot see.
+- **The encoder matters more with more components:** with three components raw falls back (+.016, 4/5; 0113 .586 → .348, the 735-value vector overfits 70 samples), MiniRocket gains +.093 on 4/5, LeJEPA gains on all five. On the four sets with all labeled samples in both runs, LeJEPA joined rises from two to three components on 0106 (.655 → .699), 0112 (.756 → .817) and 0113 (.756 → .793) and stays level on 0055 (.800 → .792).
+- **Single encoder:** seed 107 alone matches the two-seed mean (two components .786 vs .786; three .754 vs .760).
+- **Measured-only vs all-data encoders:** on 0112 the all-data members lose from joining and the measured-only one gains; Appendix J already showed the two families equal on comp0.
+
+**Not tested.** More than three components; averaging per-component predictions instead of joining features (Appendix G's averaging gained +.027 with the all-data encoder); joining on labeled_data.
+
+**Reproduce.** Outputs in `outputs/component-concat/` (two components), `outputs/component-concat-3c/` (three; `eval_3c.yaml` lists the five sets) and `outputs/component-concat-nr/` (0112 check, `run.sh`), each with `summary.json`; `ops/report_concat.py --dir <dir> [--sets ...]` recomputes every number without refitting.
 
 ## References
 
