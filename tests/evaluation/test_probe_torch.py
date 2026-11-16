@@ -91,3 +91,12 @@ def test_ols_own_decomposition_matches_sklearn(n, d):
     got = (torch.as_tensor(X_te, device=DEVICE).double() @ m["coef"] + m["intercept"]).cpu().numpy()
     ref = probe.fit_predict(X_tr, y_tr, X_te, "ols", 7)
     assert np.max(np.abs(got - ref)) / np.std(y_tr) < 1e-4
+
+
+def test_ridge_gcv_returns_loo_error_per_alpha():
+    """loo_mse[i]: mean squared leave-one-out error at ALPHAS[i]; the chosen alpha is its first minimum."""
+    X_tr, y_tr, _ = problem(40, 120, seed=5)
+    fit = probe_torch.ridge_gcv(torch.as_tensor(X_tr, device=DEVICE), torch.as_tensor(y_tr, device=DEVICE))
+    loo = np.asarray(fit["loo_mse"])
+    assert loo.shape == (20,) and (loo > 0).all()
+    assert fit["alpha"] == probe_torch.ALPHAS[int(np.argmin(loo))]

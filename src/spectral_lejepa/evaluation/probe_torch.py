@@ -131,7 +131,8 @@ def _decompose(X, intercept=True):
 
 def ridge_gcv(X, y, dec=None):
     """_RidgeGCV.fit (fit_intercept, no sample weights, scoring=None) for every alpha at once.
-    X: [n, p] (float32 values), y: [n] float64. Returns {coef, intercept, alpha}."""
+    X: [n, p] (float32 values), y: [n] float64. Returns {coef, intercept, alpha, loo_mse} (loo_mse:
+    mean squared leave-one-out error per ALPHAS entry)."""
     X = X.to(F64)
     y = torch.as_tensor(y, device=X.device).to(F64)
     dec = dec or _decompose(X)
@@ -156,7 +157,8 @@ def ridge_gcv(X, y, dec=None):
         if scores[i] > scores[best]:
             best = i
     coef = dec["Xc"].T @ c[:, best]
-    return {"coef": coef, "intercept": y_off - dec["x_off"] @ coef, "alpha": float(ALPHAS[best])}
+    return {"coef": coef, "intercept": y_off - dec["x_off"] @ coef, "alpha": float(ALPHAS[best]),
+            "loo_mse": -scores}
 
 
 def ols(X, y, dec=None):
