@@ -63,3 +63,41 @@ def test_run_study_writes_json_and_npz(tmp_path):
     assert "r2" in out["deltas_vs_comp0"]["jepa"]["comp1"]
     z = np.load(tmp_path / "out" / "components_oof.npz")
     assert z["jepa__pooled_avg"].shape == (2, 30) and z["y"].shape == (30,)
+
+
+def test_concat_joins_component_features_per_sample():
+    """y needs one feature from each component: the concatenated probe beats either component alone."""
+    rng = np.random.default_rng(3)
+    n, d = 80, 6
+    A, B = rng.normal(size=(n, d)).astype(np.float32), rng.normal(size=(n, d)).astype(np.float32)
+    y = A[:, 0] + B[:, 0] + 0.05 * rng.normal(size=n)
+    res = cp.run_components({"raw": {0: A, 1: B}}, y, n_repeats=1, n_folds=5, n_inner=3, seed=1,
+                            pooled=False, concat=True)
+    s = {k: v["r2_mean"] for k, v in res["scores"]["raw"].items()}
+    assert set(s) == {"comp0", "comp1", "concat"}
+    assert s["concat"] > s["comp0"] + .3 and s["concat"] > s["comp1"] + .3
+    assert res["deltas_vs_comp0"]["raw"]["concat"]["r2"]["delta"] > 0
+    assert res["protocol"]["concat"] is True
+
+
+def test_concat_leaves_single_component_predictions_unchanged():
+    comps, y = toy(n=40)
+    a = cp.run_components({"raw": comps}, y, n_repeats=1, n_folds=4, n_inner=3, seed=2, pooled=False)
+    b = cp.run_components({"raw": comps}, y, n_repeats=1, n_folds=4, n_inner=3, seed=2, pooled=False, concat=True)
+    np.testing.assert_array_equal(a["oof"]["raw"]["comp0"], b["oof"]["raw"]["comp0"])
+
+
+def test_minirocket_features_fit_once_on_every_component(monkeypatch):
+    """One MiniRocket fit on the rows of all components (unsupervised), split back per component."""
+    from spectral_lejepa.evaluation import benchmark
+    calls = []
+
+    def fake(kind, x, seed=0, n_jobs=8):
+        calls.append((kind, len(x), seed))
+        return np.asarray(x, np.float32)[:, :4] * 2
+    monkeypatch.setattr(benchmark, "features", fake)
+    raw = np.arange(6 * 5, dtype=np.float32).reshape(6, 5)
+    comp = np.array([0, 0, 0, 1, 1, 1])
+    out = cp.minirocket_components(raw, comp, (0, 1))
+    assert calls == [("minirocket", 6, 0)]
+    np.testing.assert_array_equal(out[1], raw[3:, :4] * 2)

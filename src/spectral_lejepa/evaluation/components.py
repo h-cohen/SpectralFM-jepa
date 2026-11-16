@@ -5,7 +5,8 @@ feature set (raw input, random-weight control, JEPA block-2 flat):
 - `comp{c}`: the nested-CV probe on component c alone (comp0 is the usual baseline);
 - `pooled_*`: one probe trained on the rows of every component; its held-out predictions are scored
   on component c rows (`pooled_comp{c}`) and as the per-sample mean over components (`pooled_avg`,
-  against the sample label).
+  against the sample label);
+- `concat`: one probe on each sample's component features joined into one vector [X_c0 | X_c1 | ...].
 Every arm uses the same outer folds over samples (KFold, shuffle, random_state=seed+r, as in
 nested.nested_cv) and inner folds that keep a sample's rows together, so out-of-fold predictions are
 paired per sample and paired_delta applies.
@@ -57,7 +58,7 @@ def _fold(arms, pooled_arms, y, tr, te, n_inner, seed, backend, recipes, device=
 
 
 def run_components(arms, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, pooled=True, n_jobs=1,
-                   backend="sklearn", device=None, recipes=RECIPES):
+                   backend="sklearn", device=None, recipes=RECIPES, concat=False):
     """arms {name: {component: X [n, d]}}, y [n] (the sample labels, rows aligned across components).
     Returns {"scores": {name: {score: {r2_mean, rmse_mean, ..., bootstrap_sd}}},
              "oof": {name: {score: [R, n]}}, "deltas_vs_comp0": {name: {score: {"r2": ..., "rmse": ...}}},
@@ -66,6 +67,9 @@ def run_components(arms, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, pooled=T
     n = len(y)
     comps = sorted(next(iter(arms.values())))
     single = {f"{a}|comp{c}": np.asarray(X[c], np.float32) for a, X in arms.items() for c in comps}
+    if concat:
+        single |= {f"{a}|concat": np.concatenate([np.asarray(X[c], np.float32) for c in comps], axis=1)
+                   for a, X in arms.items()}
     pool = ({f"{a}|pool": np.concatenate([np.asarray(X[c], np.float32) for c in comps]) for a, X in arms.items()}
             if pooled and len(comps) > 1 else {})
     jobs = [(r, f, tr, te) for r in range(n_repeats)
@@ -85,6 +89,8 @@ def run_components(arms, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, pooled=T
     for a in arms:
         for c in comps:
             oof[a][f"comp{c}"] = np.zeros((n_repeats, n))
+        if concat:
+            oof[a]["concat"] = np.zeros((n_repeats, n))
         if pool:
             for c in comps:
                 oof[a][f"pooled_comp{c}"] = np.zeros((n_repeats, n))
@@ -95,6 +101,8 @@ def run_components(arms, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, pooled=T
         for a in arms:
             for c in comps:
                 oof[a][f"comp{c}"][r, te] = out[f"{a}|comp{c}"]
+            if concat:
+                oof[a]["concat"][r, te] = out[f"{a}|concat"]
             if pool:
                 P = out[f"{a}|pool"].reshape(len(comps), len(te))      # row k = component comps[k] of te
                 for k, c in enumerate(comps):
@@ -110,7 +118,7 @@ def run_components(arms, y, n_repeats=2, n_folds=5, n_inner=5, seed=42, pooled=T
                      for s, P in by_score.items() if s != "comp0"}
     return {"scores": scores, "oof": oof, "deltas_vs_comp0": deltas, "test_folds": test_folds,
             "protocol": {"n": n, "n_repeats": n_repeats, "n_folds": n_folds, "n_inner": n_inner, "seed": seed,
-                         "components": comps, "pooled": bool(pool), "recipes": [f"{a}+{b}" for a, b in recipes]}}
+                         "components": comps, "pooled": bool(pool), "concat": bool(concat), "recipes": [f"{a}+{b}" for a, b in recipes]}}
 
 
 def study_json(res, arm_names):
@@ -126,9 +134,19 @@ def oof_payload(res, y):
             **{f"{a}__{s}": P for a, by in res["oof"].items() for s, P in by.items()}}
 
 
-def run_study(model, random_model, ckpt_cfg, name, set_dirs, components, pooled, vcfg, seed, out_dir, probe, model_input):
+def minirocket_components(raw, comp, components, kernel_seed=0):
+    """MiniRocket features {component: [n, F]}: one unsupervised fit on the rows of every component, so all
+    components share the kernels and bias quantiles."""
+    from . import benchmark
+    X = benchmark.features("minirocket", raw, kernel_seed)
+    return {c: X[comp == c] for c in components}
+
+
+def run_study(model, random_model, ckpt_cfg, name, set_dirs, components, pooled, vcfg, seed, out_dir, probe, model_input,
+              concat=False, minirocket=False):
     """One label set: block-2 flat features of the model and the random-weight control, plus the raw
-    spectra, on every requested component; writes results_components.json and components_oof.npz."""
+    spectra (and MiniRocket seed 0 features), on every requested component; writes results_components.json
+    and components_oof.npz."""
     from pathlib import Path
     from .bank import extract_bank
     from .data import load_labeled_components
@@ -146,7 +164,9 @@ def run_study(model, random_model, ckpt_cfg, name, set_dirs, components, pooled,
         bank = extract_bank(backbone, model_input(raw, ckpt_cfg), device=vcfg["device"], batch_size=vcfg["batch_size"],
                             readouts=("flat",), flat_blocks=[2])["layer2/flat"]
         arms[arm] = {c: bank[comp == c] for c in components}
-    res = run_components(arms, y, seed=seed, pooled=pooled, **probe)
+    if minirocket:
+        arms["minirocket"] = minirocket_components(raw, comp, components)
+    res = run_components(arms, y, seed=seed, pooled=pooled, concat=concat, **probe)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     write_json(out_dir / "results_components.json", study_json(res, list(arms)))

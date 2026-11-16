@@ -98,11 +98,14 @@ def main(argv=None):
                     help="probe: nested-CV label probes; embedding: previous-project similarity and noise metrics")
     ap.add_argument("--config", default="configs/eval.yaml")
     ap.add_argument("--minirocket", action="store_true",
-                    help="probe suite: add the MiniRocket baseline (seed 0, same folds) per set")
+                    help="probe suite: add the MiniRocket baseline (seed 0, same folds) per set; with --components, "
+                    "a MiniRocket arm per component")
     ap.add_argument("--components", help="comma-separated component ids, e.g. 0,1: run the component study "
                     "(block-2 flat, raw and random controls per component) instead of the probe suite")
     ap.add_argument("--pooled", action="store_true",
                     help="with --components: also train one probe on the rows of every component")
+    ap.add_argument("--concat", action="store_true",
+                    help="with --components: also probe each sample's component features joined into one vector")
     ap.add_argument("overrides", nargs="*")
     a = ap.parse_args(argv)
     if a.suite == "embedding":
@@ -161,7 +164,7 @@ def main(argv=None):
         comps = tuple(int(c) for c in a.components.split(","))
         for name, dirs in cfg["label_sets"].items():
             res = run_study(backbone, random_backbone, ckpt["config"], name, dirs, comps, a.pooled, vcfg, seed,
-                            out_root / name, probe, model_input)
+                            out_root / name, probe, model_input, concat=a.concat, minirocket=a.minirocket)
             print(f"[components] {name}: " + ", ".join(
                 f"{arm} {s} R2 {v['r2_mean']:.4f}" for arm, by in res["scores"].items() if arm == "jepa"
                 for s, v in by.items()))
