@@ -1131,9 +1131,35 @@ RMSE is in label-SD units (labels are z-scored per set). Bold marks the best col
 - **With a fixed head, JEPA's gain does not pass the pre-registered rule.** With the fixed ridge average on both sides, JEPA beats raw on 5/8 sets (+.061 ± .032; the rule needed 6/8). JEPA with the fixed head still beats client-style raw on 6/8 (rule: 5/8, passes).
 - **For the client:** choosing λ inside CV on raw spectra alone should gain about .07 R² over averaging a fixed set of ridges, if our approximation matches their method.
 
-**Not tested.** A fixed ridge average limited to λ ≥ 1, which might remove the 0120 collapse without any choice.
+**λ actually chosen for the measured-only encoder (added 2026-11-16).** The penalties behind the main measured-only results (Appendix J `bm100`, seeds 107 and 108; 2 seeds × 2 repeats × 5 outer folds = 20 choices per set and arm). The evaluation records only the winning recipe per outer fold, so each winning recipe was refit on its fold's training rows to recover the λ RidgeCV picked by leave-one-out error; every refit reproduces the stored out-of-fold prediction exactly (largest gap 0). "ridge / LS" counts outer folds won by ridge and by plain least squares. λ is on the scale of the chosen normalizer (none, standardize or PCA-whiten), so values are comparable within a set and arm only when the normalizer is the same.
 
-**Reproduce.** `configs/eval_ridge_study.yaml` (`evaluation.fixed_heads`, `evaluation.log_alpha`), `evaluation/ridge_heads.py`, `ops/ridge_audit.py`. Outputs and per-set analysis: `outputs/ridge-study/` (`analysis.json`).
+| Set | training rows | dim (raw / LeJEPA) | raw: ridge / LS | raw λ median (range) | LeJEPA: ridge / LS | LeJEPA λ median (range) | LeJEPA λ at 1000 | random: ridge / LS | random λ median (range) |
+|---|---:|---|---:|---|---:|---|---:|---:|---|
+| labeled_data | 3773 | 245 / 12,288 | 14 / 6 | 26.4 (26.4–26.4) | 20 / 0 | 2.98 (0.336–6.16) | 0/20 | 18 / 2 | 113 (54.6–113) |
+| 0055 | 20 | 245 / 12,288 | 18 / 2 | 0.00207 (0.001–2.98) | 11 / 9 | 1e+03 (2.98–1e+03) | 6/11 | 18 / 2 | 1.44 (0.0379–1e+03) |
+| 0106 | 51 | 245 / 12,288 | 16 / 4 | 0.12 (0.0183–234) | 9 / 11 | 1e+03 (54.6–1e+03) | 6/9 | 18 / 2 | 6.16 (1.44–1e+03) |
+| 0109 | 77 | 245 / 12,288 | 10 / 10 | 1.44 (0.0183–2.98) | 17 / 3 | 0.695 (0.336–54.6) | 0/17 | 20 / 0 | 0.001 (0.001–6.16) |
+| 0112 | 54 | 245 / 12,288 | 12 / 8 | 12.7 (6.16–12.7) | 7 / 13 | 26.4 (1.44–234) | 0/7 | 12 / 8 | 9.45 (6.16–26.4) |
+| 0113 | 56 | 245 / 12,288 | 18 / 2 | 6.16 (0.001–26.4) | 14 / 6 | 54.6 (2.98–234) | 0/14 | 20 / 0 | 9.45 (0.0183–234) |
+| 0114 | 184 | 245 / 12,288 | 20 / 0 | 0.0785 (0.0183–12.7) | 17 / 3 | 113 (6.16–1e+03) | 2/17 | 18 / 2 | 6.16 (0.00886–1e+03) |
+| 0120 | 100 | 245 / 12,288 | 20 / 0 | 19.6 (0.0785–26.4) | 19 / 1 | 26.4 (2.98–483) | 0/19 | 20 / 0 | 12.7 (12.7–26.4) |
+
+![Chosen λ](figures/training-report/fig_ridge_lambda.svg)
+
+**Figure H2.** λ chosen in every outer fold, per set and arm (2 seeds × 2 repeats × 5 folds). Folds won by plain least squares are drawn at the right.
+
+![LOO curves](figures/training-report/fig_ridge_lambda_curves.svg)
+
+**Figure H3.** Leave-one-out error of the LeJEPA arm over the 20 λ values, one line per outer fold (seed 107; error divided by its minimum); dots mark the λ chosen where ridge won. The title gives the normalizer when all folds share one.
+
+- **LeJEPA needs much more shrinkage than raw on the small sets:** median λ 26–1000 on 0055, 0106, 0112, 0113, 0114 and 0120, against .002–20 for raw. On 0055 and 0106 the LOO curve is still falling at λ = 1000 in 6 of the ridge folds, so the grid's upper edge binds there (6 ridge folds on each).
+- **Plain least squares wins often for LeJEPA on the smallest sets** (0055 9/20, 0106 11/20, 0112 13/20). With 12,288 features and 20–54 training rows, the minimum-norm least-squares fit is itself a strong implicit shrinkage, and inner CV cannot separate it from a large λ.
+- **On labeled_data** (3,773 training rows) LeJEPA always picks ridge with standardize and λ .34–6.2: with enough rows the curve has a clear interior minimum.
+- **No single λ fits every set,** which is why the fixed ridge average in the table above loses .05 R².
+
+**Not tested.** A fixed ridge average limited to λ ≥ 1, which might remove the 0120 collapse without any choice; a λ grid above 1000 for the small sets.
+
+**Reproduce.** `configs/eval_ridge_study.yaml` (`evaluation.fixed_heads`, `evaluation.log_alpha`), `evaluation/ridge_heads.py`, `ops/ridge_audit.py`. Outputs and per-set analysis: `outputs/ridge-study/` (`analysis.json`). Chosen λ of the measured-only encoder: `ops/ridge_lambda.py`, outputs `outputs/ridge-lambda/` (`lambdas.json`, `summary.json`).
 
 ## Appendix I. Pretraining on measured data only (2026-11-03/06)
 
