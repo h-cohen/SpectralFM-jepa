@@ -52,6 +52,7 @@
 - **MiniRocket baseline (opt-in, done 2026-11-03):** `--minirocket` on `evaluate` or `ensemble --stack` adds MiniRocket seed 0 on the same folds; `ensemble --stack --minirocket-only --output-dir D` adds it to an existing fusion without refitting members.
   - Code: `benchmark.minirocket_arm` (refits raw in the same call, raises if raw OOFs differ) and `benchmark.add_minirocket` (adds `minirocket` to `fusion_oof.npz`, `minirocket_vs_raw` and `<arm>_vs_minirocket` to `fusion.json`). `evaluate` writes `<set>/minirocket_oof.npz` and `summary.minirocket`.
   - Candidate result: `outputs/accuracy-ensemble/mix_minirocket/` (copy of `mix/`; script `run_mix_minirocket.sh`). MiniRocket vs raw +.013 (4/8); mix vs MiniRocket +.082 (5/8), loses only 0055/0106/0114 within noise. Report section 1 table.
+- **Standalone raw baseline:** `ops/raw_baseline.py --data-root <nova_data> [--components 0|0,1|0,1,2] [--fraction F]`, one file (sklearn, CPU) for on-prem use; reproduces the report's raw R² (OOF gap ≤ 6e-4 vs the torch backend). `--fraction` keeps a seeded share of each set's labeled samples.
 - **Perturbation robustness:** `python -m spectral_lejepa robustness --checkpoint C --output P.json`. Block-2 drift and fixed-ridge R² under noise, offset, slope, scale, shift and a sinusoid.
 - **Embedding suite:** `python -m spectral_lejepa evaluate --suite embedding --config configs/eval_embedding.yaml`, then `embedding-figures`.
   - Runs the previous project's cosine-similarity and noise metrics from its pinned commit (`evaluation/legacy.py`).
