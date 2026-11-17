@@ -15,7 +15,7 @@ import torch
 import yaml
 from torch.optim.lr_scheduler import LambdaLR
 
-from ..data.loader import (BlendSpectra, PackedSpectra, SourceWeightedSampler, SpectraDataset,
+from ..data.loader import (BlendSpectra, MultiChannelSpectra, PackedSpectra, SourceWeightedSampler, SpectraDataset,
                            exclude_source_rows, group_fraction, group_holdout, make_loader, manifest_fingerprint,
                            packed_train_rows, read_manifest, source_mask, source_mass, source_row_probs,
                            source_rows, subsample, valid_subset)
@@ -152,7 +152,7 @@ def run_diagnostics(run, model, valid_signals, masking_cfg, step, seed, device, 
         masked_idx, _ = make_mask(masking_cfg, 4, len(model.tokenizer.bounds),
                                     torch.Generator().manual_seed(seed + 3 + step))
         wb.log_figure(run, "masking/examples", diag.masking_figure(
-            valid_signals[:4].numpy(), model.tokenizer.bounds, masked_idx.numpy()), step)
+            (valid_signals[:4] if valid_signals.dim() == 2 else valid_signals[:4, 0]).nan_to_num().numpy(), model.tokenizer.bounds, masked_idx.numpy()), step)
     return metrics, reference_rank
 
 
@@ -313,8 +313,17 @@ def train(cfg: dict) -> dict:
         valid_ds = SpectraDataset(read_manifest(valid_manifest), norm)
         data_derived = {"train_manifest": manifest_fingerprint(train_manifest),
                         "valid_manifest": manifest_fingerprint(valid_manifest)}
+    elif dcfg["source"] == "multichannel":   # one [C, 245] input per measured sample (ops/build_multichannel.py)
+        mc_dir = dcfg["multichannel_dir"]
+        n = len(np.load(Path(mc_dir) / "signals.npy", mmap_mode="r"))
+        train_rows = subsample(np.arange(n), dcfg["max_train_samples"], seed)
+        train_ds = MultiChannelSpectra(mc_dir, train_rows, dcfg.get("channel_drop", 0.0))
+        valid_ds = MultiChannelSpectra(mc_dir, valid_subset(np.arange(n), 512))   # monitoring only (trained on too)
+        mc_stats = json.loads((Path(mc_dir) / "stats.json").read_text())
+        data_derived = {"multichannel_dir": str(mc_dir), "channel_stats": {k: mc_stats[k] for k in ("mean", "std")},
+                        "n_train_rows": int(len(train_rows)), "channel_drop": dcfg.get("channel_drop", 0.0)}
     else:
-        raise ValueError(f"data.source={dcfg['source']!r}: use 'manifests' or 'packed'")
+        raise ValueError(f"data.source={dcfg['source']!r}: use 'manifests', 'packed' or 'multichannel'")
     valid_signals = torch.stack([valid_ds[i] for i in range(len(valid_ds))])
     batch_size = tcfg["batch_size"]
     loader = make_loader(train_ds, batch_size, shuffle=True, seed=seed,

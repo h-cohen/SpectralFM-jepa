@@ -206,3 +206,24 @@ def test_source_weighted_sampler(tmp_path):
         sampler.set_epoch(e)
         drawn.append(np.array(list(sampler)))
     assert (np.concatenate(drawn) >= 990).mean() == pytest.approx(0.5, abs=0.02)
+
+
+def test_multichannel_dataset_normalizes_and_drops_groups(tmp_path):
+    import json
+    from spectral_lejepa.data.loader import MultiChannelSpectra
+    S = np.random.default_rng(0).normal(size=(50, 8, 245)).astype(np.float32) * 2 + 3
+    S[0, 2:5] = np.nan
+    np.save(tmp_path / "signals.npy", S)
+    (tmp_path / "stats.json").write_text(json.dumps({"mean": [3.0] * 8, "std": [2.0] * 8}))
+    ds = MultiChannelSpectra(tmp_path, np.arange(50), drop_prob=0.0)
+    x = ds[1]
+    assert x.shape == (8, 245)
+    assert torch.allclose(x, torch.from_numpy((S[1] - 3) / 2))
+    assert torch.isnan(ds[0][2:5]).all() and torch.isfinite(ds[0][[0, 1, 5, 6, 7]]).all()
+    torch.manual_seed(0)
+    dropped = MultiChannelSpectra(tmp_path, np.arange(50), drop_prob=0.9)
+    for i in range(50):
+        x = dropped[i]
+        alive = ~torch.isnan(x).all(-1)
+        assert alive.any()                                         # never every group
+        assert alive[2] == alive[3] == alive[4] and alive[5] == alive[6] == alive[7]   # triplets whole

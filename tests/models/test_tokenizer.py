@@ -30,3 +30,33 @@ def test_output_shape():
 def test_wrong_length_raises():
     with pytest.raises(ValueError, match="245"):
         PatchTokenizer(dim=8)(torch.randn(2, 240))
+
+
+def test_multichannel_tokens_shape_and_channel_mixing():
+    tok = PatchTokenizer(245, 48, 32, in_channels=8)
+    x = torch.randn(3, 8, 245)
+    assert tok(x).shape == (3, 48, 32)
+    y = x.clone()
+    y[:, 5] += 1.0          # changing one channel changes every sample's tokens
+    assert not torch.allclose(tok(x), tok(y))
+
+
+def test_multichannel_absent_channel_is_nan_and_differs_from_zero():
+    tok = PatchTokenizer(245, 48, 32, in_channels=8)
+    x = torch.randn(2, 8, 245)
+    absent, zero = x.clone(), x.clone()
+    absent[:, 2:5] = float("nan")
+    zero[:, 2:5] = 0.0
+    out = tok(absent)
+    assert torch.isfinite(out).all()
+    assert not torch.allclose(out, tok(zero))   # the presence embedding marks the gap
+
+
+def test_single_channel_path_unchanged():
+    torch.manual_seed(0)
+    a = PatchTokenizer(245, 48, 32)
+    torch.manual_seed(0)
+    b = PatchTokenizer(245, 48, 32, in_channels=1)
+    x = torch.randn(4, 245)
+    assert torch.equal(a(x), b(x))
+    assert set(a.state_dict()) == set(b.state_dict())

@@ -75,9 +75,9 @@ class Predictor(nn.Module):
 
 class LeJEPA(nn.Module):
     def __init__(self, sequence_length, num_patches, dim, depth, heads, mlp_dim, dropout,
-                 predictor_dim, predictor_depth, predictor_heads, predictor_mlp_dim):
+                 predictor_dim, predictor_depth, predictor_heads, predictor_mlp_dim, in_channels=1):
         super().__init__()
-        self.tokenizer = PatchTokenizer(sequence_length, num_patches, dim)
+        self.tokenizer = PatchTokenizer(sequence_length, num_patches, dim, in_channels)
         self.encoder = Encoder(dim, depth, heads, mlp_dim, dropout)
         self.predictor = Predictor(num_patches, dim, predictor_dim, predictor_depth,
                                    predictor_heads, predictor_mlp_dim, dropout)
@@ -136,4 +136,5 @@ def build_model(model_cfg: dict, sequence_length: int) -> LeJEPA:
             raise ValueError(f"model.{key}={model_cfg[key]!r} is retired; only 'none' is supported")
     keys = ("num_patches", "dim", "depth", "heads", "mlp_dim", "dropout", "predictor_dim",
             "predictor_depth", "predictor_heads", "predictor_mlp_dim")
-    return LeJEPA(sequence_length=sequence_length, **{k: model_cfg[k] for k in keys})
+    return LeJEPA(sequence_length=sequence_length, in_channels=model_cfg.get("in_channels", 1),
+                  **{k: model_cfg[k] for k in keys})
