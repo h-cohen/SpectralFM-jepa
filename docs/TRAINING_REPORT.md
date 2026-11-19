@@ -1,6 +1,6 @@
 # SpectralFM-LeJEPA training report
 
-Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 non-robust, 8 robust), block-2 flat features; the robust four-seed ensemble is the previous candidate. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
+Status 2026-11-19. Candidate: **family-mix ensemble** of 16 frozen encoders (8 non-robust, 8 robust), block-2 flat features; the robust four-seed ensemble is the previous candidate. Figures: `python -m spectral_lejepa training-report` and `embedding-figures`. W&B project `hcohen/spectralfm-lejepa`.
 
 ## 1. Bottom line
 
@@ -23,6 +23,7 @@ Status 2026-11-02. Candidate: **family-mix ensemble** of 16 frozen encoders (8 n
 - **Ridge head (2026-11-04, Appendix H):** the linear head must be chosen inside CV, because there are 12,288 features and at most a few hundred training rows per measured set. Inner CV adds .03–.05 R² over any fixed head; plain least squares collapses (0120: −.34). Tuning λ by CV also lifts raw above a fixed average of ridges (our approximation of the client's method): .666 vs .595, 7/8.
 - **Measured-data budget (2026-11-15, Appendix J):** 6.25% of the measured sample groups (748 of 11,873) matches all-data pretraining on the seven measured sets, with or without synthetic data. At 1.5% both fail the pre-registered rule; synthetic data never substitutes for measured spectra, and blending the two costs .04 mean R². On labeled_data, which neither arm saw, measured-only 25% falls below raw while measured + synthetic 25% matches all data.
 - **Joined components (2026-11-16, Appendix K):** joining each sample's component features into one vector lifts every method (two components: measured-only LeJEPA .711 → .786, MiniRocket .676 → .765, raw .638 → .738); with three components LeJEPA alone passes the rule and leads MiniRocket by +.043.
+- **Complex channels (2026-11-19, Appendix L):** the ellipsometric components 26–31 never meet "only help". Fusing a complex-channel prediction with LeJEPA comp0+1 gains +.011 but loses on 0112 and 0120; a fallback fusion gains +.001; joining loses −.043; multichannel [8, 245] pretraining loses −.223 (−.091 with single-component rows mixed in). Study closed.
 
 
 **Inference cost per spectrum** (`ops/inference_flops.py`; matrix multiplies and convolutions counted with PyTorch's FLOP counter, plus the linear readout):
@@ -245,6 +246,7 @@ flowchart TB
 | Second component (11-03) | Train the ridge on comp0+1 (twice the rows); test on comp0, on 0+1, or averaged per sample (Appendix G) | JEPA train 0+1, test 0: 2/7, −.029; train 0+1, test 0+1: 3/7, −.017; per-sample average +.027 (raw +.038, random +.042) | Pooling fails; averaging is model-agnostic noise reduction |
 | Measured budget (11-12) | Pretrain on 100/25/6.25/1.5% of the measured sample groups, alone, with synthetic, or blended (Appendix J) | f* = 6.25% for measured only (+.006 vs all) and with synthetic (+.000, 7/7); 1.5% fails both; blend −.04 | 6.25% of the measured groups suffices; synthetic does not substitute |
 | Joined components (11-16) | One probe on [f(comp0), f(comp1), f(comp2)] per sample, raw, MiniRocket, measured-only LeJEPA (Appendix K) | 2 comps: LeJEPA .711 → .786 (7/7), MiniRocket .676 → .765, raw .638 → .738; 3 comps: LeJEPA +.100 (5/5), raw +.016 | Joining helps every method; LeJEPA best mean, MiniRocket wins 5/7 sets with 2 comps |
+| Complex channels (11-19) | Add ellipsometric components 26–31 to LeJEPA comp0+1: prediction fusion, joining, multichannel pretraining (Appendix L) | mix:fft32 +.011 (loses 0112, 0120); safe +.001; joined −.043; multichannel −.223, mixed −.091 (1/7) | None qualifies; keep LeJEPA comp0+1 |
 
 ### Input normalization
 
