@@ -1354,6 +1354,58 @@ Seen vs unseen R² of the 25% families: evaluation spectra whose sample group wa
 
 **Reproduce.** Outputs in `outputs/component-concat/` (two components), `outputs/component-concat-3c/` (three; `eval_3c.yaml` lists the five sets) and `outputs/component-concat-nr/` (0112 check, `run.sh`), each with `summary.json`; `ops/report_concat.py --dir <dir> [--sets ...]` recomputes every number without refitting.
 
+## Appendix L. Complex (ellipsometric) channels (2026-11-16/19)
+
+**Bottom line.** Components 26–31 are two ellipsometric triplets that the per-component studies never used. No way of adding them meets "only help" on the measured sets. Fusing a separate complex-channel prediction with the LeJEPA comp0+1 prediction gains +.011 mean R² but loses on 0112 and 0120. A fusion that keeps comp0+1 unless the complex model is clearly better never loses but gains only +.001. Joining the complex features into the comp0+1 vector loses −.043. Pretraining one encoder on all eight channels of a sample loses −.223, and −.091 with the single-component rows added back. The labeled samples that carry these channels are few (25–125 per set), so gains of .01–.02 cannot be told apart from fold noise. The study is closed.
+
+**What the channels are.** Each triplet (N, C, S) = (26, 27, 28) and (29, 30, 31) satisfies N² + C² + S² ≈ 1, the ellipsometry identity N = cos 2ψ, C = sin 2ψ cos Δ, S = sin 2ψ sin Δ, so z = C + iS is a complex signal. Values with |x| > 1.05 are corrupt (N up to 23,045 on 0120) and are dropped triplet-wise. Labeled samples with finite comp0 and both triplets: labeled_data 4,716, 0055 25, 0106 64, 0109 96, 0112 50 of 68, 0120 125. 0113's triplets are all NaN and 0114 has none. Pretraining already saw them: 40,938 of the 147,784 measured rows (Appendix I/J) are components 26–31, each as an independent single spectrum. labeled_data was dropped from the study (the joined LeJEPA vector, ~98k features, ran out of GPU memory).
+
+**Setup.** Same nested CV as Appendix K (2×5 outer folds over samples, 5 inner, 12 recipes, seed 42). Base: LeJEPA joined comp0+1 (measured-only `bm100`, mean of seeds 107 and 108, block-2 flat). Complex blocks: raw C, S (`cx`), Re/Im of the FFT of z (first 16 or 32 bins, `fft16`/`fft32`), FFT magnitudes, polar (|z|, phase), ψ/Δ, and LeJEPA features of the complex channels (`j_cx`). Fusions, all weighted inside inner CV: `mix` (one weight between the base and block predictions), `safe` (block prediction used only if its inner gain exceeds 2 bootstrap SD, otherwise the base), `stack`, `cat` (joined features), and `auto` (best fusion per set chosen in inner CV). Rule, fixed before results: a method qualifies if it is ≥ base on every set and the mean gain is ≥ +.01. RMSE in label units.
+
+**Fusion** (five sets; 0112 on its 50 samples with complex channels):
+
+| Set | n | raw comp0+1 R² | raw comp0+1 RMSE | LeJEPA comp0+1 (base) R² | base RMSE | FFT alone R² | FFT alone RMSE | joined + cx R² | joined + cx RMSE | mix:fft32 R² | mix:fft32 RMSE | safe:cx R² | safe:cx RMSE | auto R² | auto RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | .735 | .504 | .790 | .449 | .800 | .437 | .822 | .414 | .810 | .426 | .791 | .447 | .769 | .471 |
+| 0106 | 64 | .668 | .571 | .647 | .589 | .702 | .541 | .594 | .632 | .684 | .558 | .647 | .589 | .655 | .583 |
+| 0109 | 96 | .951 | .219 | .927 | .268 | .939 | .244 | .949 | .224 | .956 | .208 | .929 | .265 | .959 | .201 |
+| 0112 | 50 | .742 | .392 | .887 | .261 | .180 | .712 | .764 | .382 | .877 | .274 | .887 | .261 | .887 | .261 |
+| 0120 | 125 | .577 | .647 | .623 | .612 | .229 | .874 | .530 | .683 | .603 | .626 | .623 | .612 | .625 | .609 |
+| **Mean** | | .735 | .467 | .775 | .436 | .570 | .562 | .732 | .467 | .786 | .418 | .775 | .435 | .779 | .425 |
+| **Δ vs base** | | | | | | | | −.043 | | +.011 | | +.001 | | +.004 | |
+
+No random-weight control was run for the fusion arms; the complex blocks are raw transforms, and Appendix K gives the random encoder on comp0+1. Other blocks: FFT magnitudes are worse than Re/Im alone (fftmag16 .377 mean), polar and ψ/Δ are unstable (polar −2.07 on 0120, from phase wrapping). The `safe` rule never loses because it almost always falls back to the base.
+
+**Why joining loses.** It is not a bug: LeJEPA comp0 built from the source pickles reproduces the stored evaluation predictions to 7e-7. One ridge λ covers the whole joined vector (grid capped at 1000), so a block with no signal (0112, 0120: complex alone R² ≤ .18) dilutes the comp0+1 features. Fusing predictions, with an inner-CV weight per block, removes most of the loss.
+
+**Multichannel pretraining.** One encoder on an [8, 245] input per sample (comp0, comp1, N1, C1, S1, N2, C2, S2; `configs/multichannel_m.yaml`): the patch projection takes the same patch of every channel, an absent channel is NaN and gets a learned presence embedding, each channel has its own global normalization, and channel groups are dropped with p = .25 in training. bm100 recipe (248,995 steps), seeds 107 and 108, measured data only. Two runs: whole-sample inputs only (11,873), and mixed, the same plus the 147,419 single-component rows (one channel present; `ops/build_multichannel_mixed.py`), so the encoder sees at least bm100's data. Arms on the same folds: `mc` (all channels), `mc` with the complex channels withheld, a random-weight multichannel encoder (seed 0), LeJEPA comp0+1 (bm100) and raw comp0+1. Rule, fixed before results (commit `a134c9c`): mc − LeJEPA > 0 on ≥ 5/7 sets, mean ≥ +.01, no set below by more than .01.
+
+| Set | n | raw R² | raw RMSE | LeJEPA comp0+1 R² | LeJEPA RMSE | whole-sample mc R² | mc RMSE | mc, complex withheld R² | withheld RMSE | random mc R² | random RMSE | mixed mc R² | mixed mc RMSE | mixed, complex withheld R² | withheld RMSE | mixed random R² | random RMSE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0055 | 25 | .735 | .504 | .790 | .449 | .591 | .626 | .832 | .402 | .541 | .658 | .677 | .556 | .790 | .449 | .574 | .636 |
+| 0106 | 64 | .668 | .571 | .647 | .589 | .470 | .721 | .653 | .585 | .632 | .601 | .633 | .601 | .673 | .567 | .553 | .657 |
+| 0109 | 96 | .951 | .219 | .927 | .268 | .921 | .278 | .915 | .289 | .909 | .299 | .937 | .249 | .914 | .290 | .905 | .306 |
+| 0112 | 68 | .485 | .712 | .728 | .516 | .491 | .707 | .207 | .882 | .850 | .385 | .566 | .654 | .634 | .600 | .807 | .436 |
+| 0113 | 70 | .712 | .533 | .804 | .439 | .215 | .880 | .215 | .880 | .640 | .596 | .642 | .593 | .642 | .593 | .687 | .555 |
+| 0114 | 230 | .984 | .126 | .986 | .118 | .987 | .115 | .987 | .115 | .984 | .124 | .985 | .121 | .985 | .121 | .985 | .124 |
+| 0120 | 125 | .577 | .647 | .623 | .612 | .267 | .851 | .506 | .700 | .263 | .854 | .424 | .755 | .526 | .685 | .227 | .875 |
+| **Mean** | | .730 | .473 | .786 | .427 | .563 | .597 | .616 | .550 | .688 | .502 | .695 | .504 | .738 | .472 | .677 | .513 |
+
+| Run | mc − LeJEPA, mean | sets above | worst set | rule |
+|---|---:|---:|---:|:---:|
+| whole-sample | −.223 | 1/7 | −.588 (0113) | ✘ |
+| mixed | −.091 | 1/7 | −.198 (0120) | ✘ |
+
+- **No evaluation bug.** Training and evaluation normalize identically, absent channels are detected before NaN is zeroed, and the features are not collapsed (effective rank 9.4 vs LeJEPA's 7.5 on 0113).
+- **Accuracy falls during pretraining.** Seed 107's whole-sample checkpoints on 0113: .451 at 10k steps, .302 at 30k, .282 at 100k, −.040 at 249k. Adding the single-component rows slows the fall (mixed .570, .550, .537 at 10k, 30k, 60k) but does not stop it.
+- **The complex channels inside the encoder mostly hurt.** Withholding them scores higher on 0055, 0106, 0112 and 0120 in the mixed run; only 0109 gains (+.023). On 0112 the random-weight multichannel encoder beats both trained runs (.807–.850 vs .491–.566).
+
+**Advice for the complex channels.** Use them, if at all, as a separate model on the FFT Re/Im of z = C + iS and fuse its prediction with the comp0+1 model through the inner-CV fallback rule; never join them into the comp0+1 feature vector or feed them to one shared encoder. A real test needs more labeled samples with channels 26–31.
+
+**Not tested.** A LeJEPA pretrained on the complex channels alone, fused by prediction; labeled_data (4,716 samples with channels) in the fusion study; physical ψ/Δ model fits.
+
+**Reproduce.** `ops/complex_channels.py` (joined arms, `outputs/complex-channels/`) and `ops/complex_fusion.py` (blocks and fusions, `outputs/complex-fusion-r2/`), commit `c4badfb`. Multichannel: `ops/build_multichannel.py` and `ops/build_multichannel_mixed.py` build the inputs, `configs/multichannel_m.yaml` and `configs/multichannel_mixed.yaml` train, `ops/multichannel_eval.py` scores; outputs in the `multichannel` worktree, `outputs/multichannel/eval/` and `outputs/multichannel-mixed/eval/` (`<set>.json`, `<set>_oof.npz`).
+
 ## References
 
 - Balestriero & LeCun (2025). LeJEPA. arXiv:2511.08544.
