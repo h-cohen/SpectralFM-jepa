@@ -95,6 +95,38 @@ class PackedSpectra(Dataset):
         return normalize(x, self.normalization, self.stats)
 
 
+class MultiChannelSpectra(Dataset):
+    """Rows of a multichannel `signals.npy` [N, C, 245] (ops/build_multichannel.py; NaN = absent channel),
+    each channel normalized by its global mean / std from stats.json. drop_prob: each present channel group
+    (CHANNEL_GROUPS) is dropped (set NaN) with this probability, never every present group (torch RNG)."""
+
+    CHANNEL_GROUPS = ((0,), (1,), (2, 3, 4), (5, 6, 7))   # comp0, comp1, (N1, C1, S1), (N2, C2, S2)
+
+    def __init__(self, data_dir, rows, drop_prob=0.0):
+        self.path = os.path.join(data_dir, "signals.npy")
+        stats = json.loads(Path(data_dir, "stats.json").read_text())
+        self.mean = torch.tensor(stats["mean"], dtype=torch.float32)[:, None]
+        self.std = torch.tensor(stats["std"], dtype=torch.float32)[:, None]
+        self.rows, self.drop_prob, self._array = np.asarray(rows), float(drop_prob), None
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __getitem__(self, i):
+        if self._array is None:
+            self._array = np.load(self.path, mmap_mode="r")
+        x = (torch.from_numpy(np.array(self._array[self.rows[i]], dtype=np.float32)) - self.mean) / self.std
+        if self.drop_prob > 0:
+            groups = [g for g in self.CHANNEL_GROUPS if not torch.isnan(x[list(g)]).all()]
+            drop = torch.rand(len(groups)) < self.drop_prob
+            if drop.all():
+                drop[torch.randint(len(groups), ())] = False
+            for g, d in zip(groups, drop.tolist()):
+                if d:
+                    x[list(g)] = float("nan")
+        return x
+
+
 class BlendSpectra(Dataset):
     """`base` where, with probability `prob`, a measured item becomes lam*measured + (1-lam)*synthetic,
     lam ~ U(lam_low, 1), the synthetic item drawn uniformly from `synth_positions` (dataset positions).
